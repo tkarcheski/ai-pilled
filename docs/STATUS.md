@@ -88,7 +88,17 @@ Unrelated nested imports cannot hide outer calls;
 relative imports are not treated as public packages. Direct `Unpickler(...).load()`
 and Requests `Session().get/post/request(...)` calls receive the same checks as their
 module-level forms, including imported aliases. This does not resolve instances stored
-in variables or infer whether a custom unpickler subclass is safe. Shell rules include `os.popen`,
+in variables or infer whether a custom unpickler subclass is safe. Scientific package
+signals cover `joblib.load`, `pandas.read_pickle`, NumPy loading with a literal truthy
+`allow_pickle`, and PyTorch loading with an explicit falsey `weights_only` other than
+`None`. Aliases, literal mappings, and NumPy's positional option are inspected;
+unknown supplied options are incomplete. This neither imports those packages nor
+loads artifacts. Unspecified PyTorch defaults vary by version/environment, and a
+restricted option is not proof that an artifact or installed library is safe.
+References: [Joblib warning](https://joblib.readthedocs.io/en/stable/generated/joblib.load.html),
+[Pandas warning](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.read_pickle.html),
+[NumPy options](https://numpy.org/doc/stable/reference/generated/numpy.load.html), and
+[PyTorch loading](https://docs.pytorch.org/docs/stable/generated/torch.load). Shell rules include `os.popen`,
 `subprocess.getoutput/getstatusoutput`, and `asyncio.create_subprocess_shell`; YAML
 rules include `unsafe_load`, `unsafe_load_all`, and `load_all` without an explicit safe loader.
 Explicit `yaml.loader.SafeLoader` and `yaml.cyaml.CSafeLoader` imports are recognized;

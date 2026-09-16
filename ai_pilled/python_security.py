@@ -25,8 +25,13 @@ JWT_DECODE_CALLS = {module + '.' + method
 
 SHELL_KEYWORD_CALLS = {'subprocess.run', 'subprocess.Popen', 'subprocess.call',
                        'subprocess.check_call', 'subprocess.check_output'}
-POSITIONAL_SECURITY_CALLS = SHELL_KEYWORD_CALLS | JWT_DECODE_CALLS
-KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | POSITIONAL_SECURITY_CALLS | {
+PICKLE_OPTION_CALLS: dict[str, tuple[str, int | None, bool]] = {
+    'numpy.load': ('allow_pickle', 2, True),
+    'torch.load': ('weights_only', None, False),
+    'torch.serialization.load': ('weights_only', None, False),
+}
+POSITIONAL_SECURITY_CALLS = SHELL_KEYWORD_CALLS | JWT_DECODE_CALLS | {'numpy.load'}
+KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | POSITIONAL_SECURITY_CALLS | set(PICKLE_OPTION_CALLS) | {
     'yaml.load', 'yaml.load_all', 'hashlib.new', 'hashlib.md5', 'hashlib.sha1'}
 
 SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
@@ -334,8 +339,22 @@ def inspect_python(report, path, content, *, tree=None):
                     rule, message = 'jwt-signature-disabled', (
                         'JWT signature verification is disabled; do not trust these claims for authorization.')
         elif name in ('pickle.load', 'pickle.loads', '_pickle.load', '_pickle.loads', 'dill.load', 'dill.loads',
-                      'pickle.Unpickler.load', '_pickle.Unpickler.load', 'dill.Unpickler.load'):
+                      'pickle.Unpickler.load', '_pickle.Unpickler.load', 'dill.Unpickler.load',
+                      'joblib.load', 'pandas.read_pickle'):
             rule, message = 'unsafe-deserialization', 'Object deserialization can execute code; do not accept untrusted input.'
+        elif name in PICKLE_OPTION_CALLS:
+            option, position, unsafe_truthiness = PICKLE_OPTION_CALLS[name]
+            positional = (arguments[position] if position is not None and len(arguments) > position
+                          and not unknown_arguments else None)
+            setting = next((keyword.value for keyword in keywords if keyword.arg == option), positional)
+            if setting is not None:
+                if not isinstance(setting, ast.Constant):
+                    report.add('pickle-option-unresolved',
+                               'Pickle loading settings cannot be fully inspected; make the option explicit.',
+                               path=path, line=node.lineno, severity='warning')
+                elif setting.value is not None and bool(setting.value) == unsafe_truthiness:
+                    rule, message = 'unsafe-deserialization', (
+                        'Pickle-enabled loading can execute code; do not accept untrusted artifacts.')
         elif name in TLS_VERIFY_CALLS and any(
                 k.arg == 'verify' and isinstance(k.value, ast.Constant)
                 and (k.value.value is False or name.startswith('requests.')

@@ -646,3 +646,61 @@ class PythonPatternTests(unittest.TestCase):
                 result = self.inspect('import os\nprint(' + expression + ')')
                 self.assertEqual(result.findings[0].rule, 'environment-secret-log')
         self.assertEqual(self.inspect('import os\nprint(os.getenv(*["HOME"]))').status, 'pass')
+
+    def test_scientific_pickle_loaders_and_aliases_require_review(self):
+        for source in ('import joblib\njoblib.load(path)',
+                       'from joblib import load as restore\nrestore(path)',
+                       'import pandas as pd\npd.read_pickle(path)',
+                       'from pandas import read_pickle as restore\nrestore(path)'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-deserialization', 2)])
+
+    def test_numpy_pickle_enabled_by_keyword_positional_or_expansion(self):
+        for expression in ('np.load(path, allow_pickle=True)',
+                           'np.load(path, None, True)',
+                           'np.load(*[path, None, True])',
+                           'np.load(path, **{"allow_pickle": 1})',
+                           'getattr(np, "load")(path, allow_pickle="enabled")'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import numpy as np\n' + expression)
+                self.assertEqual(result.findings[0].rule, 'unsafe-deserialization')
+        result = self.inspect('from numpy import load as read\nread(path, allow_pickle=True)')
+        self.assertEqual(result.status, 'fail')
+
+    def test_explicit_torch_unrestricted_loading_is_reviewed(self):
+        for source in ('import torch\ntorch.load(path, weights_only=False)',
+                       'from torch import load as restore\nrestore(path, weights_only=False)',
+                       'from torch.serialization import load\nload(path, **{"weights_only": False})',
+                       'import torch\ntorch.load(path, weights_only=0)',
+                       'import torch\ntorch.load(path, weights_only="")'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-deserialization', 2)])
+
+    def test_scientific_loader_defaults_restricted_options_and_unrelated_apis(self):
+        for source in ('import numpy as np\nnp.load(path)',
+                       'import numpy as np\nnp.load(path, allow_pickle=False)',
+                       'import numpy as np\nnp.load(path, None, None)',
+                       'import numpy as np\nnp.load(path, **{"allow_pickle": True, "allow_pickle": False})',
+                       'import torch\ntorch.load(path, weights_only=True)',
+                       'import torch\ntorch.load(path)',
+                       'import torch\ntorch.load(path, weights_only=None)',
+                       'import pandas as pd\npd.read_csv(path)',
+                       'from . import joblib\njoblib.load(path)',
+                       'import joblib\ndef local(joblib): return joblib.load(path)'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_scientific_dynamic_pickle_settings_are_incomplete(self):
+        for source, rule in (
+                ('import numpy as np\nnp.load(path, allow_pickle=enabled)', 'pickle-option-unresolved'),
+                ('import numpy as np\nnp.load(path, None, enabled)', 'pickle-option-unresolved'),
+                ('import numpy as np\nnp.load(*arguments)', 'python-arguments-unresolved'),
+                ('import numpy as np\nnp.load(path, **settings)', 'python-keywords-unresolved'),
+                ('import torch\ntorch.load(path, weights_only=restricted)', 'pickle-option-unresolved'),
+                ('import torch\ntorch.load(path, **settings)', 'python-keywords-unresolved')):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.findings[0].rule, rule)
