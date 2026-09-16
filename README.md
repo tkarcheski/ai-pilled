@@ -206,6 +206,11 @@ limit and run only after the credential scan passes. This requires active truste
 hooks and contacts the configured npm registry; it does not intercept every system-wide
 package installation.
 
+Post-tool hooks match every supported local tool event, including MCP tools. Hosted
+tools such as web search are outside Codex hook coverage. Existing installations with
+the older shell/edit matcher must be uninstalled and reinstalled, then reviewed in /hooks.
+See [official hook coverage](https://learn.chatgpt.com/docs/hooks).
+
 Post-tool summaries include one sentence, a proceed/wait indicator, and a next step.
 Structured exit codes and MCP error flags are recognized without retaining raw tool
 output. Unstructured outcomes remain unknown and request review of the original result.

@@ -21,7 +21,7 @@ def groups(repo):
          'statusMessage': f'ai-pilled: {label}'}]}]
         for event, matcher, timeout, label in (
             ('SessionStart', 'startup|resume|clear|compact', 30, 'repository state'),
-            ('PostToolUse', 'Bash|apply_patch|Write|Edit', 60, 'credential scan'),
+            ('PostToolUse', '*', 60, 'checks and tool summary'),
             ('Stop', '', 180, 'test results'))}
 
 
@@ -62,7 +62,11 @@ def read_installation(path, root):
     if not path.exists() and not path.is_symlink():
         return None
     data = read_object(path)
-    if set(data) != {'groups'} or data['groups'] != groups(root):
+    current = groups(root)
+    legacy = groups(root)
+    legacy['PostToolUse'][0]['matcher'] = 'Bash|apply_patch|Write|Edit'
+    legacy['PostToolUse'][0]['hooks'][0]['statusMessage'] = 'ai-pilled: credential scan'
+    if set(data) != {'groups'} or data['groups'] not in (current, legacy):
         raise CommandError('Installation metadata differs from this runtime; use the original runtime or reconcile manually')
     return data
 
@@ -76,6 +80,8 @@ def install(repo):
         desired = groups(root)
         previous = read_installation(manifest_path, root)
         if previous:
+            if previous['groups'] != desired:
+                raise CommandError('Owned hook definitions changed; uninstall and reinstall to review the new definitions')
             if any(hooks.get(event, []).count(group) != 1
                    for event, entries in desired.items() for group in entries):
                 raise CommandError('Installed Codex hooks were edited; preserve and reconcile manually')

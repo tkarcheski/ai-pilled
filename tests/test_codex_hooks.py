@@ -106,3 +106,23 @@ class CodexInstallTests(unittest.TestCase):
         with self.assertRaises(CommandError):
             install(self.repo)
         self.assertTrue(self.path.is_symlink())
+
+    def test_legacy_scoped_hooks_can_be_removed_without_touching_user_hooks(self):
+        from ai_pilled.codex_hooks import groups
+        legacy = groups(self.repo)
+        legacy['PostToolUse'][0]['matcher'] = 'Bash|apply_patch|Write|Edit'
+        legacy['PostToolUse'][0]['hooks'][0]['statusMessage'] = 'ai-pilled: credential scan'
+        data = json.loads(json.dumps(self.original))
+        for event, entries in legacy.items():
+            data['hooks'].setdefault(event, []).extend(entries)
+        self.path.write_text(json.dumps(data))
+        state = self.repo / '.ai-pilled'
+        state.mkdir()
+        (state / 'codex-installation.json').write_text(json.dumps({'groups': legacy}))
+        with self.assertRaises(CommandError):
+            install(self.repo)
+        uninstall(self.repo)
+        self.assertEqual(json.loads(self.path.read_text()), self.original)
+        install(self.repo)
+        data = json.loads(self.path.read_text())
+        self.assertEqual(data['hooks']['PostToolUse'][0]['matcher'], '*')
