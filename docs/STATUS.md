@@ -4,7 +4,7 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The current development baseline is `c27fa59`: 331 discovered tests, a shared
+The verification baseline is `74ef957`: 336 discovered tests, a shared
 four-scenario end-to-end runner, and seven configured quality gates. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -197,14 +197,14 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff, mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Refreshing on `codex/ai-pilled-ci-pending`; publication blocked | Existing login lacks workflow scope. No remote run, uploaded artifact, or required-check activation is claimed. Pending checkout is separate so normal feature pushes continue. |
+| GitHub Actions | Prepared and locally validated at `915696c`; publication blocked | Both-runtime quality/E2E evidence, fresh3.10 environments, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 ## Known gaps and prioritized follow-ups
 
 | Priority | Follow-up | Why / completion evidence |
 | --- | --- | --- |
-| P1 | Finish GitHub workflow refresh and local parity checks | Matrix quality + shared E2E, bounded job timeout, read-only token, immutable action pins, explicit artifact allowlist. Hosted acceptance requires publishing and inspecting an actual run after authorized credential scope is available. |
+| P1 | Complete hosted GitHub acceptance when credentials permit | Workflow refresh and local parity are complete. Publishing remains blocked by OAuth scope. Inspect both matrix jobs and downloaded artifacts after publication; never substitute local evidence for a hosted result. |
 | P1 | Investigate intermittent full-suite failures if they recur | Earlier runs occasionally failed without named diagnostics; repeated exact reruns passed. Cause remains unknown. An ignored diagnostic wrapper retains redacted failed-test output; never bypass a gate or describe the issue as fixed. |
 | P1 | Audit disposable operations under inherited Git routing | Staged review now isolates routing; verify refactor/healing/full-audit paths with the same adversarial fixtures before extending guarantees. |
 | P2 | Product-generated follow-up suggestions | Prioritize current failed/incomplete checks and missing configuration, distinguish historical evidence, produce explicit next commands, and never activate external integrations automatically. |
