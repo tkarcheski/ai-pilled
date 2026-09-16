@@ -5,6 +5,7 @@ import sys
 
 from . import codex_hooks
 from .dependencies import audit
+from .dependency_health import health, licenses
 from .codex_review import review
 from .lifecycle import handle, read_payload
 from .checks import command_check
@@ -41,6 +42,10 @@ def main(argv=None):
     performance.add_argument('--runs', type=int, default=3)
     performance.add_argument('--maximum-regression', type=float, default=20)
     performance.add_argument('--save-baseline', action='store_true')
+    health_parser = commands.add_parser('dependency-health', help='Check installed npm tree and available versions')
+    health_parser.add_argument('--npm', default='npm')
+    license_parser = commands.add_parser('licenses', help='Match lockfile licenses against an explicit allowlist')
+    license_parser.add_argument('--allow', action='append', default=[])
     commands.add_parser('quality', help='Run the configured quality profile')
     commands.add_parser('ready', help='Validate a clean proposal branch and its quality checks')
     commands.add_parser('summary', help='Summarize recorded checks and next steps')
@@ -66,6 +71,10 @@ def main(argv=None):
             return 0
         if args.command == 'review':
             report = review(args.repo, args.codex)
+        elif args.command == 'dependency-health':
+            report = health(args.repo, args.npm)
+        elif args.command == 'licenses':
+            report = licenses(args.repo, args.allow)
         elif args.command in ('quality', 'ready'):
             report = quality(args.repo, ready=args.command == 'ready')
         elif args.command == 'benchmark':

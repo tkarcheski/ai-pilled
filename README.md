@@ -62,8 +62,17 @@ This command contacts your configured npm registry with dependency metadata, as
 [documented by npm](https://docs.npmjs.com/cli/v11/commands/npm-audit/). It does not
 install packages, run lifecycle scripts, or apply fixes. Registry errors and missing
 lockfiles produce incomplete results. This checks known vulnerabilities only;
-license policy, outdated packages, version conflicts, other package managers, and
-automatic install-event auditing are separate pending features.
+other package managers and automatic install-event auditing remain pending.
+
+`dependency-health` checks the installed tree with npm ls and queries available
+versions with npm outdated. Invalid/missing dependencies block; newer versions are
+informational and are not labeled vulnerabilities. It does not install or update packages.
+
+`licenses --allow MIT --allow Apache-2.0` compares declared license expressions in
+npm lockfile v2/v3 package metadata against your exact allowlist. Missing metadata is
+incomplete; expressions outside the list fail. Compound expressions must be allowed
+explicitly in their complete form. This is a metadata policy check, not a determination
+of legal compliance or verification of package license files.
 
 ## Review commits with Codex
 

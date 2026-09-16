@@ -30,7 +30,7 @@ class Report:
         self.findings.append(Finding(rule, severity, message, path, line))
         if severity == 'error':
             self.status = 'fail'
-        elif self.status == 'pass':
+        elif severity != 'info' and self.status == 'pass':
             self.status = 'incomplete'
 
     def to_dict(self):
