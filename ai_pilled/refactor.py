@@ -1,13 +1,11 @@
 """Run explicitly configured refactor steps in a disposable local clone."""
 from dataclasses import dataclass, field
 import os
-from pathlib import Path
-import tempfile
 import uuid
 
 from .checks import command_check, require_visible_index
 from .config import ConfigError, load
-from .file_io import read_beneath, read_regular
+from .file_io import read_beneath, read_regular, temporary_directory_beneath
 from .pipeline import quality
 from .runtime import CommandError, Report, isolated_git, run, git_path
 from .security import scan
@@ -53,8 +51,8 @@ def refactor(repo):
         except CommandError as exc:
             raise CommandError('Ignore .ai-pilled/ before running disposable refactor work') from exc
         env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
-        with tempfile.TemporaryDirectory(prefix='refactor-work-', dir=state) as temporary:
-            clone = Path(temporary) / 'checkout'
+        with temporary_directory_beneath(root, '.ai-pilled', prefix='refactor-work-') as temporary:
+            clone = temporary / 'checkout'
             run(['git', 'clone', '--quiet', '--no-local', '--no-checkout', '--', str(root), str(clone)],
                 root, timeout=config.timeout, env=env)
             run(['git', 'remote', 'remove', 'origin'], clone, env=env)

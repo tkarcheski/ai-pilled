@@ -1,12 +1,10 @@
 """Verify a single-commit reversal before offering an explicit local revert."""
 from dataclasses import dataclass, field
 import os
-from pathlib import Path
-import tempfile
 
 from .checks import command_check, require_visible_index
 from .config import ConfigError, load
-from .file_io import read_regular
+from .file_io import read_regular, temporary_directory_beneath
 from .pipeline import quality
 from .refactor import export_patch
 from .runtime import CommandError, Report, isolated_git, run, git_path
@@ -61,8 +59,8 @@ def heal(repo, expected_head, apply=False):
         run(['git', 'check-ignore', '-q', '--', '.ai-pilled/'], root)
         state = directory(root)
         env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
-        with tempfile.TemporaryDirectory(prefix='heal-work-', dir=state) as temporary:
-            clone = Path(temporary) / 'checkout'
+        with temporary_directory_beneath(root, '.ai-pilled', prefix='heal-work-') as temporary:
+            clone = temporary / 'checkout'
             run(['git', 'clone', '--quiet', '--no-local', '--no-checkout', '--', str(root), str(clone)],
                 root, timeout=config.timeout, env=env)
             run(['git', 'remote', 'remove', 'origin'], clone, env=env)

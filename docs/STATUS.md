@@ -527,6 +527,16 @@ A candidate already published in the original directory can remain after a late
 path change, which is reported as incomplete. No live refactor/healing action was
 performed for these guards; binary, collision, race, and failure fixtures cover them.
 
+Disposable refactor/healing checkouts also hold their state-directory descriptor
+through creation, child commands, and cleanup. On Linux, a path through the running
+parent process's `/proc/<pid>/fd` entry keeps these operations on that directory
+when its original path is replaced. Missing or inaccessible proc descriptors fail
+closed. Real Git fixtures pass on Python 3.10 and 3.14; race fixtures preserve outside
+directories and confirm private workspace mode, child access, cleanup, and descriptor
+closure. This is path confinement, not a sandbox for configured commands or protection
+against every mutation by another process with the same user permissions. See
+[Linux proc descriptor semantics](https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html).
+
 README reads and publication are now anchored beneath the selected repository.
 Temporary creation, rename, exclusive publication, and cleanup use one opened parent
 directory descriptor. Replacing a parent with an outside symlink cannot redirect the

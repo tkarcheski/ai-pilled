@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import os
 from pathlib import Path
 import stat
+import tempfile
 
 from .runtime import CommandError
 
@@ -38,6 +39,16 @@ def directory_beneath(root, name, *, create=False):
     finally:
         for descriptor in reversed(directories):
             os.close(descriptor)
+
+
+@contextmanager
+def temporary_directory_beneath(root, name, *, prefix):
+    """Keep Linux temporary-workspace creation and cleanup on an opened parent."""
+    with directory_beneath(root, name) as parent:
+        # Children close inherited descriptors; refer to our still-live process.
+        stable_parent = Path('/proc') / str(os.getpid()) / 'fd' / str(parent)
+        with tempfile.TemporaryDirectory(prefix=prefix, dir=stable_parent) as temporary:
+            yield Path(temporary)
 
 
 @contextmanager
