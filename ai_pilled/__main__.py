@@ -18,7 +18,7 @@ from .state import record
 from .metrics import bundle, coverage
 from .performance import benchmark
 from .pipeline import quality
-from .releases import release_plan
+from .releases import prepare_release, release_plan
 from .documentation import update_readme
 
 
@@ -51,6 +51,9 @@ def build_parser():
     release = commands.add_parser('release-plan', help='Generate changelog and semantic-version proposal')
     release.add_argument('--current', required=True)
     release.add_argument('--since')
+    prepare = commands.add_parser('prepare-release', help='Validate readiness and write VERSION/CHANGELOG.md')
+    prepare.add_argument('--current', required=True)
+    prepare.add_argument('--since')
     readme = commands.add_parser('update-readme', help='Refresh a generated README command reference')
     readme.add_argument('--path', default='README.md')
     readme.add_argument('--check', action='store_true')
@@ -85,6 +88,8 @@ def main(argv=None):
             report = review(args.repo, args.codex)
         elif args.command == 'update-readme':
             report = update_readme(args.repo, args.path, args.check)
+        elif args.command == 'prepare-release':
+            report = prepare_release(args.repo, args.current, args.since)
         elif args.command == 'release-plan':
             report = release_plan(args.repo, args.current, args.since)
         elif args.command == 'dependency-health':

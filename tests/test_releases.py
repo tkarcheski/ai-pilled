@@ -71,3 +71,59 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual(result.changelog, '')
         self.assertNotIn(token, str(result.to_dict()))
+
+    def prepare_fixture(self, test_code=0):
+        import json
+        import sys
+        (self.repo / '.gitignore').write_text('.ai-pilled/\n')
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({
+            'commands': {'test': [sys.executable, '-c', f'raise SystemExit({test_code})']}}))
+        (self.repo / 'VERSION').write_text('1.2.3\n')
+        (self.repo / 'CHANGELOG.md').write_text('# Changelog\n\n## 1.2.3\n\nHandwritten history.\n')
+        self.git('add', '.gitignore', '.ai-pilled.json', 'VERSION', 'CHANGELOG.md')
+        self.git('commit', '-qm', 'feat: releasable change')
+
+    def test_release_preparation_requires_checks_and_preserves_history(self):
+        from ai_pilled.releases import prepare_release
+        self.prepare_fixture()
+        before_head = self.git('rev-parse', 'HEAD')
+        result = prepare_release(self.repo, '1.2.3', 'v1.2.3')
+        self.assertEqual(result.status, 'pass')
+        self.assertEqual((self.repo / 'VERSION').read_text(), '1.3.0\n')
+        notes = (self.repo / 'CHANGELOG.md').read_text()
+        self.assertIn('## 1.3.0', notes)
+        self.assertIn('Handwritten history.', notes)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), before_head)
+        self.assertEqual(self.git('diff', '--cached'), b'')
+
+    def test_failed_readiness_does_not_write_release_metadata(self):
+        from ai_pilled.releases import prepare_release
+        self.prepare_fixture(test_code=1)
+        before = (self.repo / 'CHANGELOG.md').read_bytes()
+        self.assertEqual(prepare_release(self.repo, '1.2.3', 'v1.2.3').status, 'fail')
+        self.assertEqual((self.repo / 'VERSION').read_text(), '1.2.3\n')
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_bytes(), before)
+
+    def test_release_version_mismatch_and_dirty_tree_are_rejected(self):
+        from ai_pilled.releases import prepare_release
+        self.prepare_fixture()
+        self.assertEqual(prepare_release(self.repo, '2.0.0', 'v1.2.3').status, 'incomplete')
+        (self.repo / 'uncommitted').write_text('change')
+        self.assertEqual(prepare_release(self.repo, '1.2.3', 'v1.2.3').status, 'fail')
+        self.assertEqual((self.repo / 'VERSION').read_text(), '1.2.3\n')
+
+    def test_second_write_failure_restores_first_file(self):
+        from ai_pilled.releases import prepare_release
+        from ai_pilled.state import atomic_text
+        self.prepare_fixture()
+        calls = []
+        def write(path, text, mode):
+            calls.append(path.name)
+            if len(calls) == 2:
+                raise OSError('simulated write failure')
+            return atomic_text(path, text, mode)
+        with patch('ai_pilled.state.atomic_text', side_effect=write):
+            result = prepare_release(self.repo, '1.2.3', 'v1.2.3')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual((self.repo / 'VERSION').read_text(), '1.2.3\n')
+        self.assertEqual(self.git('status', '--porcelain'), b'')

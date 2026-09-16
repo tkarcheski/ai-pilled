@@ -1,5 +1,5 @@
 """Deterministic changelogs and semantic-version proposals from committed history."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import html
 import re
 
@@ -19,6 +19,7 @@ class ReleaseReport(Report):
     next_version: str = ''
     bump: str = 'none'
     changelog: str = ''
+    files: list[str] = field(default_factory=list)
 
 
 def markdown_text(value):
@@ -98,4 +99,66 @@ def release_plan(repo, current, since=None):
         report.metrics = {'commits': len(changes)}
     except (CommandError, ValueError) as exc:
         report.add('release-plan-unavailable', str(exc), severity='warning')
+    return report
+
+def prepare_release(repo, current, since=None):
+    from pathlib import Path
+    from .metrics import local_path
+    from .pipeline import quality
+    from .state import atomic_text
+
+    repo = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    report = release_plan(repo, current, since)
+    report.check = 'release-prepare'
+    if report.status != 'pass':
+        return report
+    if report.bump == 'none':
+        report.add('no-release-change', 'The selected commits do not require a version bump.', severity='warning')
+        return report
+    try:
+        paths = [local_path(repo, 'VERSION'), local_path(repo, 'CHANGELOG.md')]
+        originals = {}
+        modes = {}
+        for path in paths:
+            if path.exists() and (not path.is_file() or path.stat().st_size > 2_000_000):
+                raise CommandError('Release metadata must be bounded regular files')
+            originals[path] = path.read_text() if path.exists() else None
+            modes[path] = path.stat().st_mode & 0o777 if path.exists() else 0o644
+        original_version = originals[paths[0]]
+        if original_version is not None and original_version.strip() != current:
+            raise CommandError('VERSION does not match the supplied current version')
+        old_changelog = originals[paths[1]] or ''
+        if re.search(r'^## ' + re.escape(report.next_version) + r'(?:\s|$)', old_changelog, re.MULTILINE):
+            raise CommandError('CHANGELOG already contains the proposed version')
+        readiness = quality(repo, ready=True)
+        if readiness.status != 'pass':
+            for finding in readiness.findings:
+                report.add('readiness:' + finding.rule, finding.message, path=finding.path,
+                           line=finding.line, severity=finding.severity)
+            return report
+        if run(['git', 'rev-parse', 'HEAD'], repo).decode().strip() != report.snapshot:
+            raise CommandError('HEAD changed after release planning; rerun the preparation')
+        for path, original in originals.items():
+            if (path.read_text() if path.exists() else None) != original:
+                raise CommandError('Release metadata changed during checks; rerun the preparation')
+        if old_changelog.startswith('# Changelog\n'):
+            old_changelog = old_changelog[len('# Changelog\n'):].lstrip('\n')
+        contents = [report.next_version + '\n',
+                    '# Changelog\n\n' + report.changelog.rstrip() + '\n\n' + old_changelog]
+        written = []
+        try:
+            for path, content in zip(paths, contents):
+                atomic_text(path, content, modes[path])
+                written.append(path)
+        except OSError:
+            for path in reversed(written):
+                if originals[path] is None:
+                    path.unlink()
+                else:
+                    atomic_text(path, originals[path], modes[path])
+            raise
+        report.files = [path.name for path in paths]
+    except (CommandError, OSError, UnicodeError) as exc:
+        report.add('release-prepare-unavailable', str(exc) if isinstance(exc, CommandError)
+                   else 'Cannot prepare release metadata files', severity='warning')
     return report

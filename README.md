@@ -205,6 +205,14 @@ The base must resolve to an ancestor of HEAD. Without --since, all history is co
 recognizable credentials. This command proposes metadata; it does not modify versions,
 create tags, push, publish packages, or create a GitHub release.
 
+Use prepare-release with the same --current/--since arguments to run local PR
+readiness and write VERSION plus a new CHANGELOG.md section. The existing VERSION,
+when present, must match --current. Failed checks, dirty/protected branches, version
+mismatches, and duplicate changelog sections prevent preparation. Handwritten history
+is preserved; an ordinary second-file write failure restores the first file. Review
+and commit the resulting changes yourself. This command does not stage files, tag,
+push, or publish, and it does not update package-manager version manifests.
+
 ## Generated README reference
 
 Run update-readme to refresh one marked command-reference section without replacing
@@ -262,10 +270,10 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,update-readme,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,update-readme,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
@@ -276,6 +284,7 @@ positional arguments:
     dependency-health   Check installed npm tree and available versions
     licenses            Match lockfile licenses against an explicit allowlist
     release-plan        Generate changelog and semantic-version proposal
+    prepare-release     Validate readiness and write VERSION/CHANGELOG.md
     update-readme       Refresh a generated README command reference
     quality             Run the configured quality profile
     ready               Validate a clean proposal branch and its quality checks
