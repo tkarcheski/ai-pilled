@@ -18,6 +18,7 @@ from .state import record
 from .metrics import bundle, coverage
 from .performance import benchmark
 from .pipeline import quality
+from .releases import release_plan
 
 
 def main(argv=None):
@@ -46,6 +47,9 @@ def main(argv=None):
     health_parser.add_argument('--npm', default='npm')
     license_parser = commands.add_parser('licenses', help='Match lockfile licenses against an explicit allowlist')
     license_parser.add_argument('--allow', action='append', default=[])
+    release = commands.add_parser('release-plan', help='Generate changelog and semantic-version proposal')
+    release.add_argument('--current', required=True)
+    release.add_argument('--since')
     commands.add_parser('quality', help='Run the configured quality profile')
     commands.add_parser('ready', help='Validate a clean proposal branch and its quality checks')
     commands.add_parser('summary', help='Summarize recorded checks and next steps')
@@ -71,6 +75,8 @@ def main(argv=None):
             return 0
         if args.command == 'review':
             report = review(args.repo, args.codex)
+        elif args.command == 'release-plan':
+            report = release_plan(args.repo, args.current, args.since)
         elif args.command == 'dependency-health':
             report = health(args.repo, args.npm)
         elif args.command == 'licenses':

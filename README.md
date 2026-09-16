@@ -188,6 +188,23 @@ processes are incomplete. Baselines live in .ai-pilled/benchmark.json and do not
 contain command arguments or raw output. Durations include process startup; choose
 a stable workload and account for system load. This repo benchmarks its staged scanner.
 
+## Changelog and version proposals
+
+~~~sh
+python -m ai_pilled release-plan --current 1.2.3 --since v1.2.3
+~~~
+
+The JSON result includes a grouped Markdown changelog, commit count, proposed version,
+and the exact HEAD used. feat selects a minor bump; fix/perf selects patch; an exclamation
+mark or BREAKING CHANGE footer selects major. Documentation-only or empty ranges do
+not invent a release. Stable MAJOR.MINOR.PATCH versions are supported; prerelease
+version rules are not yet implemented.
+
+The base must resolve to an ancestor of HEAD. Without --since, all history is considered
+(up to 1,000 commits). Notes escape Markdown/HTML and refuse commit messages containing
+recognizable credentials. This command proposes metadata; it does not modify versions,
+create tags, push, publish packages, or create a GitHub release.
+
 ## Recorded evidence
 
 `summary` returns one sentence, unresolved checks, a proceed/wait indicator, and the
