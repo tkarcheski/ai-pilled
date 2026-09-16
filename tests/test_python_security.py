@@ -101,7 +101,6 @@ class PythonPatternTests(unittest.TestCase):
         for source in ('import requests\nrequests.get(url)',
                        'import requests\nrequests.get(url, verify=True)',
                        'import requests\nrequests.get(url, verify="trusted-ca.pem")',
-                       'import httpx\nhttpx.Client(verify=context)',
                        'import ssl\nssl.create_default_context()',
                        'custom_operation(verify=False)',
                        '# requests.get(url, verify=False)\nexample = "httpx.Client(verify=False)"'):
@@ -704,3 +703,38 @@ class PythonPatternTests(unittest.TestCase):
                 result = self.inspect(source)
                 self.assertEqual(result.status, 'incomplete')
                 self.assertEqual(result.findings[0].rule, rule)
+
+    def test_dynamic_shell_settings_cannot_silently_pass(self):
+        for method in ('run', 'Popen', 'call', 'check_call', 'check_output'):
+            for arguments in ('command, shell=enabled', 'command, **{"shell": enabled}',
+                              'command, -1, None, None, None, None, None, True, enabled',
+                              '*[command, -1, None, None, None, None, None, True, enabled]'):
+                with self.subTest(method=method, arguments=arguments):
+                    result = self.inspect('import subprocess as process\nprocess.' + method + '(' + arguments + ')')
+                    self.assertEqual(result.status, 'incomplete')
+                    self.assertEqual([(f.rule, f.line) for f in result.findings], [('shell-option-unresolved', 2)])
+        for setting in ('[]', '[True]', 'get_setting()', 'not enabled', 'True if enabled else False'):
+            result = self.inspect('from subprocess import run as execute\nexecute(command, shell=' + setting + ')')
+            self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(self.inspect('custom.run(command, shell=enabled)').status, 'pass')
+
+    def test_dynamic_tls_flags_and_contexts_require_review(self):
+        for source in ('import requests\nrequests.get(url, verify=enabled)',
+                       'from requests import get as fetch\nfetch(url, verify=ca_path)',
+                       'import requests\nrequests.Session().get(url, **{"verify": enabled})',
+                       'import httpx\nhttpx.Client(verify=context)',
+                       'import httpx\nhttpx.stream("GET", url, verify=create_context())',
+                       'import requests\ngetattr(requests, "get")(url, verify=not disabled)'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('tls-option-unresolved', 2)])
+        self.assertEqual(self.inspect('custom.get(url, verify=enabled)').status, 'pass')
+
+    def test_unknown_options_do_not_hide_known_unsafe_settings(self):
+        result = self.inspect('import subprocess\nsubprocess.run(*arguments, shell=enabled)')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual({f.rule for f in result.findings}, {'python-arguments-unresolved', 'shell-option-unresolved'})
+        result = self.inspect('import requests\nrequests.get(url, **settings, verify=False)')
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual({f.rule for f in result.findings}, {'python-keywords-unresolved', 'tls-verification-disabled'})

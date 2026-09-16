@@ -439,7 +439,9 @@ are not treated as calls. MD5/SHA-1 uses are review notices unless explicitly ma
 usedforsecurity=False. These conservative patterns do not model full data flow or runtime alias
 rebinding and are not proof of exploitability. TLS rules recognize direct imported
 APIs and aliases, not arbitrary session-instance methods or runtime-generated options.
-Verified defaults and explicit CA bundles remain allowed. Unparseable Python is incomplete.
+Verified defaults and literal CA paths remain allowed. Supplied dynamic shell options
+and TLS flags/contexts produce incomplete evidence rather than a silent pass.
+Unparseable Python is incomplete.
 Semantic review examines staged diffs; release
 workflows, notifications, and other backlog items are still being implemented.
 Claude Code, OpenCode, and Pi integrations are not verified.

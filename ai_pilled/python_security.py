@@ -310,6 +310,19 @@ def inspect_python(report, path, content, *, tree=None):
             report.add('python-keywords-unresolved',
                        'Expanded keyword settings cannot be fully inspected; make security options explicit.',
                        path=path, line=node.lineno, severity='warning')
+        if name in SHELL_KEYWORD_CALLS:
+            shell_settings = [keyword.value for keyword in keywords if keyword.arg == 'shell']
+            if not unknown_arguments and len(arguments) > 8:
+                shell_settings.append(arguments[8])
+            if any(not isinstance(setting, ast.Constant) for setting in shell_settings):
+                report.add('shell-option-unresolved',
+                           'Shell execution settings cannot be inspected; make the shell option explicit.',
+                           path=path, line=node.lineno, severity='warning')
+        if name in TLS_VERIFY_CALLS and any(keyword.arg == 'verify'
+                and not isinstance(keyword.value, ast.Constant) for keyword in keywords):
+            report.add('tls-option-unresolved',
+                       'TLS verification settings cannot be inspected; review the supplied flag or context.',
+                       path=path, line=node.lineno, severity='warning')
         if name == 'hashlib.new':
             algorithm = arguments[0] if arguments else next(
                 (keyword.value for keyword in keywords if keyword.arg == 'name'), None)
