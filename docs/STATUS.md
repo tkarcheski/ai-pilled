@@ -128,7 +128,10 @@ or updates. Manual PostToolUse correctly reused the fresh matching audit.
 
 **Scope limits:** only explicitly listed exact pins are audited. Transitive closure is
 not inferred. Ranges, markers, extras, URLs, recursive includes, editable installs,
-and hash-based exports are currently rejected; export a supported resolved pin list.
+and unsupported options are rejected. Exact-pin exports with repeated SHA256 hashes
+and bounded continuations are supported; hashes are syntax-checked and fingerprinted,
+not downloaded or verified against artifact bytes. Joined credential and changed-hash
+regressions block provider calls or stale evidence.
 The standalone audit tool's own environment is separate from the selected development
 requirements. Python health needs pip inspect schema 1; update queries additionally
 need pip's JSON index output. Health/license execution requires an explicit interpreter.
@@ -214,7 +217,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | P1 | Investigate intermittent full-suite failures if they recur | Earlier runs occasionally failed without named diagnostics; repeated exact reruns passed. Cause remains unknown. An ignored diagnostic wrapper retains redacted failed-test output; never bypass a gate or describe the issue as fixed. |
 | Done | Isolate disposable operations from inherited Git routing | Reproduced a refactor credential-export bypass and healing candidate misrouting. Candidate scans/quality now isolate routing; real fixtures verify rejection and preservation of original HEAD/index/worktree. Model review already strips Git variables from its subprocess environment. |
 | Done | Product-generated follow-up suggestions | `suggest` prioritizes recorded failures and missing configuration, labels historical evidence, and gives explicit next check commands. It performs no checks or external actions; eight targeted tests cover ordering, nested evidence, redaction, and safe integration follow-ups. |
-| P2 | Broaden Python lock input support | Choose one well-defined export format, preserve exact-pin/coverage guarantees, and test markers/hashes/includes without evaluating package setup code. |
+| Done | Support SHA256 requirement exports | Exact pins with repeated hashes and bounded continuations; malformed syntax, split credentials, and changed hashes are covered. No setup code runs. Other lock formats and conditional dependency resolution remain outside scope. |
 | P2 | Verify live Codex lifecycle and dashboard appearance | Demonstrate actual events and visual output in the allowed environment; installed files/unit tests are insufficient activation evidence. |
 | P3 | Hosted provider acceptance | Explicit target and authorization before real notifications, release publication, merging, or rollback; capture provider IDs/results once exercised. |
 | Deferred | GitLab, prerelease policy, package publishing, external bounty workflow | Keep planned until their scope and target are selected; do not present fixture coverage as live completion. |

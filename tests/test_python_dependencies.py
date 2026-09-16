@@ -38,6 +38,60 @@ class PythonDependencyTests(unittest.TestCase):
         self.assertEqual(result.status, 'pass')
         self.assertEqual(result.metrics['packages_audited'], 1)
 
+    def test_hash_export_audits_only_sanitized_pins(self):
+        self.path.write_text('Example_Package==1.2.3 \\\n'
+                             '    --hash=sha256:' + 'a' * 64 + ' \\\n'
+                             '    --hash=sha256:' + 'B' * 64 + ' # wheel variants\n')
+        def provider(argv, repo, **kwargs):
+            selected = Path(argv[argv.index('--requirement') + 1])
+            self.assertEqual(selected.read_text(), 'example-package==1.2.3\n')
+            return self.response()
+        with patch('ai_pilled.python_dependencies.run', side_effect=provider):
+            result = audit_python(self.repo)
+        self.assertEqual(result.status, 'pass')
+        self.assertEqual(result.metrics['packages_audited'], 1)
+
+    def test_malformed_hashes_and_continuations_do_not_contact_provider(self):
+        for source in ('Example_Package==1.2.3 --hash=sha256:abc',
+                       'Example_Package==1.2.3 --hash=md5:' + 'a' * 32,
+                       'Example_Package==1.2.3 --hash=sha256:' + 'g' * 64,
+                       'Example_Package==1.2.3 --index-url=https://example.invalid',
+                       'Example_Package==1.2.3#not-a-comment',
+                       'Example_Package==1.2.3 \\', '\\',
+                       'Example_Package==1.2.3 \\\\\n--hash=sha256:' + 'a' * 64,
+                       '# ' + 'x' * 64_000):
+            self.path.write_text(source)
+            with self.subTest(source=source[:80]), patch('ai_pilled.python_dependencies.run') as provider:
+                self.assertEqual(audit_python(self.repo).status, 'incomplete')
+                provider.assert_not_called()
+
+    def test_joined_credential_is_blocked_before_provider(self):
+        token = 'ghp_' + 'A' * 36
+        self.path.write_text(token[:20] + '\\\n' + token[20:] + '==1.0\n')
+        with patch('ai_pilled.python_dependencies.run') as provider:
+            result = audit_python(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertNotIn(token, json.dumps(result.to_dict()))
+        self.assertIn('credentials', result.findings[0].message)
+        provider.assert_not_called()
+
+    def test_comments_follow_pip_join_order(self):
+        from ai_pilled.python_dependencies import requirements
+        self.path.write_text('# standalone comment \\\nExample_Package==1.2.3\n'
+                             'ignored==2 # inline continuation \\\nnot-another-package==3\n')
+        self.assertEqual(requirements(self.repo, ['requirements.txt'])[1],
+                         {'example-package': '1.2.3', 'ignored': '2'})
+
+    def test_hash_change_invalidates_audit_evidence(self):
+        self.path.write_text('Example_Package==1.2.3 --hash=sha256:' + 'a' * 64)
+        def provider(*args, **kwargs):
+            self.path.write_text('Example_Package==1.2.3 --hash=sha256:' + 'b' * 64)
+            return self.response()
+        with patch('ai_pilled.python_dependencies.run', side_effect=provider):
+            result = audit_python(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('changed', result.findings[0].message)
+
     def test_vulnerability_blocks_and_reports_fixed_versions(self):
         self.row['vulns'] = [{'id': 'PYSEC-2026-1', 'fix_versions': ['1.2.4']}]
         with patch('ai_pilled.python_dependencies.run', return_value=self.response()):

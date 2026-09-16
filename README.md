@@ -83,11 +83,19 @@ Repeat --requirements to audit multiple repository-relative files. The default i
 requirements.txt. Install pip-audit separately in a virtual environment; the ai-pilled
 runtime still has no third-party dependencies. This integration is tested with pip-audit 2.10.1.
 
-Inputs must contain exact name==version pins, comments, and blank lines. Export a complete
+Inputs support exact name==version pins, optional SHA256 hashes, comments, and blank lines. Export a complete
 resolved dependency set first: only the listed packages are audited, and missing transitive
-pins cannot be inferred. URLs, editable installs, nested requirement files, options, extras,
+pins cannot be inferred. URLs, editable installs, nested requirement files, other options, extras,
 markers, and version ranges are rejected explicitly. Requirements are bounded regular files;
 recognizable credentials block before a provider is called.
+
+Common hash exports may use repeated `--hash=sha256:<64 hex digits>` tokens and
+backslash continuations. Logical lines are limited to 64 KB. Comments follow
+[pip's documented continuation order](https://pip.pypa.io/en/stable/reference/requirements-file-format/),
+and joined text is rescanned for credentials before any registry request. Dangling or
+escaped continuations and unsupported syntax are rejected. Hashes are syntax-checked
+and included in the input fingerprint; this audit does **not** download artifacts or
+verify their bytes. Use pip's `--require-hashes` during installation for that check.
 
 The adapter supplies a sanitized snapshot to pip-audit with --no-deps, --disable-pip, and
 --strict. It never installs, executes package build code, or applies fixes. Package names

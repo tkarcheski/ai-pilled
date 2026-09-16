@@ -16,10 +16,40 @@ from .security import scan_text
 NAME = r'[A-Za-z0-9](?:[A-Za-z0-9._-]{0,212}[A-Za-z0-9])?'
 VERSION = r'[0-9][A-Za-z0-9.!+_-]{0,99}'
 PIN = re.compile(r'(' + NAME + r')==(' + VERSION + r')')
+HASH = re.compile(r'--hash=sha256:[a-fA-F0-9]{64}')
+COMMENT = re.compile(r'(^|\s+)#.*$')
 
 
 def canonical(name):
     return re.sub(r'[-_.]+', '-', name).lower()
+
+
+def logical_requirements(text):
+    """A bounded exact-pin/hash subset; join before stripping pip-style comments."""
+    pending = ''
+    continuing = False
+    start = 1
+    for number, line in enumerate(text.splitlines(), 1):
+        if not continuing:
+            start = number
+        comment = COMMENT.match(line)
+        continuation = line.endswith('\\') and not comment
+        if continuation and line.endswith('\\\\'):
+            raise CommandError('Escaped requirement continuations are unsupported')
+        pending += (' ' if comment else '') + (line[:-1] if continuation else line)
+        if len(pending) > 64_000:
+            raise CommandError('Logical requirement line exceeds the 64 KB limit')
+        continuing = continuation
+        if continuation:
+            continue
+        checked = Report('requirements-security')
+        scan_text(checked, '(requirements)', pending)
+        if checked.status != 'pass':
+            raise CommandError('Python requirements contain potential credentials; resolve before auditing')
+        yield start, COMMENT.sub('', pending).strip()
+        pending = ''
+    if continuing:
+        raise CommandError('Requirements end with an incomplete continuation')
 
 
 def requirements(repo, files):
@@ -41,14 +71,14 @@ def requirements(repo, files):
         if checked.status != 'pass':
             raise CommandError('Python requirements contain potential credentials; resolve before auditing')
         digest.update(str(name).encode() + b'\0' + content + b'\0')
-        for number, line in enumerate(content.decode('utf-8-sig').splitlines(), 1):
-            line = line.partition('#')[0].strip()
+        for number, line in logical_requirements(content.decode('utf-8-sig')):
             if not line:
                 continue
-            match = PIN.fullmatch(line)
-            if not match:
+            tokens = line.split()
+            match = PIN.fullmatch(tokens[0])
+            if not match or any(not HASH.fullmatch(token) for token in tokens[1:]):
                 raise CommandError(f'Requirements line {number} needs an exact name==version pin; '
-                                   'export resolved requirements without URLs, options, or markers')
+                                   'only optional --hash=sha256 digests are supported after each pin')
             package, version = canonical(match[1]), match[2]
             if package in packages and packages[package] != version:
                 raise CommandError('Requirements contain conflicting pins for the same package')
