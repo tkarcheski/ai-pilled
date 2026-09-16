@@ -482,7 +482,9 @@ not invent a release. Stable MAJOR.MINOR.PATCH versions are supported; prereleas
 version rules are not yet implemented.
 
 The base must resolve to an ancestor of HEAD. Without --since, all history is considered
-(up to 1,000 commits). Notes escape Markdown/HTML and refuse commit messages containing
+(up to 1,000 commits). Traversed parents must match raw commit metadata; a shallow
+boundary inside the selected range makes the result incomplete. A complete explicit
+range after a shallow boundary remains supported. Notes escape Markdown/HTML and refuse commit messages containing
 recognizable credentials. This command proposes metadata; it does not modify versions,
 create tags, push, publish packages, or create a GitHub release.
 

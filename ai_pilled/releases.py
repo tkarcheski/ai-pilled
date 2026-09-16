@@ -39,13 +39,19 @@ def commits(repo, since=None):
             raise CommandError('Changelog base must be an ancestor of HEAD') from exc
         target = base + '..' + head
     output = run(['git', 'log', '--reverse', '--max-count=1001',
-                  '--format=%H%x00%B%x00', target, '--'], repo)
+                  '--format=%H%x00%P%x00%B%x00', target, '--'], repo)
     fields = output.decode('utf-8', errors='replace').split('\0')
     result = []
-    for index in range(0, len(fields) - 1, 2):
-        oid, message = fields[index].strip(), fields[index + 1]
+    for index in range(0, len(fields) - 1, 3):
+        oid, parents, message = fields[index].strip(), fields[index + 1].split(), fields[index + 2]
         if not re.fullmatch(r'[a-f0-9]{40}(?:[a-f0-9]{24})?', oid):
             raise CommandError('Cannot parse bounded commit history')
+        metadata = run(['git', 'cat-file', 'commit', oid], repo, limit=128_000)
+        headers, separator, _ = metadata.partition(b'\n\n')
+        raw_parents = [line[7:].decode('ascii', errors='replace')
+                       for line in headers.splitlines() if line.startswith(b'parent ')]
+        if not separator or sorted(parents) != sorted(raw_parents):
+            raise CommandError('Release ancestry is truncated; obtain complete history for the selected range')
         credentials = Report('commit-credentials')
         scan_text(credentials, '(commit message)', message)
         if credentials.status != 'pass':

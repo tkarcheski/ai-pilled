@@ -39,6 +39,28 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(release_plan(self.repo, '1.2.3', 'v1.2.3').next_version, '2.0.0')
         self.assertNotIn('chore: initial', result.changelog)
 
+    def test_shallow_history_cannot_hide_breaking_change(self):
+        self.commit('feat!: remove old public API')
+        self.commit('docs: explain migration')
+        self.assertEqual(release_plan(self.repo, '1.2.3').next_version, '2.0.0')
+        shallow = self.repo / '.git/shallow'
+        shallow.write_bytes(self.git('rev-parse', 'HEAD'))
+        before = shallow.read_bytes()
+        result = release_plan(self.repo, '1.2.3')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.next_version, '')
+        self.assertEqual(result.changelog, '')
+        self.assertEqual(shallow.read_bytes(), before)
+
+    def test_explicit_range_after_shallow_boundary_is_complete(self):
+        self.commit('feat!: previously released change')
+        base = self.git('rev-parse', 'HEAD').decode().strip()
+        (self.repo / '.git/shallow').write_text(base + '\n')
+        self.commit('fix: current release repair')
+        result = release_plan(self.repo, '2.0.0', base)
+        self.assertEqual((result.status, result.next_version), ('pass', '2.0.1'))
+        self.assertEqual(result.metrics['commits'], 1)
+
     def test_breaking_footer_is_detected(self):
         self.commit('feat: change response\n\nBREAKING CHANGE: response is now structured')
         self.assertEqual(release_plan(self.repo, '0.3.0', 'v1.2.3').next_version, '1.0.0')

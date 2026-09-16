@@ -164,7 +164,7 @@ older child results; priority, bounds, redaction, and no-execution tests are in
 | 6 | Coverage — active | Fresh coverage.py JSON and 80% line minimum; `test_metrics.py`, `scripts/check_coverage.py` | Line coverage is not branch coverage or a correctness proof. |
 | 7 | Performance regression — opt-in | Repeated process timing, median baseline, host/command identity; `test_performance.py` | Explicit baseline replacement; machine-dependent measurements, not application profiling. Last recorded scanner comparison: about 122 ms vs 166 ms baseline. |
 | 8 | Bundle size — opt-in | Existing artifact byte budgets; path/link/bounds tests in `test_metrics.py` | Does not build artifacts or infer a product-specific budget. |
-| 9 | Changelog — implemented | `release-plan`, bounded explicit conventional-commit range; `test_releases.py` | Inspect generated notes; no automatic publication. |
+| 9 | Changelog — implemented | `release-plan`, bounded explicit conventional-commit range with raw ancestry verification (truncated shallow history is incomplete); `test_releases.py` | Inspect generated notes; no automatic publication. |
 | 10 | README updater — used here | Generated CLI block with drift check; `test_documentation.py` | Handwritten prose is preserved; documentation correctness is not inferred. |
 | 11 | Full audit / parallel review — opt-in | Quality first, optional one-to-three isolated perspectives; `test_full_audit.py` | Concurrency tested with fake reviewers; no live parallel run claimed. |
 | 12 | PR-ready checker — implemented | `ready`: clean committed non-protected proposal plus passing quality; `test_pipeline.py` | Does not create a PR or assert hosted checks passed. |
