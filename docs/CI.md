@@ -26,7 +26,10 @@ The jobs create isolated development and pip-audit environments. Development too
 come from `requirements-dev.txt`; the separate audit tool is pinned to pip-audit 2.10.1.
 Installation permits wheels only. Runtime ai-pilled remains standard-library based.
 The audit tool's transitive installation dependencies are resolver-selected; this is
-not a claim of a fully hash-locked CI toolchain.
+not a claim of a fully hash-locked CI toolchain. The current primary branch adds
+a ten-package wheel hash lock verified in fresh Python 3.10 and 3.14 environments.
+The prepared CI snapshot at `915696c` predates that lock; merge current source before
+publication when credentials permit. The reproduction command below uses the current lock.
 
 Each job runs the seven-gate quality profile and the shared real CLI/Git E2E scenarios.
 An offline registry, missing tool, failed test, incomplete check, or malformed result
@@ -67,7 +70,7 @@ use an isolated checkout to compare runtimes without changing an existing tool e
 ```sh
 export PYTHONDONTWRITEBYTECODE=1
 python -m venv .ai-pilled/tools
-.ai-pilled/tools/bin/python -m pip install --only-binary=:all: -r requirements-dev.txt
+.ai-pilled/tools/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.txt
 python -m venv .ai-pilled/python-audit-tools
 .ai-pilled/python-audit-tools/bin/python -m pip install --only-binary=:all: pip-audit==2.10.1
 python -m ai_pilled quality > .ai-pilled/quality.json

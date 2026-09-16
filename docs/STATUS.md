@@ -4,7 +4,7 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `74ef957`: 336 discovered tests, a shared
+The verification baseline is `2d2ee8c`: 360 discovered tests, a shared
 four-scenario end-to-end runner, and seven configured quality gates. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -120,8 +120,11 @@ required hosted checks are separate controls and have not been configured or cla
 | Python licenses | `python-licenses --python PATH --allow EXPRESSION` | Exact declared expression matching. Missing, unknown, or prose-only metadata remains incomplete. No inferred SPDX evaluation or legal analysis. |
 | Automatic auditing | `python_requirements` and `python_audit_executable` in quality; `audit_dependencies_on_change` in PostToolUse | Enabled here for `requirements-dev.txt`. Quality obtains fresh results; lifecycle may reuse complete matching evidence for at most one hour. Failures stay blocking; incomplete checks are retried with a 30-second provider limit. |
 
-**Live dogfood evidence:** pip-audit 2.10.1 checked all nine development pins with zero
-advisories. A separate, never-installed `requests==2.19.1` fixture produced ten
+**Live dogfood evidence:** the original nine development pins passed pip-audit 2.10.1
+with zero advisories. The current hash lock adds the missing Python 3.10 `tomli` pin:
+all ten packages install successfully from hash-verified wheels in fresh Python 3.10
+and 3.14 environments, with `pip check` passing on both. The live audit of the current
+hash lock checked all ten pins with zero advisories. A separate, never-installed `requests==2.19.1` fixture produced ten
 advisories and failed as expected. The development environment health check inspected
 ten installed packages, confirmed ten PyPI version queries, and found no conflicts
 or updates. Manual PostToolUse correctly reused the fresh matching audit.

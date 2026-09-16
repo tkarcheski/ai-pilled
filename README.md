@@ -544,12 +544,18 @@ are executed. When supported gaps are absent, it recommends verifying the curren
 
 ## Development
 
+Development requirements pin ten packages and published wheel SHA256 digests.
+Fresh Python 3.10 and 3.14 installs pass hash verification and `pip check`; the explicit
+`tomli` pin covers mypy’s Python 3.10 dependency. Hashes come from version-specific
+[PyPI release metadata](https://docs.pypi.org/api/json/); refresh pins and wheel digests
+together and validate fresh installs when updating tools.
+
 Install the pinned tools into the ignored project-local environment before running
 the full quality profile:
 
 ~~~sh
 python -m venv .ai-pilled/tools
-.ai-pilled/tools/bin/python -m pip install -r requirements-dev.txt
+.ai-pilled/tools/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.txt
 python -m ai_pilled quality
 ~~~
 
