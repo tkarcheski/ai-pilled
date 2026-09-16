@@ -54,6 +54,19 @@ class RefactorTests(unittest.TestCase):
         self.assertEqual((self.repo / 'code.py').read_text(), 'value = 2\n')
         self.assertFalse(list((self.repo / '.ai-pilled').glob('refactor-work-*')))
 
+    def test_hidden_source_changes_are_preserved_without_running_steps(self):
+        self.configure()
+        head = self.git('rev-parse', 'HEAD')
+        self.git('update-index', '--skip-worktree', 'code.py')
+        (self.repo / 'code.py').write_text('value = 3\n')
+        with patch('ai_pilled.refactor.command_check') as command:
+            result = refactor(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertFalse(result.patch)
+        command.assert_not_called()
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual((self.repo / 'code.py').read_text(), 'value = 3\n')
+
     def test_failed_repair_exports_nothing(self):
         self.configure(repair=[sys.executable, '-c', 'raise SystemExit(1)'])
         result = refactor(self.repo)

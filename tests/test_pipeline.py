@@ -45,6 +45,23 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(result.status, 'fail')
         self.assertIn('dirty-worktree', [f.rule for f in result.findings])
 
+    def test_hidden_policy_cannot_claim_clean_readiness(self):
+        self.git('update-index', '--assume-unchanged', '.ai-pilled.json')
+        self.configure('lazy')
+        self.assertEqual(self.git('status', '--porcelain'), b'')
+        with patch('ai_pilled.pipeline.command_check') as command:
+            result = quality(self.repo, ready=True)
+        self.assertEqual(result.status, 'fail')
+        self.assertIn('hidden-worktree', [f.rule for f in result.findings])
+        command.assert_not_called()
+
+    def test_check_cannot_introduce_hidden_flags_and_claim_readiness(self):
+        self.configure(test=['git', 'update-index', '--assume-unchanged', '.ai-pilled.json'])
+        self.commit()
+        result = quality(self.repo, ready=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('pipeline-unavailable', [f.rule for f in result.findings])
+
     def test_protected_and_detached_branches_block_readiness(self):
         self.git('branch', '-m', 'main')
         self.assertIn('protected-branch', [f.rule for f in quality(self.repo, True).findings])

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 
-from .checks import command_check
+from .checks import command_check, require_visible_index
 from .config import ConfigError, load
 from .file_io import read_regular
 from .pipeline import quality
@@ -23,6 +23,7 @@ class HealingReport(Report):
 
 
 def unchanged(root, head, branch):
+    require_visible_index(root)
     if run(['git', 'symbolic-ref', '--quiet', 'HEAD'], root) != branch or run(['git', 'rev-parse', 'HEAD'], root).decode().strip() != head or run(
             ['git', 'status', '--porcelain', '--untracked-files=normal'], root):
         raise CommandError('Checkout changed; no automatic revert is permitted')

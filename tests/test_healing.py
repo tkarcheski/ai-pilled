@@ -66,6 +66,18 @@ class HealingTests(unittest.TestCase):
         self.assertEqual(heal(self.repo, self.bad, apply=True).status, 'incomplete')
         self.assertEqual((self.repo / 'code.py').read_text(), 'uncommitted')
 
+    def test_hidden_local_fix_cannot_claim_committed_regression_is_healthy(self):
+        self.git('update-index', '--assume-unchanged', 'code.py')
+        (self.repo / 'code.py').write_text('value = 1\n')
+        with patch('ai_pilled.healing.command_check') as command:
+            result = heal(self.repo, self.bad, apply=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.action, 'not-applied')
+        self.assertFalse(result.patch)
+        command.assert_not_called()
+        self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.bad)
+        self.assertEqual((self.repo / 'code.py').read_text(), 'value = 1\n')
+
     def test_policy_reversal_requires_manual_review(self):
         self.config['timeout'] = 60
         (self.repo / '.ai-pilled.json').write_text(json.dumps(self.config))

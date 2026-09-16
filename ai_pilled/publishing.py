@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 
+from .checks import require_visible_index
 from .config import ConfigError
 from .file_io import read_regular
 from .metrics import local_path
@@ -35,6 +36,7 @@ def publish_release(repo, github_repo, tag, expected_head, publish=False, execut
         if expected_head != head:
             raise CommandError('Expected HEAD must exactly match the release commit SHA')
         def unchanged():
+            require_visible_index(root)
             if run(['git', 'rev-parse', 'HEAD'], root).decode().strip() != head or run(
                     ['git', 'status', '--porcelain', '--untracked-files=normal'], root):
                 raise CommandError('Release requires an unchanged clean committed checkout')

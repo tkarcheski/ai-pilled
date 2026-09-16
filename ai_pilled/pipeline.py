@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import fnmatch
 from pathlib import Path
 
-from .checks import command_check, resolve_executable
+from .checks import command_check, resolve_executable, require_visible_index
 from .config import ConfigError, load
 from .dependencies import audit
 from .python_dependencies import audit_python
@@ -37,6 +37,10 @@ def quality(repo, ready=False, executable_root=None, comprehensive=False):
     except CommandError:
         head = None
     if ready:
+        try:
+            require_visible_index(root)
+        except CommandError as exc:
+            report.add('hidden-worktree', str(exc))
         try:
             branch = run(['git', 'symbolic-ref', '--short', 'HEAD'], root).decode().strip()
         except CommandError:
@@ -91,8 +95,10 @@ def quality(repo, ready=False, executable_root=None, comprehensive=False):
             if after.snapshot != before.snapshot or current_head != head or index_after != index_before:
                 report.add('snapshot-changed', 'Checks changed source files, permissions, index, or HEAD; review and rerun.',
                            severity='warning')
-            if ready and run(['git', 'status', '--porcelain', '--untracked-files=normal'], root):
-                report.add('proposal-changed', 'The proposal is no longer clean after running checks.')
+            if ready:
+                require_visible_index(root)
+                if run(['git', 'status', '--porcelain', '--untracked-files=normal'], root):
+                    report.add('proposal-changed', 'The proposal is no longer clean after running checks.')
         except (CommandError, ConfigError) as exc:
             report.add('pipeline-unavailable', str(exc), severity='warning')
     report.metrics = {'checks_run': len(report.checks),

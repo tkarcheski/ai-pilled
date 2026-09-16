@@ -235,6 +235,11 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | GitHub Actions | Prepared and locally validated at `c8661e9`; publication blocked | Current 3.10 seven-gate/E2E evidence, 91.38% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
+Readiness, release publication, refactor, and healing also reject hidden index flags
+when a clean committed checkout is required. Fixtures verify that hidden local fixes
+or metadata cannot certify a different commit, export a misleading patch, or trigger
+provider calls; rejected operations preserve the local edits.
+
 Refactor and healing policy comparisons use bounded regular-file reads; generated
 FIFO, symlink, and oversized policies produce incomplete results without exporting
 a patch or changing the source checkout. The real repository refactor preview at

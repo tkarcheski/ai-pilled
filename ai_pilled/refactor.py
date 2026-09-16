@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import uuid
 
-from .checks import command_check
+from .checks import command_check, require_visible_index
 from .config import ConfigError, load
 from .file_io import read_regular
 from .pipeline import quality
@@ -40,6 +40,7 @@ def refactor(repo):
         policy = read_regular(root / '.ai-pilled.json', 64_000)
         if any(name not in config.commands for name in ('simplify', 'repair', 'test')):
             raise CommandError('Configure commands.simplify, commands.repair, and commands.test first')
+        require_visible_index(root)
         if run(['git', 'status', '--porcelain', '--untracked-files=normal'], root):
             raise CommandError('Refactoring requires a clean committed source checkout')
         base = run(['git', 'rev-parse', '--verify', 'HEAD'], root).decode().strip()
@@ -85,6 +86,7 @@ def refactor(repo):
                 report.status = verified.status
                 report.findings = verified.findings
                 return report
+            require_visible_index(root)
             if run(['git', 'rev-parse', 'HEAD'], root).decode().strip() != base or run(
                     ['git', 'status', '--porcelain', '--untracked-files=normal'], root):
                 raise CommandError('Original checkout changed during refactoring; no patch exported')

@@ -89,6 +89,19 @@ class PublishingTests(unittest.TestCase):
         self.assertEqual(publish_release(self.repo, 'owner/repo', 'v1.2.3', 'a' * 40).status, 'incomplete')
         self.assertEqual(self.calls, [])
 
+    def test_hidden_metadata_cannot_substitute_for_committed_release_version(self):
+        (self.repo / 'VERSION').write_text('9.9.9\n')
+        self.commit()
+        self.git('tag', '-f', 'v1.2.3')
+        self.remote_head = self.head
+        self.git('update-index', '--assume-unchanged', 'VERSION')
+        (self.repo / 'VERSION').write_text('1.2.3\n')
+        result = self.invoke(publish=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.action, 'not-published')
+        self.assertEqual(self.calls, [])
+        self.assertEqual((self.repo / 'VERSION').read_text(), '1.2.3\n')
+
     def test_version_and_duplicate_notes_mismatch_are_blocked(self):
         (self.repo / 'VERSION').write_text('9.9.9\n')
         self.commit()
