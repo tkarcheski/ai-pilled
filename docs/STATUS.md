@@ -427,7 +427,7 @@ that local run, not a latency guarantee for future snapshots or larger repositor
 | 20 | Semantic release — partial | Stable major/minor/patch proposals from conventional commits; release tests | Prerelease policy and package-registry publishing not implemented. |
 | 21 | Trunk auto-merge — opt-in | Explicit PR/base/head, approvals/mergeability/check gates, matching process/check evidence, head revalidation; `test_merging.py` | Preview default; `--enable` can merge immediately. Only fake GitHub responses tested. |
 | 22 | AI bug bounty — partial | Local correctness/security findings through review/full-audit | No external bounty submission, reward workflow, or live multi-reviewer campaign. |
-| 23 | Nightly refactoring — implemented, inactive | Timezone-aware daily attempts, locks, persisted deduplication, foreground watch; `test_scheduling.py` | Controlled-clock DST/restart/failure tests. No recurring process installed. |
+| 23 | Nightly refactoring — implemented, inactive | Timezone-aware daily attempts, root-anchored locks and persisted deduplication, verified reservation before work, foreground watch; `test_scheduling.py` | Controlled-clock DST/restart/failure, parent-swap, and calendar-boundary tests. No recurring process installed. |
 | 24 | Self-healing — opt-in | `heal`: verify one-commit reversal, full quality, reproduce original failure again; `test_healing.py` | Preview default; explicit apply creates a normal local revert. Real mutations tested only in disposable fixtures; no automatic production rollback. |
 
 ## CI and end-to-end evidence

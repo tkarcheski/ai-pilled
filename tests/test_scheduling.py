@@ -154,3 +154,72 @@ class SchedulingTests(unittest.TestCase):
             self.assertEqual(watch(self.repo), 130)
         self.assertEqual(json.loads(output.getvalue())['action'], 'waiting')
         self.refactor.assert_not_called()
+
+    def test_state_parent_swaps_never_start_work_or_write_outside(self):
+        from ai_pilled.scheduling import read_attempt
+        from ai_pilled.state import atomic_json, directory
+        original_replace = os.replace
+        for moment in ('lock', 'read', 'publish', 'rename'):
+            with self.subTest(moment=moment):
+                root = self.repo / moment
+                root.mkdir()
+                subprocess.run(['git', 'init', '-q', str(root)], check=True)
+                (root / '.gitignore').write_text('.ai-pilled/\n')
+                parent = root / '.ai-pilled'
+                parent.mkdir()
+                outside = root / 'outside'
+                outside.mkdir()
+                (outside / 'marker').write_text('preserve')
+
+                def swap(parent=parent, root=root, outside=outside):
+                    parent.rename(root / 'original')
+                    parent.symlink_to(outside, target_is_directory=True)
+
+                def before_lock(repo):
+                    path = directory(repo)
+                    swap()
+                    return path
+
+                def before_read(*args, **kwargs):
+                    swap()
+                    return read_attempt(*args, **kwargs)
+
+                def before_publish(*args, **kwargs):
+                    swap()
+                    return atomic_json(*args, **kwargs)
+
+                def before_rename(*args, **kwargs):
+                    swap()
+                    return original_replace(*args, **kwargs)
+
+                target, replacement = {
+                    'lock': ('ai_pilled.scheduling.directory', before_lock),
+                    'read': ('ai_pilled.scheduling.read_attempt', before_read),
+                    'publish': ('ai_pilled.scheduling.atomic_json', before_publish),
+                    'rename': ('ai_pilled.state.os.replace', before_rename),
+                }[moment]
+                with patch(target, side_effect=replacement):
+                    result = nightly_refactor(root, now=datetime(2026, 9, 16, 4, tzinfo=timezone.utc))
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.action, 'not-run')
+                self.refactor.assert_not_called()
+                self.assertEqual(sorted(path.name for path in outside.iterdir()), ['marker'])
+                self.assertEqual((outside / 'marker').read_text(), 'preserve')
+                self.assertEqual(list((root / 'original').glob('.ai-pilled-*.tmp')), [])
+
+    def test_unrepresentable_next_dates_are_incomplete_before_work(self):
+        result = self.run_at('9999-12-31T03:00:00+00:00')
+        self.assertEqual(result.status, 'incomplete')
+        self.refactor.assert_not_called()
+        self.assertFalse((self.repo / '.ai-pilled').exists())
+        self.run_at('2026-09-16T03:00:00+00:00')
+        path = next((self.repo / '.ai-pilled').glob('nightly-*.json'))
+        data = json.loads(path.read_text())
+        data['date'] = '9999-12-31'
+        path.write_text(json.dumps(data))
+        before = path.read_bytes()
+        self.refactor.reset_mock()
+        result = self.run_at('2026-09-16T04:00:00+00:00')
+        self.assertEqual(result.status, 'incomplete')
+        self.refactor.assert_not_called()
+        self.assertEqual(path.read_bytes(), before)

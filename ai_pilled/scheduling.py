@@ -11,6 +11,7 @@ import stat
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .file_io import directory_beneath, read_beneath
 from .refactor import refactor
 from .runtime import CommandError, Report, run, git_path
 from .state import atomic_json, directory, record
@@ -25,17 +26,11 @@ class ScheduledReport(Report):
     result: dict = field(default_factory=dict)
 
 
-def read_attempt(path, at, zone):
+def read_attempt(path, at, zone, *, root):
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        content = read_beneath(root, path.relative_to(root), 16_000)
     except FileNotFoundError:
         return None
-    with os.fdopen(fd, 'rb') as stream:
-        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-            raise CommandError('Schedule record must be a regular file')
-        content = stream.read(16_001)
-    if len(content) > 16_000:
-        raise CommandError('Schedule record exceeds size limit')
     data = loads(content)
     if (not isinstance(data, dict) or set(data) != {'version', 'date', 'at', 'timezone', 'status', 'patch'}
             or type(data['version']) is not int or data['version'] != 1
@@ -45,6 +40,12 @@ def read_attempt(path, at, zone):
         raise CommandError('Invalid schedule record; inspect it before retrying')
     date.fromisoformat(data['date'])
     return data
+
+
+def publish_attempt(root, path, attempt, at, zone):
+    atomic_json(path, attempt, root=root)
+    if read_attempt(path, at, zone, root=root) != attempt:
+        raise CommandError('Schedule reservation changed during publication; inspect before retrying')
 
 
 def nightly_refactor(repo, at='03:00', timezone_name='UTC', retry=False, now=None):
@@ -58,13 +59,16 @@ def nightly_refactor(repo, at='03:00', timezone_name='UTC', retry=False, now=Non
             raise CommandError('Scheduling requires an aware clock')
         local = current.astimezone(zone)
         today = local.date()
+        next_day = (today + timedelta(days=1)).isoformat()
         report.next_date = today.isoformat()
         root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
         run(['git', 'check-ignore', '-q', '--', '.ai-pilled/'], root)
         state = directory(root)
         key = hashlib.sha256((timezone_name + '\0' + at).encode()).hexdigest()[:20]
         path = state / ('nightly-' + key + '.json')
-        fd = os.open(state / 'nightly-refactor.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        with directory_beneath(root, '.ai-pilled') as parent:
+            fd = os.open('nightly-refactor.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                         0o600, dir_fd=parent)
         with os.fdopen(fd, 'rb') as lock:
             if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
                 raise CommandError('Schedule lock must be a regular file')
@@ -74,7 +78,7 @@ def nightly_refactor(repo, at='03:00', timezone_name='UTC', retry=False, now=Non
                 report.action = 'busy'
                 report.add('schedule-busy', 'Another scheduled refactor is running.', severity='warning')
                 return report
-            previous = read_attempt(path, at, timezone_name)
+            previous = read_attempt(path, at, timezone_name, root=root)
             hour, minute = map(int, at.split(':'))
             if (local.hour, local.minute) < (hour, minute):
                 report.action = 'waiting'
@@ -91,16 +95,16 @@ def nightly_refactor(repo, at='03:00', timezone_name='UTC', retry=False, now=Non
             attempt = {'version': 1, 'date': today.isoformat(), 'at': at,
                        'timezone': timezone_name, 'status': 'running', 'patch': ''}
             # Reserve the day before work. A crash cannot silently repeat a model-backed command.
-            atomic_json(path, attempt)
+            publish_attempt(root, path, attempt, at, timezone_name)
             result = refactor(root)
             report.action = 'ran'
             report.result = result.to_dict()
             report.status, report.findings = result.status, result.findings
-            report.next_date = (today + timedelta(days=1)).isoformat()
+            report.next_date = next_day
             attempt.update(status=result.status, patch=result.patch)
-            atomic_json(path, attempt)
+            publish_attempt(root, path, attempt, at, timezone_name)
             record(root, result, 'nightly-refactor')
-    except (CommandError, OSError, ValueError, ZoneInfoNotFoundError) as exc:
+    except (CommandError, OSError, ValueError, OverflowError, ZoneInfoNotFoundError) as exc:
         report.add('schedule-unavailable', str(exc) if isinstance(exc, CommandError)
                    else 'Cannot validate the timezone or schedule state; inspect before retrying', severity='warning')
     return report
