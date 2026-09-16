@@ -1,10 +1,12 @@
 import json
+from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from ai_pilled.merging import auto_merge
-from ai_pilled.runtime import CommandError
+from ai_pilled.runtime import CommandError, CompletedCommand
 
 
 class MergeTests(unittest.TestCase):
@@ -16,11 +18,22 @@ class MergeTests(unittest.TestCase):
                    'headRefOid': self.head, 'reviewDecision': 'APPROVED', 'mergeable': 'MERGEABLE',
                    'autoMergeRequest': None}
         self.checks = [{'bucket': 'pass'}, {'bucket': 'pending'}]
+        self.check_code = None
         self.views = []
         self.calls = []
         fake = patch('ai_pilled.merging.run', side_effect=self.run_gh)
         fake.start()
         self.addCleanup(fake.stop)
+        completed = patch('ai_pilled.merging.run_completed', side_effect=self.completed_gh)
+        completed.start()
+        self.addCleanup(completed.stop)
+
+    def completed_gh(self, argv, cwd, **kwargs):
+        stdout = self.run_gh(argv, cwd, **kwargs)
+        code = self.check_code
+        if code is None:
+            code = 8 if any(check.get("bucket") == "pending" for check in self.checks) else 0
+        return CompletedCommand(stdout, code)
 
     def run_gh(self, argv, cwd, **kwargs):
         self.calls.append(argv)
@@ -48,6 +61,30 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(result.action, 'preview')
         self.assertEqual(result.metrics['pending_checks'], 1)
         self.assertEqual([args[2] for args in self.calls], ['view', 'checks'])
+
+    def test_check_exit_status_must_match_pending_evidence(self):
+        for bucket, code in [('pass', 1), ('pass', 8), ('pending', 0), ('pending', 1)]:
+            with self.subTest(bucket=bucket, code=code):
+                self.checks = [{'bucket': bucket}]
+                self.check_code = code
+                result = self.invoke(enable=True)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.action, 'not-requested')
+        self.assertNotIn('merge', [args[2] for args in self.calls])
+
+    def test_failed_real_check_process_cannot_preview_or_enable(self):
+        from ai_pilled.runtime import run_completed
+        executable = Path(self.temp.name) / 'fake-gh'
+        executable.write_text(f'#!{sys.executable}\n'
+                              "import json\nprint(json.dumps([{'bucket': 'pass'}]))\nraise SystemExit(1)\n")
+        executable.chmod(0o755)
+        with patch('ai_pilled.merging.run_completed', wraps=run_completed):
+            for enable in (False, True):
+                result = auto_merge(self.temp.name, 'owner/repo', 7, 'main', self.head,
+                                    enable, str(executable))
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.action, 'not-requested')
+        self.assertNotIn('merge', [args[2] for args in self.calls])
 
     def test_enable_revalidates_then_confirms_outcome(self):
         for state, request, action in [('OPEN', {}, 'enabled'), ('MERGED', None, 'merged')]:

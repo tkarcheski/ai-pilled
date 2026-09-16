@@ -4,7 +4,7 @@ from .json_data import loads
 import os
 import re
 
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, run_completed
 
 FIELDS = 'number,state,isDraft,baseRefName,headRefOid,reviewDecision,mergeable,autoMergeRequest'
 
@@ -43,13 +43,17 @@ def auto_merge(repo, github_repo, number, base, expected_head, enable=False, exe
             if data.get('reviewDecision') != 'APPROVED' or data.get('mergeable') != 'MERGEABLE':
                 raise CommandError('PR must be approved and confirmed mergeable before enabling auto-merge')
         validate(view())
-        checks = loads(run([executable, 'pr', 'checks', *selection, '--required', '--json', 'bucket'],
-                                repo, env=env, timeout=30, limit=100_000, acceptable_codes=(0, 1, 8)))
+        checks_result = run_completed([executable, 'pr', 'checks', *selection, '--required', '--json', 'bucket'],
+                                repo, env=env, timeout=30, limit=100_000, acceptable_codes=(0, 8))
+        checks = loads(checks_result.stdout)
         if not isinstance(checks, list) or not checks or any(
                 not isinstance(check, dict) or check.get('bucket') not in ('pass', 'pending') for check in checks):
             raise CommandError('Required checks must exist and be passing or pending; failures or unknown states block')
+        pending = sum(check['bucket'] == 'pending' for check in checks)
+        if checks_result.returncode != (8 if pending else 0):
+            raise CommandError('GitHub check exit status contradicts its check evidence')
         report.metrics = {'required_checks': len(checks),
-                          'pending_checks': sum(check['bucket'] == 'pending' for check in checks)}
+                          'pending_checks': pending}
         report.action = 'preview'
         if enable:
             validate(view())
