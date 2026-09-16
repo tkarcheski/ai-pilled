@@ -81,6 +81,13 @@ def locked(repo):
         yield root
 
 
+def verify_hook(path, content):
+    if read_regular(path, 64_000) != content.encode():
+        raise CommandError('Existing hook differs from generated content; preserve and reconcile manually')
+    if not os.access(path, os.X_OK):
+        raise CommandError('Installed hook is no longer executable; reconcile manually')
+
+
 def create_owned_file(path, content, mode, created):
     """Claim a new file exclusively; never follow or truncate a racing replacement."""
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -121,14 +128,15 @@ def _install(repo):
     installed = read_manifest(manifest, directory) if manifest.exists() else None
     contents = hook_contents(repo)
     hashes = {}
+    missing = set()
     for event, content in contents.items():
         path = directory / event
         if path.is_symlink():
             raise CommandError('Refusing to replace a symlink hook')
-        if path.exists() and read_regular(path, 64_000) != content.encode():
-            raise CommandError('Existing hook differs from generated content; preserve and reconcile manually')
-        if path.exists() and not os.access(path, os.X_OK):
-            raise CommandError('Installed hook is no longer executable; reconcile manually')
+        try:
+            verify_hook(path, content)
+        except FileNotFoundError:
+            missing.add(event)
         hashes[event] = hashlib.sha256(content.encode()).hexdigest()
     if installed:
         if installed['scope'] != scope or installed['hashes'] != hashes:
@@ -141,11 +149,13 @@ def _install(repo):
     try:
         for event, content in contents.items():
             path = directory / event
-            if not path.exists():
+            if event in missing:
                 create_owned_file(path, content, 0o755, created)
         if not installed:
             create_owned_file(manifest, json.dumps({'previous': previous, 'scope': scope,
                               'hooks_path': str(directory), 'hashes': hashes}, indent=2), 0o600, created)
+        for event, content in contents.items():
+            verify_hook(directory / event, content)
         activation_started = True
         run(['git', 'config', scope, 'core.hooksPath', str(directory)], repo)
     except BaseException:

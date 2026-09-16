@@ -74,7 +74,9 @@ environment-selected graft bypasses have credential-history regression tests. Ho
 installation configuration reads use the bounded command runner (16 KB per value),
 preserve exact trailing newlines, and distinguish absent keys from command failures.
 New Git hooks and manifests use exclusive descriptor creation; concurrent files or
-symlinks cannot be truncated. Rollback removes only matching inodes created by that
+symlinks cannot be truncated. The creation plan retains preflight absence, so a later
+file cannot be silently adopted; all hook contents/executable permissions are rechecked
+before activation. Rollback removes only matching inodes created by that
 attempt and preserves detected replacements. If configuration activation succeeded
 or its outcome cannot be read after a command failure, ready hooks and the ownership
 manifest are retained for inspection/retry instead of deleting potentially active gates. These cooperative installation protections

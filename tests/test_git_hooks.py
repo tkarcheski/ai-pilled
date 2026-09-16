@@ -301,6 +301,37 @@ class GitHookTests(unittest.TestCase):
         install(self.repo)
         uninstall(self.repo)
 
+    def test_hook_created_after_preflight_is_not_silently_adopted(self):
+        real_mkdir = Path.mkdir
+        hook = self.repo / '.ai-pilled/hooks/pre-commit'
+        def race(path, *args, **kwargs):
+            result = real_mkdir(path, *args, **kwargs)
+            if path == hook.parent:
+                hook.write_text('#!/bin/sh\nexit 0\n')
+                hook.chmod(0o755)
+            return result
+        with patch.object(Path, 'mkdir', race), self.assertRaises(FileExistsError):
+            install(self.repo)
+        self.assertEqual(hook.read_text(), '#!/bin/sh\nexit 0\n')
+        self.assertNotEqual(self.git('config', '--get', 'core.hooksPath', success=False).returncode, 0)
+        self.assertFalse((self.repo / '.ai-pilled/installation.json').exists())
+
+    def test_hook_replaced_during_file_creation_is_checked_before_activation(self):
+        from ai_pilled.git_hooks import create_owned_file
+        hook = self.repo / '.ai-pilled/hooks/pre-commit'
+        def race(path, *args, **kwargs):
+            create_owned_file(path, *args, **kwargs)
+            if path.name == 'installation.json':
+                replacement = self.repo / 'replacement'
+                replacement.write_text('#!/bin/sh\nexit 0\n')
+                replacement.chmod(0o755)
+                replacement.replace(hook)
+        with patch('ai_pilled.git_hooks.create_owned_file', side_effect=race), self.assertRaises(CommandError):
+            install(self.repo)
+        self.assertEqual(hook.read_text(), '#!/bin/sh\nexit 0\n')
+        self.assertNotEqual(self.git('config', '--get', 'core.hooksPath', success=False).returncode, 0)
+        self.assertFalse((self.repo / '.ai-pilled/installation.json').exists())
+
     def test_commit_hook_runs_opted_in_model_review_and_blocks_missing_cli(self):
         import json
         (self.repo / '.ai-pilled.json').write_text(json.dumps({
