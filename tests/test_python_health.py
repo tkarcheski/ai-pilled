@@ -97,4 +97,7 @@ class PythonHealthTests(unittest.TestCase):
         self.assertEqual(result.status, 'pass', result.to_dict())
         self.assertFalse((self.repo / 'shadow-executed').exists())
         result = licenses_python(self.repo, executable, ['MIT'])
-        self.assertEqual(result.status, 'pass', result.to_dict())
+        # Python 3.10 ensurepip also bundles setuptools with unknown metadata.
+        self.assertIn(result.status, ('pass', 'incomplete'), result.to_dict())
+        self.assertTrue(all(f.path == 'setuptools' and f.rule == 'python-license-unknown'
+                            for f in result.findings), result.to_dict())
