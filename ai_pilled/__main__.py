@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import sys
 
+from . import codex_hooks
+from .lifecycle import handle, read_payload
 from .checks import command_check
 from .git_hooks import dispatch, install, uninstall
 from .config import ConfigError
@@ -18,6 +20,9 @@ def main(argv=None):
     security.add_argument('--scope', choices=['staged', 'worktree'], default='staged')
     check = commands.add_parser('check', help='Run a configured quality command')
     check.add_argument('name', choices=['test', 'lint', 'typecheck', 'deadcode', 'coverage', 'dependency'])
+    commands.add_parser('lifecycle')
+    commands.add_parser('install-codex-hooks')
+    commands.add_parser('uninstall-codex-hooks')
     commands.add_parser('install-git-hooks')
     commands.add_parser('uninstall-git-hooks')
     hook = commands.add_parser('hook')
@@ -25,7 +30,14 @@ def main(argv=None):
     hook.add_argument('arguments', nargs='*')
     args = parser.parse_args(argv)
     try:
-        if args.command == 'scan':
+        if args.command == 'lifecycle':
+            print(json.dumps(handle(args.repo, read_payload(sys.stdin))))
+            return 0
+        if args.command == 'install-codex-hooks':
+            report = codex_hooks.install(args.repo)
+        elif args.command == 'uninstall-codex-hooks':
+            report = codex_hooks.uninstall(args.repo)
+        elif args.command == 'scan':
             report = scan(args.repo, args.scope)
         elif args.command == 'check':
             report = command_check(args.repo, args.name)

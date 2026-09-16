@@ -1,0 +1,72 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from ai_pilled.codex_hooks import install, uninstall
+from ai_pilled.runtime import CommandError
+
+
+class CodexInstallTests(unittest.TestCase):
+    def setUp(self):
+        clean = patch.dict(os.environ, {k: v for k, v in os.environ.items()
+                                       if not k.startswith('GIT_')}, clear=True)
+        clean.start()
+        self.addCleanup(clean.stop)
+        self.temp = tempfile.TemporaryDirectory(prefix='codex hooks ')
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name)
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
+        (self.repo / '.codex').mkdir()
+        self.path = self.repo / '.codex' / 'hooks.json'
+        self.original = {'description': 'user hooks', 'hooks': {'SessionStart': [
+            {'hooks': [{'type': 'command', 'command': 'echo existing'}]}]}}
+        self.path.write_text(json.dumps(self.original))
+
+    def test_preserves_user_hooks_across_install_and_uninstall(self):
+        install(self.repo)
+        once = self.path.read_text()
+        install(self.repo)
+        self.assertEqual(self.path.read_text(), once)
+        data = json.loads(once)
+        self.assertEqual(len(data['hooks']['SessionStart']), 2)
+        uninstall(self.repo)
+        self.assertEqual(json.loads(self.path.read_text()), self.original)
+
+    def test_preserves_user_additions_after_install(self):
+        install(self.repo)
+        data = json.loads(self.path.read_text())
+        data['hooks']['Stop'].append({'hooks': [{'type': 'command', 'command': 'echo user'}]})
+        self.path.write_text(json.dumps(data))
+        uninstall(self.repo)
+        self.assertEqual(json.loads(self.path.read_text())['hooks']['Stop'],
+                         [{'hooks': [{'type': 'command', 'command': 'echo user'}]}])
+
+    def test_edited_owned_hook_is_not_overwritten(self):
+        install(self.repo)
+        data = json.loads(self.path.read_text())
+        data['hooks']['Stop'][0]['hooks'][0]['timeout'] = 10
+        self.path.write_text(json.dumps(data))
+        before = self.path.read_text()
+        with self.assertRaises(CommandError):
+            uninstall(self.repo)
+        self.assertEqual(self.path.read_text(), before)
+
+    def test_invalid_json_preserved(self):
+        self.path.write_text('broken')
+        with self.assertRaises(CommandError):
+            install(self.repo)
+        self.assertEqual(self.path.read_text(), 'broken')
+
+    def test_installed_handler_produces_valid_protocol_json(self):
+        install(self.repo)
+        data = json.loads(self.path.read_text())
+        command = data['hooks']['SessionStart'][-1]['hooks'][0]['command']
+        result = subprocess.run(command, shell=True, cwd=self.repo,
+                                input=json.dumps({'hook_event_name': 'SessionStart'}),
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['hookSpecificOutput']['hookEventName'], 'SessionStart')
