@@ -143,7 +143,9 @@ def inspect_python(report, path, content):
         elif name in ('pickle.load', 'pickle.loads', 'dill.load', 'dill.loads'):
             rule, message = 'unsafe-deserialization', 'Object deserialization can execute code; do not accept untrusted input.'
         elif name in TLS_VERIFY_CALLS and any(
-                k.arg == 'verify' and isinstance(k.value, ast.Constant) and k.value.value is False
+                k.arg == 'verify' and isinstance(k.value, ast.Constant)
+                and (k.value.value is False or name.startswith('requests.')
+                     and k.value.value is not None and not k.value.value)
                 for k in node.keywords):
             rule, message = 'tls-verification-disabled', (
                 'TLS certificate verification is disabled; use verified defaults or a trusted CA bundle.')

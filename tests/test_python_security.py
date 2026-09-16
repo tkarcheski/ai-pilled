@@ -63,6 +63,15 @@ class PythonPatternTests(unittest.TestCase):
                 self.assertEqual((result.findings[0].rule, result.findings[0].line),
                                  ('tls-verification-disabled', 2))
 
+    def test_requests_falsey_literal_verification_bypasses_are_blocked(self):
+        for value in ('0', '0.0', '""', 'b""'):
+            with self.subTest(value=value):
+                result = self.inspect('from requests import get as fetch\nfetch(url, verify=' + value + ')')
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('tls-verification-disabled', 2)])
+        for value in ('None', 'True', '"trusted-ca.pem"'):
+            with self.subTest(value=value):
+                self.assertEqual(self.inspect('import requests\nrequests.get(url, verify=' + value + ')').status, 'pass')
+
     def test_verified_tls_and_unrelated_flags_remain_allowed(self):
         for source in ('import requests\nrequests.get(url)',
                        'import requests\nrequests.get(url, verify=True)',

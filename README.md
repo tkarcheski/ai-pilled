@@ -421,7 +421,8 @@ Credential matching is a limited deterministic check, not a complete security au
 Use scan --patterns to also inspect Python ASTs for dynamic execution, unsafe object/YAML
 parsing, explicit or implicit shell execution, complete environment dumps, and TLS `verify=False` in
 Requests/HTTPX calls, and use of the unverified SSL context factory. Strict quality/Git/lifecycle checks
-include these patterns automatically. At push time, AST checks inspect pushed tips;
+include these patterns automatically. Requests literal zero/empty `verify` values are also
+flagged; `verify=None` retains its defaults. At push time, AST checks inspect pushed tips;
 credential checks still inspect every outgoing commit. Implicit shell rules cover `os.popen`,
 `subprocess.getoutput/getstatusoutput`, and `asyncio.create_subprocess_shell`. YAML rules
 cover unsafe single/multiple-document loaders; explicit safe loaders remain allowed.

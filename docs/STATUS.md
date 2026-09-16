@@ -39,6 +39,8 @@ Git blobs. Strict Python AST checks flag environment dumps, unsafe parsing, shel
 execution (including implicit shell APIs and literal truthy shell flags), unsafe YAML
 single/multiple-document loaders, weak cryptographic patterns, and explicit TLS-verification bypasses in
 Requests/HTTPX APIs or the unverified SSL context factory, including import aliases.
+Requests also rejects literal zero/empty verification values, which disable certificates;
+`None` retains Requests defaults and remains allowed.
 Import lookup separates module, function, class, and lambda bodies, including aliases
 in defaults and enclosing closures. Unrelated nested imports cannot hide outer calls;
 relative imports are not treated as public packages. Shell rules include `os.popen`,
@@ -278,7 +280,7 @@ an installer mutation section. The scheduler already reports busy without waitin
 | P1 | Complete hosted GitHub acceptance when credentials permit | Workflow refresh and local parity are complete. Publishing remains blocked by OAuth scope. Inspect both matrix jobs and downloaded artifacts after publication; never substitute local evidence for a hosted result. |
 | Done / monitor | Isolate watch fixture interruption | A captured failure identified a shared `time.sleep` patch that could interrupt Git subprocess cleanup before the watch report. A deterministic delayed-command probe reproduced it; the fixture now replaces only the scheduling module’s time reference. Older failures without named diagnostics cannot be attributed conclusively. Keep redacted failure capture active. |
 | Done | Isolate disposable operations from inherited Git routing | Reproduced a refactor credential-export bypass and healing candidate misrouting. Candidate scans/quality now isolate routing; real fixtures verify rejection and preservation of original HEAD/index/worktree. Model review already strips Git variables from its subprocess environment. |
-| Done | Product-generated follow-up suggestions | `suggest` prioritizes recorded failures and missing configuration, labels historical evidence, and gives explicit next check commands. It performs no checks or external actions; eight targeted tests cover ordering, nested evidence, redaction, and safe integration follow-ups. |
+| Done | Product-generated follow-up suggestions | `suggest` prioritizes recorded failures and missing configuration, labels historical evidence, and gives explicit next check commands. It performs no checks or external actions; nine targeted tests cover ordering, nested evidence, redaction, and safe integration follow-ups. |
 | Done | Support SHA256 requirement exports | Exact pins with repeated hashes and bounded continuations; malformed syntax, split credentials, and changed hashes are covered. No setup code runs. Other lock formats and conditional dependency resolution remain outside scope. |
 | Done | Hash-pin and audit the auditor’s dependencies | Separate 28-package lock, fresh hash-enforced wheel installs on 3.10/3.14, and zero advisories across 36 distinct combined pins. Interpreter/pip/ensurepip bootstrap remains outside the lock. |
 | P2 | Verify live Codex lifecycle and dashboard appearance | Demonstrate actual events and visual output in the allowed environment; installed files/unit tests are insufficient activation evidence. |
