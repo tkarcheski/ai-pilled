@@ -459,6 +459,15 @@ final record without a newline is validated and separated before append; malform
 or oversized partial tails are preserved and rejected. Separator bytes participate in
 history rotation's size budget.
 
+Model review also preflights touched historical blobs through a conservative removal
+view before exporting a diff. Redaction is rescanned using decoded Python/JSON checks;
+remaining credentials, invalid Python after redaction, unreadable/oversized blobs, or
+lost source boundaries block the model call. This intentionally requires local checks
+for removals that cannot be safely represented. Historical inspection is capped at
+2 MB per blob, 20 MB total, and 2,000 files. The diff uses a captured HEAD baseline,
+which is rechecked before and after the model invocation. Fixtures capture prompts or
+replace the reviewer; no live model worker was started for this hardening.
+
 ## Known gaps and prioritized follow-ups
 
 | Priority | Follow-up | Why / completion evidence |

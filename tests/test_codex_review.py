@@ -199,3 +199,97 @@ class ReviewTests(unittest.TestCase):
         result = review(self.repo, str(self.fake))
         self.assertEqual(result.status, 'incomplete')
         self.assertTrue(all(f.rule == 'review-unavailable' for f in result.findings))
+
+    def commit_fixture(self):
+        subprocess.run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                        'commit', '--allow-empty', '-qm', 'test: historical fixture'], cwd=self.repo, check=True)
+
+    def test_historical_context_and_escaped_credentials_block_model_export(self):
+        secret = 'aB3/+' * 8
+        token = 'ghp_' + 'Z' * 36
+        escaped = ''.join(r'\x' + format(ord(character), '02x') for character in token)
+        sources = ('aws_secret_access_key = (\n' + repr(secret) + '\n)\n',
+                   'settings = {"aws_secret_access_key":\n' + json.dumps(secret) + '}\n',
+                   'token = "' + escaped + '"\n',
+                   'token = (' + repr(token[:4]) + '\n' + repr(token[4:]) + ')\n')
+        for source in sources:
+            with self.subTest(source=source[:25]):
+                (self.repo / 'code.py').write_text(source)
+                subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+                self.commit_fixture()
+                (self.repo / 'code.py').write_text('value = 1\n')
+                subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+                with patch('ai_pilled.codex_review.invoke_review') as invoke:
+                    result = review(self.repo, str(self.fake))
+                invoke.assert_not_called()
+                self.assertEqual(result.status, 'incomplete', result.to_dict())
+                self.assertIn('Historical source', result.findings[0].message)
+                self.assertNotIn(secret, json.dumps(result.to_dict()))
+                self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_historical_read_failure_blocks_model_export(self):
+        self.commit_fixture()
+        (self.repo / 'code.py').write_text('value = 2\n')
+        subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+        with patch('ai_pilled.codex_review.read_blobs', return_value=[('code.py', None, 'unavailable')]), patch(
+                'ai_pilled.codex_review.invoke_review') as invoke:
+            result = review(self.repo, str(self.fake))
+        self.assertEqual(result.status, 'incomplete')
+        invoke.assert_not_called()
+
+    def test_changed_head_before_or_after_model_call_invalidates_review(self):
+        from ai_pilled.codex_review import materialize_index
+        self.commit_fixture()
+        (self.repo / 'code.py').write_text('value = 2\n')
+        subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+        def changed_before(repo, destination):
+            materialize_index(repo, destination)
+            self.commit_fixture()
+        with patch('ai_pilled.codex_review.materialize_index', side_effect=changed_before), patch(
+                'ai_pilled.codex_review.invoke_review') as invoke:
+            result = review(self.repo, str(self.fake))
+        invoke.assert_not_called()
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('HEAD changed', result.findings[0].message)
+        (self.repo / 'code.py').write_text('value = 3\n')
+        subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+        def changed_after(*args):
+            self.commit_fixture()
+            return []
+        with patch('ai_pilled.codex_review.invoke_review', side_effect=changed_after):
+            result = review(self.repo, str(self.fake))
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('HEAD changed', result.findings[0].message)
+
+    def test_historical_limits_block_before_model_invocation(self):
+        (self.repo / 'second.py').write_text('value = 1\n')
+        subprocess.run(['git', 'add', 'second.py'], cwd=self.repo, check=True)
+        self.commit_fixture()
+        for name in ('code.py', 'second.py'):
+            (self.repo / name).write_text('value = 2\n')
+        subprocess.run(['git', 'add', 'code.py', 'second.py'], cwd=self.repo, check=True)
+        for constant in ('MAX_HISTORY_FILES', 'MAX_HISTORY_BYTES', 'MAX_FILE_BYTES'):
+            with self.subTest(constant=constant), patch('ai_pilled.codex_review.' + constant, 1), patch(
+                    'ai_pilled.codex_review.invoke_review') as invoke:
+                result = review(self.repo, str(self.fake))
+            self.assertEqual(result.status, 'incomplete')
+            invoke.assert_not_called()
+
+    def test_historical_unicode_and_private_key_redaction_preserve_valid_source(self):
+        body = 'synthetic-private-body'
+        sources = ('label = "Å漢"\n',
+                   'key = """-----BEGIN ' + 'PRIVATE KEY-----\n' + body +
+                   '\n-----END ' + 'PRIVATE KEY-----"""\n')
+        for source in sources:
+            (self.repo / 'code.py').write_text(source)
+            subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+            self.commit_fixture()
+            (self.repo / 'code.py').write_text('value = 1\n')
+            subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+            def inspected(snapshot, prompt, *args):
+                self.assertNotIn(body.encode(), prompt)
+                return []
+            with patch('ai_pilled.codex_review.invoke_review', side_effect=inspected) as invoke:
+                result = review(self.repo, str(self.fake))
+            self.assertEqual(result.status, 'pass', result.to_dict())
+            invoke.assert_called_once()

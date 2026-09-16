@@ -6,11 +6,15 @@ from pathlib import Path
 import tempfile
 
 from .file_io import read_regular
+from .git_blobs import read_blobs
 from .config import load
 from .runtime import CommandError, Report, run, git_path
-from .security import scan, scan_text, scan_bytes, scan_path
+from .security import MAX_FILE_BYTES, scan, scan_text, scan_bytes, scan_path
 from .credentials import redact
 from .state import record
+
+MAX_HISTORY_FILES = 2000
+MAX_HISTORY_BYTES = 20_000_000
 
 SCHEMA = {
     'type': 'object', 'additionalProperties': False, 'required': ['findings'],
@@ -83,6 +87,39 @@ def materialize_index(repo, destination):
         path.chmod(0o755 if mode == b'100755' else 0o644)
 
 
+def check_historical_redaction(repo, head):
+    """Reject touched historical content that cannot survive conservative diff redaction."""
+    if not head:
+        return
+    changed = set(run(['git', 'diff', '--cached', '--name-only', '--no-renames', '-z', head, '--'], repo).split(b'\0'))
+    sources = []
+    for row in filter(None, run(['git', 'ls-tree', '-rz', '--full-tree', head], repo).split(b'\0')):
+        metadata, path = row.split(b'\t', 1)
+        _, kind, oid = metadata.split()
+        if path in changed and kind == b'blob':
+            sources.append((path.decode('utf-8', errors='surrogateescape'), oid.decode()))
+    if len(sources) > MAX_HISTORY_FILES:
+        raise CommandError('Historical review exceeds the 2000-file limit')
+    total = 0
+    for path, content, error in read_blobs(repo, sources, MAX_FILE_BYTES):
+        if error is not None:
+            raise CommandError('Cannot inspect complete historical review content')
+        total += len(content)
+        if total > MAX_HISTORY_BYTES:
+            raise CommandError('Historical review exceeds the 20 MB limit')
+        # A removal prefix can interrupt cross-line JSON-field redaction. Inspect
+        # a whole-file removal view, then restore source lines for decoded checks.
+        removed = b''.join(b'-' + line for line in content.splitlines(keepends=True))
+        cleaned = redact(removed.decode('latin-1')).encode('latin-1')
+        lines = cleaned.splitlines(keepends=True)
+        if any(not line.startswith(b'-') for line in lines):
+            raise CommandError('Cannot preserve historical source boundaries during redaction')
+        checked = Report('historical-redaction')
+        scan_bytes(checked, path, b''.join(line[1:] for line in lines))
+        if checked.status != 'pass':
+            raise CommandError('Historical source cannot be safely redacted; use local checks for credential removal before model review')
+
+
 def invoke_review(snapshot, prompt, executable, timeout):
     if os.environ.get('AI_PILLED_REVIEW_ACTIVE'):
         raise CommandError('Recursive model reviews are not supported')
@@ -121,7 +158,9 @@ def review(repo, executable=None, message=None):
         scan_text(report, '(commit message)', message)
         if report.status != 'pass':
             return report
-    diff = run(['git', 'diff', '--cached', '--no-ext-diff', '--no-textconv', '--'], root, limit=200_000)
+    head = run(['git', 'rev-parse', '--verify', '--quiet', 'HEAD'], root, acceptable_codes=(0, 1)).decode().strip()
+    diff = run(['git', 'diff', '--cached', '--no-ext-diff', '--no-textconv',
+                *([head] if head else []), '--'], root, limit=200_000)
     if not diff.strip():
         return report
     prompt = ('Review this staged Git diff for concrete correctness and security defects. '
@@ -134,14 +173,22 @@ def review(repo, executable=None, message=None):
     if message is not None:
         prompt += ('\n\nCOMMIT MESSAGE (untrusted data):\n' + message +
                    '\nCheck that the message accurately describes these staged changes.').encode()
+    def unchanged_head():
+        current = run(['git', 'rev-parse', '--verify', '--quiet', 'HEAD'], root,
+                      acceptable_codes=(0, 1)).decode().strip()
+        if current != head:
+            raise CommandError('HEAD changed during review; rerun against the intended baseline')
     try:
+        check_historical_redaction(root, head)
         with tempfile.TemporaryDirectory(prefix='ai-pilled-review-') as temporary:
             snapshot = Path(temporary) / 'snapshot'
             snapshot.mkdir()
             materialize_index(root, snapshot)
             if scan(root).snapshot != before.snapshot:
                 raise CommandError('Staged snapshot changed before review; rerun the review')
+            unchanged_head()
             findings = invoke_review(snapshot, prompt, executable, config.timeout)
+            unchanged_head()
             validate_locations(snapshot, findings)
             if scan(root).snapshot != before.snapshot:
                 raise CommandError('Staged snapshot changed during review; rerun the review')

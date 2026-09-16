@@ -42,7 +42,11 @@ This avoids PATH wrappers that install or update the CLI before each invocation.
 reviewer uses the existing Codex login, disables hooks, and receives a copy of staged
 regular files plus the diff; missing results and timeouts are incomplete.
 Recognizable credentials in historical diff lines are redacted before model invocation.
-Prepared blobs are rescanned, and an index change before invocation cancels the review.
+Touched historical blobs are preflighted through a removal view and rescanned after
+redaction. If credentials remain, redaction invalidates Python syntax, or historical
+content cannot be inspected completely, model review is blocked: use local checks for
+that credential-removal commit. Prepared blobs are rescanned, and index or HEAD changes
+invalidate review evidence.
 
 Commands emit JSON. Exit codes: **0** passed, **1** found blockers, **2** incomplete or
 unable to run. Missing tools and missing configuration do not count as passing.
