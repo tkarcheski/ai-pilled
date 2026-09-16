@@ -9,6 +9,10 @@ import subprocess
 import tempfile
 
 
+MAX_FINDINGS = 100
+SEVERITY_PRIORITY = {'info': 0, 'warning': 1, 'error': 2}
+
+
 @dataclass
 class Finding:
     rule: str
@@ -27,11 +31,25 @@ class Report:
     metrics: dict[str, float] = field(default_factory=dict)
 
     def add(self, rule, message, *, path='', line=0, severity='error'):
-        self.findings.append(Finding(rule, severity, message, path, line))
         if severity == 'error':
             self.status = 'fail'
         elif severity != 'info' and self.status == 'pass':
             self.status = 'incomplete'
+        if len(self.findings) >= MAX_FINDINGS:
+            lowest = min(range(MAX_FINDINGS),
+                         key=lambda i: SEVERITY_PRIORITY.get(self.findings[i].severity, 1))
+            if SEVERITY_PRIORITY.get(severity, 1) > SEVERITY_PRIORITY.get(self.findings[lowest].severity, 1):
+                self.findings[lowest] = Finding(rule, severity, message, path, line)
+            if self.status == 'pass':
+                self.status = 'incomplete'
+            notice_severity = 'error' if self.status == 'fail' else 'warning'
+            if len(self.findings) == MAX_FINDINGS:
+                self.findings.append(Finding('findings-truncated', notice_severity,
+                    'Additional findings omitted; resolve the displayed findings and rerun.'))
+            elif self.findings[-1].rule == 'findings-truncated':
+                self.findings[-1].severity = notice_severity
+            return
+        self.findings.append(Finding(rule, severity, message, path, line))
 
     def to_dict(self):
         return asdict(self)

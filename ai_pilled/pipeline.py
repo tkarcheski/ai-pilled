@@ -20,6 +20,8 @@ class PipelineReport(Report):
 
 def combine(report, result):
     report.checks.append(result.to_dict())
+    if result.status == 'fail' or result.status == 'incomplete' and report.status == 'pass':
+        report.status = result.status
     for finding in result.findings:
         report.add(f'{result.check}:{finding.rule}', finding.message,
                    path=finding.path, line=finding.line, severity=finding.severity)
