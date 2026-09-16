@@ -1,4 +1,5 @@
 """Explicit coverage-report and built-artifact budget checks."""
+from fractions import Fraction
 import hashlib
 from .json_data import loads
 import math
@@ -30,7 +31,7 @@ def local_path(repo, name):
 def coverage(repo, source, minimum):
     report = Report('coverage-budget')
     try:
-        if not math.isfinite(minimum) or not 0 <= minimum <= 100:
+        if type(minimum) not in (int, float) or not 0 <= minimum <= 100 or not math.isfinite(minimum):
             raise CommandError('Coverage minimum must be between 0 and 100')
         path = local_path(repo, source)
         content = read_regular(path, 2_000_000)
@@ -45,7 +46,10 @@ def coverage(repo, source, minimum):
         report.metrics = {'covered_lines': covered, 'total_lines': total,
                           'line_percent': percent, 'minimum_percent': minimum}
         report.snapshot = hashlib.sha256(content).hexdigest()
-        if percent < minimum:
+        # Compare exact line counts to the threshold's decimal representation.
+        # A rounded display percentage must never decide acceptance.
+        threshold = Fraction(str(minimum))
+        if covered * 100 * threshold.denominator < total * threshold.numerator:
             report.add('coverage-below-budget', f'Line coverage {percent:.2f}% is below {minimum:g}%.',
                        path=str(source))
     except (CommandError, ValueError, OSError) as exc:

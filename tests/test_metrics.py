@@ -35,6 +35,32 @@ class MetricsTests(unittest.TestCase):
         self.coverage_file(1, 1)
         self.assertEqual(coverage(self.repo, 'coverage.json', float('nan')).status, 'incomplete')
 
+    def test_coverage_boundary_uses_exact_decimal_arithmetic(self):
+        for covered, total, minimum, status in (
+            (29, 50, 58, 'pass'),
+            (581, 1000, 58.1, 'pass'),
+            (578, 1000, 57.8, 'pass'),
+            (580, 1000, 58.1, 'fail'),
+            (10**18 - 1, 10**18, 100, 'fail'),
+            (10**18, 10**18, 100, 'pass'),
+            (8 * 10**17 - 1, 10**18, 80, 'fail'),
+        ):
+            with self.subTest(covered=covered, total=total, minimum=minimum):
+                self.coverage_file(covered, total)
+                result = coverage(self.repo, 'coverage.json', minimum)
+                self.assertEqual(result.status, status)
+                self.assertEqual(result.metrics['covered_lines'], covered)
+
+    def test_invalid_coverage_thresholds_are_incomplete_without_metrics(self):
+        self.coverage_file(1, 1)
+        for minimum in (True, False, None, '80', [], {}, 10**1000,
+                        -1, 101, float('inf'), float('-inf'), float('nan')):
+            with self.subTest(minimum=minimum):
+                result = coverage(self.repo, 'coverage.json', minimum)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.metrics, {})
+                self.assertEqual(result.findings[0].rule, 'coverage-unavailable')
+
     def test_bundle_counts_nested_files_at_exact_boundary(self):
         (self.repo / 'dist' / 'nested').mkdir(parents=True)
         (self.repo / 'dist' / 'app.js').write_bytes(b'a' * 70)
