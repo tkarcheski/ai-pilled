@@ -148,7 +148,11 @@ def notify(repo, provider, *, send=False, github_repo=None, issue=None, team=Non
                     confirmed = status == 201 and isinstance(data, dict) and type(data.get('id')) is int and data['id'] > 0
                 else:
                     created = data.get('data', {}).get('issueCreate', {}) if isinstance(data, dict) and isinstance(data.get('data'), dict) else {}
-                    confirmed = status == 200 and not data.get('errors') and isinstance(created, dict) and created.get('success') is True and bool(created.get('issue', {}).get('id'))
+                    issue_data = created.get('issue') if isinstance(created, dict) else None
+                    issue_id = issue_data.get('id') if isinstance(issue_data, dict) else None
+                    confirmed = (status == 200 and isinstance(data, dict) and not data.get('errors')
+                                 and isinstance(created, dict) and created.get('success') is True
+                                 and isinstance(issue_id, str) and bool(issue_id.strip()))
             if not confirmed:
                 raise CommandError('Delivery was not confirmed; inspect the destination before retrying')
         report.delivery = 'accepted'

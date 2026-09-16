@@ -124,3 +124,14 @@ class NotificationTests(unittest.TestCase):
             self.assertEqual(result.status, 'incomplete')
             self.assertFalse(result.preview)
             send.assert_not_called()
+
+
+    def test_linear_requires_a_string_issue_identifier_to_confirm_delivery(self):
+        for identifier in (True, 42, ['id'], {'id': 'nested'}, '', '   ', None):
+            with self.subTest(identifier=identifier):
+                data = {'data': {'issueCreate': {'success': True, 'issue': {'id': identifier}}}}
+                with patch('ai_pilled.notifications.post', return_value=(200, json.dumps(data).encode())):
+                    result = notify(self.repo, 'linear', send=True,
+                                    team='00000000-0000-0000-0000-000000000001')
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.delivery, 'unconfirmed')
