@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ai_pilled.dependency_health import health, licenses
 
@@ -64,3 +65,33 @@ class DependencyHealthTests(unittest.TestCase):
         for package in ({'version': '1'}, {'link': True, 'license': 'MIT'}):
             self.lock({'node_modules/example': package})
             self.assertEqual(licenses(self.repo, ['MIT']).status, 'incomplete')
+
+
+    def test_lockfile_replaced_by_invalid_root_is_incomplete(self):
+        from ai_pilled.dependencies import snapshot
+        def replace_after_snapshot(repo):
+            fingerprint = snapshot(repo)
+            (repo / 'package-lock.json').write_text('[]')
+            return fingerprint
+        with patch('ai_pilled.dependency_health.snapshot', side_effect=replace_after_snapshot):
+            result = licenses(self.repo, ['MIT'])
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.findings[0].rule, 'license-check-unavailable')
+
+    def test_replaced_lockfile_symlink_is_not_read(self):
+        from ai_pilled.runtime import run
+        import os
+        # A pipe proves the second read neither follows the link nor waits for data.
+        pipe = self.repo / 'pipe'
+        os.mkfifo(pipe)
+        code = ('from pathlib import Path; import sys; from unittest.mock import patch\n'
+                'from ai_pilled.dependencies import snapshot\n'
+                'from ai_pilled.dependency_health import licenses\n'
+                'repo=Path(sys.argv[1])\n'
+                'def replace(root):\n'
+                '    value=snapshot(root); path=root/"package-lock.json"\n'
+                '    path.unlink(); path.symlink_to(root/"pipe"); return value\n'
+                'with patch("ai_pilled.dependency_health.snapshot", side_effect=replace):\n'
+                '    assert licenses(repo,["MIT"]).status == "incomplete"\n')
+        run([sys.executable, '-c', code, str(self.repo)],
+            Path(__file__).resolve().parents[1], timeout=5)

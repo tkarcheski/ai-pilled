@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 from .config import load
-from .dependencies import snapshot
+from .dependencies import snapshot, read_input
 from .runtime import CommandError, Report, run
 from .state import record
 
@@ -70,7 +70,7 @@ def licenses(repo, allowed):
         before = snapshot(repo)
         report.snapshot = before
         path = repo / ('npm-shrinkwrap.json' if (repo / 'npm-shrinkwrap.json').exists() else 'package-lock.json')
-        data = json.loads(path.read_text())
+        _, data = read_input(path)
         packages = data.get('packages')
         if data.get('lockfileVersion') not in (2, 3) or not isinstance(packages, dict):
             raise CommandError('License checks require npm lockfile version 2 or 3 package metadata')

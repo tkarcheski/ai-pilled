@@ -4,12 +4,27 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 
 from .config import load
 from .runtime import CommandError, Report, run
 from .state import record
 
 SEVERITIES = ('info', 'low', 'moderate', 'high', 'critical')
+
+
+def read_input(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    with os.fdopen(fd, 'rb') as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise CommandError('Dependency input must be a regular file')
+        content = stream.read(2_000_001)
+    if len(content) > 2_000_000:
+        raise CommandError('Dependency input exceeds size limit')
+    data = json.loads(content)
+    if not isinstance(data, dict):
+        raise CommandError('Dependency input must be a JSON object')
+    return content, data
 
 
 def snapshot(repo):
@@ -21,12 +36,7 @@ def snapshot(repo):
             raise CommandError('Dependency inputs must be regular files, not symlinks')
         if not path.exists():
             continue
-        if not path.is_file() or path.stat().st_size > 2_000_000:
-            raise CommandError('Dependency input is not a bounded regular file')
-        content = path.read_bytes()
-        data = json.loads(content)
-        if not isinstance(data, dict):
-            raise CommandError('Dependency input must be a JSON object')
+        content, _ = read_input(path)
         if name != 'package.json':
             found_lock = True
         digest.update(name.encode() + b'\0' + content + b'\0')
