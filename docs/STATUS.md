@@ -4,7 +4,7 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `2d2ee8c`: 360 discovered tests, a shared
+The verification baseline is `c44572a`: 367 discovered tests, a shared
 four-scenario end-to-end runner, and seven configured quality gates. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -212,7 +212,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 
 | Pipeline | Status | Evidence / blocker |
 | --- | --- | --- |
-| Local quality and staged review | Active | Seven gates: security, tests, Ruff, mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
+| Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
 | GitHub Actions | Prepared and locally validated at `915696c`; publication blocked | Both-runtime quality/E2E evidence, fresh3.10 environments, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |

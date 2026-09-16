@@ -38,7 +38,7 @@ def read_blobs(repo, sources, maximum):
         if len(rows) != len(identifiers):
             raise CommandError('Incomplete staged blob metadata')
         sizes: dict[str, int | None] = {}
-        for oid, row in zip(identifiers, rows):
+        for oid, row in zip(identifiers, rows, strict=True):
             fields = row.split()
             if fields == [oid, 'missing']:
                 sizes[oid] = None

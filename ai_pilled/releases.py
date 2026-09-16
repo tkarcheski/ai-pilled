@@ -153,7 +153,7 @@ def prepare_release(repo, current, since=None):
                     '# Changelog\n\n' + report.changelog.rstrip() + '\n\n' + old_changelog]
         written = []
         try:
-            for path, content in zip(paths, contents):
+            for path, content in zip(paths, contents, strict=True):
                 atomic_text(path, content, modes[path])
                 written.append(path)
         except OSError:

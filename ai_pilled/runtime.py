@@ -105,13 +105,15 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
             input_stream.write(input_data)
             input_stream.seek(0)
         try:
-            child = subprocess.Popen(
+            # Explicit configured argv is trusted; shell stays disabled and execution is bounded.
+            child = subprocess.Popen(  # noqa: S603
                 argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 stdin=input_stream if input_data is not None else subprocess.DEVNULL,
                 start_new_session=True, env=env)
         except OSError as exc:
             raise CommandUnavailable(f'Cannot start {Path(argv[0]).name}: {exc.strerror}') from exc
-        assert child.stdout is not None and child.stderr is not None
+        # PIPE is fixed above; this narrows types rather than enforcing a security boundary.
+        assert child.stdout is not None and child.stderr is not None  # noqa: S101
         deadline = time.monotonic() + timeout
         captured = bytearray()
         total = 0

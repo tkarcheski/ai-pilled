@@ -547,6 +547,12 @@ are executed. When supported gaps are absent, it recommends verifying the curren
 
 ## Development
 
+This repo’s lint gate enables Ruff bugbear (`B`) and Bandit (`S`) rules alongside
+syntax/import checks, targeting Python 3.10. Fixture subprocess calls exclude only
+S603/S607 in `tests/`; the trusted bounded runner and fixed coverage command have
+local documented exceptions. Security fixes are reviewed explicitly; the repair
+command retains its narrower automatic-fix rule set.
+
 Development requirements pin ten packages and published wheel SHA256 digests.
 Fresh Python 3.10 and 3.14 installs pass hash verification and `pip check`; the explicit
 `tomli` pin covers mypy’s Python 3.10 dependency. Hashes come from version-specific

@@ -77,7 +77,7 @@ def scan(repo, scope='staged', patterns=False):
                     inspect_python(report, path, content)
         report.snapshot = digest.hexdigest()
         return report
-    for path, oid in sources:
+    for path, _ in sources:
         scan_path(report, path)
         try:
             file = root / path

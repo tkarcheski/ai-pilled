@@ -33,9 +33,9 @@ class PythonHealthTests(unittest.TestCase):
         for error, status in ((CommandFailed('python', 1), 'fail'),
                               (CommandFailed('python', 2), 'incomplete'),
                               (CommandUnavailable('timeout'), 'incomplete')):
-            def provider(repo, executable, arguments):
+            def provider(repo, executable, arguments, failure=error):
                 if arguments == ['check']:
-                    raise error
+                    raise failure
                 return self.inspect()
             with self.subTest(error=str(error)), patch('ai_pilled.python_health.pip_command', side_effect=provider):
                 self.assertEqual(health_python(self.repo, 'python').status, status)

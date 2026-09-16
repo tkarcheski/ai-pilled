@@ -22,7 +22,8 @@ def main():
         [sys.executable, '-m', 'coverage', 'json', '-o', '.ai-pilled/coverage.json'],
     ]
     for command in commands:
-        result = subprocess.run(command, cwd=ROOT, env=env, check=False)
+        # Commands above use this interpreter and fixed coverage/test arguments, without a shell.
+        result = subprocess.run(command, cwd=ROOT, env=env, check=False)  # noqa: S603
         if result.returncode:
             return result.returncode
     report = coverage(ROOT, '.ai-pilled/coverage.json', 80)
