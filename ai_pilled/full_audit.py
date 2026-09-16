@@ -7,7 +7,7 @@ from .checks import require_visible_index
 from .codex_review import invoke_review, materialize_index, validate_locations
 from .config import ConfigError, load
 from .pipeline import PipelineReport, combine, quality
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, git_path
 from .security import scan
 from .state import record
 
@@ -40,7 +40,7 @@ def full_audit(repo, model_reviews=False, executable=None, workers=3):
     report = PipelineReport('full-audit')
     root = Path(repo)
     try:
-        root = Path(run(['git', 'rev-parse', '--show-toplevel'], root).decode().strip())
+        root = git_path(run(['git', 'rev-parse', '--show-toplevel'], root))
         if type(workers) is not int or workers not in (1, 2, 3):
             raise CommandError('Use between one and three audit workers')
         config = load(root)

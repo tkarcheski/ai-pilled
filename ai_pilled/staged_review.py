@@ -6,13 +6,13 @@ import tempfile
 from .codex_review import materialize_index, review
 from .config import ConfigError
 from .pipeline import PipelineReport, combine, quality
-from .runtime import CommandError, isolated_git, run
+from .runtime import CommandError, isolated_git, run, git_path
 from .security import scan
 from .state import record
 
 
 def review_checks(repo, model=False, executable=None):
-    root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
     report = PipelineReport('staged-review')
     before = scan(root, patterns=True)
     report.snapshot = before.snapshot

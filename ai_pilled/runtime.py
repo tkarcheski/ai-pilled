@@ -93,6 +93,13 @@ class CompletedCommand:
     returncode: int
 
 
+def git_path(output):
+    """Decode one Git path record without stripping legal filesystem characters."""
+    if not output.endswith(b'\n') or len(output) <= 1 or b'\0' in output:
+        raise CommandError('Git returned an invalid path record')
+    return Path(os.fsdecode(output[:-1]))
+
+
 def run(argv, cwd, **options):
     """Return bounded stdout; callers needing exit evidence use run_completed."""
     return run_completed(argv, cwd, **options).stdout

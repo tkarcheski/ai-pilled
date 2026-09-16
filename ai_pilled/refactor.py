@@ -9,7 +9,7 @@ from .checks import command_check, require_visible_index
 from .config import ConfigError, load
 from .file_io import read_regular
 from .pipeline import quality
-from .runtime import CommandError, Report, isolated_git, run
+from .runtime import CommandError, Report, isolated_git, run, git_path
 from .security import scan
 from .state import directory
 
@@ -35,7 +35,7 @@ def export_patch(state, patch, prefix):
 def refactor(repo):
     report = RefactorReport('refactor')
     try:
-        root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+        root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
         config = load(root)
         policy = read_regular(root / '.ai-pilled.json', 64_000)
         if any(name not in config.commands for name in ('simplify', 'repair', 'test')):

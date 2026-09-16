@@ -6,14 +6,13 @@ import hashlib
 import json
 from .json_data import loads
 import os
-from pathlib import Path
 import re
 import stat
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .refactor import refactor
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, git_path
 from .state import atomic_json, directory, record
 
 
@@ -60,7 +59,7 @@ def nightly_refactor(repo, at='03:00', timezone_name='UTC', retry=False, now=Non
         local = current.astimezone(zone)
         today = local.date()
         report.next_date = today.isoformat()
-        root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+        root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
         run(['git', 'check-ignore', '-q', '--', '.ai-pilled/'], root)
         state = directory(root)
         key = hashlib.sha256((timezone_name + '\0' + at).encode()).hexdigest()[:20]

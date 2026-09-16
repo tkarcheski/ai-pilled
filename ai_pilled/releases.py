@@ -4,7 +4,7 @@ import html
 import re
 
 from .file_io import read_regular
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, git_path
 from .security import scan_text
 
 VERSION = re.compile(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)')
@@ -109,12 +109,11 @@ def release_plan(repo, current, since=None):
     return report
 
 def prepare_release(repo, current, since=None):
-    from pathlib import Path
     from .metrics import local_path
     from .pipeline import quality
     from .state import atomic_text
 
-    repo = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    repo = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
     report = release_plan(repo, current, since)
     report.check = 'release-prepare'
     if report.status != 'pass':

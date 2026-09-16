@@ -64,7 +64,10 @@ oversized, unresolved, and unsupported content as incomplete.
 `test_json_data.py`, and `test_report_bounds.py`; actual credential-blocked commits
 are also covered by `test_e2e.py`. Reports redact findings rather than echo secret
 values. Runtime Git reads disable replacement objects and legacy graft overlays so local
-metadata cannot substitute content or conceal outgoing ancestry. Both default and
+metadata cannot substitute content or conceal outgoing ancestry. Git filesystem paths
+preserve trailing whitespace and undecodable filename bytes; repository discovery never
+trims a selected checkout into a different sibling. `test_git_paths.py` covers both scan
+scopes, comprehensive review, quality, and a real credential-blocked hook commit. Both default and
 environment-selected graft bypasses have credential-history regression tests. Hook
 installation configuration reads use the bounded command runner (16 KB per value),
 preserve exact trailing newlines, and distinguish absent keys from command failures.

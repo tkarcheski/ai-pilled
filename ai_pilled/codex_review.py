@@ -7,7 +7,7 @@ import tempfile
 
 from .file_io import read_regular
 from .config import load
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, git_path
 from .security import scan, scan_text, scan_bytes, scan_path
 from .credentials import redact
 from .state import record
@@ -106,7 +106,7 @@ def invoke_review(snapshot, prompt, executable, timeout):
 def review(repo, executable=None, message=None):
     if os.environ.get('AI_PILLED_REVIEW_ACTIVE'):
         raise CommandError('Recursive model reviews are not supported')
-    root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
     config = load(root)
     executable = executable or config.codex_executable
     report = Report('codex-review')

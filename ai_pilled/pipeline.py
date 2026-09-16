@@ -1,13 +1,12 @@
 """Quality profiles and local PR-readiness checks with current-snapshot evidence."""
 from dataclasses import dataclass, field
 import fnmatch
-from pathlib import Path
 
 from .checks import command_check, resolve_executable, require_visible_index
 from .config import ConfigError, load
 from .dependencies import audit
 from .python_dependencies import audit_python
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, git_path
 from .security import scan
 from .state import record
 
@@ -30,7 +29,7 @@ def combine(report, result):
 
 def quality(repo, ready=False, executable_root=None, comprehensive=False):
     report = PipelineReport('pr-readiness' if ready else 'quality')
-    root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
     config = load(root)
     try:
         head = run(['git', 'rev-parse', '--verify', 'HEAD'], root).decode().strip()

@@ -2,7 +2,6 @@
 from dataclasses import dataclass
 from .json_data import loads
 import os
-from pathlib import Path
 import re
 
 from .checks import require_visible_index
@@ -11,7 +10,7 @@ from .file_io import read_regular
 from .metrics import local_path
 from .pipeline import quality
 from .releases import VERSION
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, git_path
 from .security import scan_text
 
 
@@ -31,7 +30,7 @@ def publish_release(repo, github_repo, tag, expected_head, publish=False, execut
         version = tag.removeprefix('v')
         if not tag.startswith('v') or not VERSION.fullmatch(version):
             raise CommandError('Use a stable vMAJOR.MINOR.PATCH tag')
-        root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+        root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
         head = run(['git', 'rev-parse', '--verify', 'HEAD'], root).decode().strip()
         if expected_head != head:
             raise CommandError('Expected HEAD must exactly match the release commit SHA')

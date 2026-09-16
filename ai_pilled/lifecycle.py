@@ -2,14 +2,13 @@
 import json
 from .json_data import loads
 import re
-from pathlib import Path
 
 from .checks import command_check
 from .credentials import redact_data
 from .config import load
 from .dependencies import audit_changed
 from .python_dependencies import audit_python_changed
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, git_path
 from .security import scan
 from .state import record
 
@@ -26,7 +25,7 @@ def _handle(repo, payload):
     if not isinstance(payload, dict):
         raise CommandError('Hook input must be a JSON object')
     event = payload.get('hook_event_name')
-    root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
     if event == 'SessionStart':
         status = run(['git', 'status', '--short'], root).decode(errors='replace')
         try:

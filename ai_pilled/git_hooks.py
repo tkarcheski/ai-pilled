@@ -12,7 +12,7 @@ import shlex
 import sys
 import stat
 
-from .runtime import CommandError, CommandFailed, Report, run
+from .runtime import CommandError, CommandFailed, Report, run, git_path
 from .config import load
 from .file_io import read_regular
 from .commit_messages import check_subject
@@ -49,8 +49,8 @@ def git_value(repo, key, scope='--local'):
 
 
 def hook_config_scope(repo):
-    common = Path(run(['git', 'rev-parse', '--git-common-dir'], repo).decode().strip())
-    gitdir = Path(run(['git', 'rev-parse', '--git-dir'], repo).decode().strip())
+    common = git_path(run(['git', 'rev-parse', '--git-common-dir'], repo))
+    gitdir = git_path(run(['git', 'rev-parse', '--git-dir'], repo))
     if (repo / common).resolve() == (repo / gitdir).resolve():
         return '--local'
     if git_value(repo, 'extensions.worktreeConfig') != 'true':
@@ -71,7 +71,7 @@ def hook_contents(repo):
 
 @contextmanager
 def locked(repo):
-    root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
     state = state_directory(root)
     fd = os.open(state / 'git-install.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
     with os.fdopen(fd, 'r+') as lock:
@@ -98,7 +98,7 @@ def _install(repo):
     if effective not in (None, str(directory)):
         raise CommandError('Existing core.hooksPath detected; compose hooks manually')
     if not manifest.exists():
-        default_hooks = Path(run(['git', 'rev-parse', '--git-path', 'hooks'], repo).decode().strip())
+        default_hooks = git_path(run(['git', 'rev-parse', '--git-path', 'hooks'], repo))
         if not default_hooks.is_absolute():
             default_hooks = repo / default_hooks
         if default_hooks.exists() and any(p.is_file() and os.access(p, os.X_OK)

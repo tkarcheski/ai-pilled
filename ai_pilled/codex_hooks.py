@@ -10,7 +10,7 @@ import shlex
 import stat
 import sys
 
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, git_path
 from .state import atomic_text, directory
 
 
@@ -60,7 +60,7 @@ def render_object(data):
 
 @contextmanager
 def locked(repo):
-    root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
     state = directory(root)
     if (root / '.codex').is_symlink():
         raise CommandError('Refusing symlink Codex configuration directory')

@@ -9,7 +9,7 @@ from .config import ConfigError, load
 from .file_io import read_regular
 from .pipeline import quality
 from .refactor import export_patch
-from .runtime import CommandError, Report, isolated_git, run
+from .runtime import CommandError, Report, isolated_git, run, git_path
 from .security import scan
 from .state import directory
 
@@ -32,7 +32,7 @@ def unchanged(root, head, branch):
 def heal(repo, expected_head, apply=False):
     report = HealingReport('self-healing')
     try:
-        root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+        root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
         config = load(root)
         head = run(['git', 'rev-parse', '--verify', 'HEAD'], root).decode().strip()
         if expected_head != head:

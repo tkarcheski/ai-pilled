@@ -2,10 +2,9 @@
 import hashlib
 import os
 import stat
-from pathlib import Path
 
 from .git_blobs import read_blobs
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run, git_path
 from .python_security import inspect_python
 from .credentials import PATTERNS
 
@@ -43,7 +42,7 @@ def scan_bytes(report, path, content):
 def scan(repo, scope='staged', patterns=False):
     if scope not in ('staged', 'worktree'):
         raise ValueError('Unknown scan scope')
-    root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
     report = Report('security')
     digest = hashlib.sha256()
     if scope == 'staged':
