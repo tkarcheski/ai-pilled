@@ -51,6 +51,7 @@ def quality(repo, ready=False, executable_root=None):
         if report.status != 'pass':
             record(root, report, 'ready')
             return report
+    index_before = run(['git', 'ls-files', '--stage', '-z'], root)
     before = scan(root, 'worktree', patterns=config.aggressiveness == 'strict')
     report.snapshot = before.snapshot
     combine(report, before)
@@ -82,8 +83,9 @@ def quality(repo, ready=False, executable_root=None):
                 current_head = run(['git', 'rev-parse', '--verify', 'HEAD'], root).decode().strip()
             except CommandError:
                 current_head = None
-            if after.snapshot != before.snapshot or current_head != head:
-                report.add('snapshot-changed', 'Checks changed source files or HEAD; review changes and rerun.',
+            index_after = run(['git', 'ls-files', '--stage', '-z'], root)
+            if after.snapshot != before.snapshot or current_head != head or index_after != index_before:
+                report.add('snapshot-changed', 'Checks changed source files, permissions, index, or HEAD; review and rerun.',
                            severity='warning')
             if ready and run(['git', 'status', '--porcelain', '--untracked-files=normal'], root):
                 report.add('proposal-changed', 'The proposal is no longer clean after running checks.')

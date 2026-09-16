@@ -82,12 +82,14 @@ def scan(repo, scope='staged', patterns=False):
                     continue
                 fd = os.open(file, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
                 with os.fdopen(fd, 'rb') as stream:
-                    if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    mode = os.fstat(stream.fileno()).st_mode
+                    if not stat.S_ISREG(mode):
                         raise CommandError('Only regular files can be scanned')
                     content = stream.read(MAX_FILE_BYTES + 1)
                 if len(content) > MAX_FILE_BYTES:
                     raise CommandError('File exceeds scan size limit')
                 digest.update(path.encode(errors='surrogateescape') + b'\0')
+                digest.update(str(stat.S_IMODE(mode)).encode() + b'\0')
                 digest.update(hashlib.sha256(content).digest())
             scan_bytes(report, path, content)
             if patterns:

@@ -116,3 +116,19 @@ class PipelineTests(unittest.TestCase):
         result = quality(self.repo)
         self.assertEqual(result.status, 'fail')
         self.assertTrue(any(f.path == 'unsafe.py' for f in result.findings))
+
+
+    def test_permission_only_change_invalidates_quality(self):
+        self.configure(test=[sys.executable, '-c',
+                             'from pathlib import Path; Path(".gitignore").chmod(0o755)'])
+        result = quality(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('snapshot-changed', [f.rule for f in result.findings])
+
+    def test_index_only_change_invalidates_quality(self):
+        self.configure(test=[sys.executable, '-c',
+                             'import subprocess; subprocess.run(["git", "update-index", '
+                             '"--chmod=+x", ".gitignore"], check=True)'])
+        result = quality(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('snapshot-changed', [f.rule for f in result.findings])
