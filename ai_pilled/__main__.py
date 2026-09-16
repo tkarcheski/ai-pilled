@@ -6,6 +6,7 @@ import sys
 from . import codex_hooks
 from .dependencies import audit
 from .python_dependencies import audit_python
+from .python_health import health_python, licenses_python
 from .dependency_health import health, licenses
 from .codex_review import review
 from .lifecycle import handle, read_payload
@@ -47,6 +48,12 @@ def build_parser():
     python_audit = commands.add_parser('python-audit', help='Audit fully pinned Python requirements without installing packages')
     python_audit.add_argument('--requirements', action='append', help='Repository-relative pinned requirements file; repeat for multiple files')
     python_audit.add_argument('--pip-audit', default='pip-audit', help='Installed pip-audit executable')
+    python_health = commands.add_parser('python-health', help='Check a selected Python environment; query outdated versions only with --outdated')
+    python_health.add_argument('--python', required=True, help='Trusted Python interpreter, usually .venv/bin/python')
+    python_health.add_argument('--outdated', action='store_true')
+    python_licenses = commands.add_parser('python-licenses', help='Match installed Python license metadata against an explicit allowlist')
+    python_licenses.add_argument('--python', required=True)
+    python_licenses.add_argument('--allow', action='append', default=[])
     coverage_parser = commands.add_parser('coverage', help='Check line coverage from coverage.py JSON')
     coverage_parser.add_argument('--report', required=True)
     coverage_parser.add_argument('--minimum', type=float, required=True)
@@ -170,6 +177,10 @@ def main(argv=None):
             report = coverage(args.repo, args.report, args.minimum)
         elif args.command == 'bundle':
             report = bundle(args.repo, args.path, args.maximum)
+        elif args.command == 'python-health':
+            report = health_python(args.repo, args.python, args.outdated)
+        elif args.command == 'python-licenses':
+            report = licenses_python(args.repo, args.python, args.allow)
         elif args.command == 'python-audit':
             report = audit_python(args.repo, args.requirements, args.pip_audit)
         elif args.command == 'dependency-audit':

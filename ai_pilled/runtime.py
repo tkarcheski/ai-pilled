@@ -61,6 +61,13 @@ class CommandError(RuntimeError):
     pass
 
 
+class CommandFailed(CommandError):
+    """A completed subprocess with a known non-success exit code."""
+    def __init__(self, executable, exit_code):
+        self.exit_code = exit_code
+        super().__init__(f'{Path(executable).name} exited with status {exit_code}')
+
+
 class CommandUnavailable(CommandError):
     """No completed command result exists (missing executable or resource limit)."""
 
@@ -112,7 +119,7 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
                 if code < 0:
                     raise CommandUnavailable(f'{Path(argv[0]).name} terminated by signal {-code}')
                 if code not in acceptable_codes:
-                    raise CommandError(f'{Path(argv[0]).name} exited with status {code}')
+                    raise CommandFailed(argv[0], code)
                 return bytes(captured)
         except BaseException:
             try:

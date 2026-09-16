@@ -81,6 +81,31 @@ appear exactly once in the returned evidence; skipped/missing packages, malforme
 timeouts, and changed inputs make the audit incomplete. Known advisories block and report
 available fixed versions. See the [official pip-audit documentation](https://github.com/pypa/pip-audit).
 
+## Python environment health and licenses
+
+Run `python -m ai_pilled python-health --python .venv/bin/python` to inspect a trusted
+Python environment and check missing/incompatible dependencies. Pip23+ with inspect
+JSON version1 is required. Python isolated mode prevents project-local modules and
+PYTHONPATH from impersonating pip; user-site packages are excluded. No packages are
+installed or upgraded. The selected interpreter and its existing startup hooks must be trusted.
+
+Add --outdated for explicit PyPI version queries using pip25.1+ index JSON support.
+Every installed package needs confirmed compatible release evidence within the overall
+query timeout. An unavailable index, unknown package, unsupported pip, changed environment,
+or installed version absent from public releases yields an incomplete result. This avoids
+pip list --outdated's empty-success behavior when its index is unavailable. Update notices
+are informational; dependency conflicts block. Local-only health checks make no registry queries.
+
+Run `python -m ai_pilled python-licenses --python .venv/bin/python --allow MIT` with your
+own explicit policy. Repeat --allow for more expressions. Checks prefer License-Expression
+metadata, then bounded legacy License text; expressions must match exactly. Missing,
+unknown, or prose-only metadata needs manual review. This checks declarations, not legal
+compatibility, and includes tooling installed in the selected environment.
+
+See pip's [inspect schema](https://pip.pypa.io/en/stable/reference/inspect-report/),
+[dependency check](https://pip.pypa.io/en/stable/cli/pip_check/), and
+[version lookup](https://pip.pypa.io/en/stable/cli/pip_index/) documentation.
+
 ## Publish verified release metadata
 
 After preparing and committing VERSION/CHANGELOG.md, create and push the intended tag
@@ -489,16 +514,20 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,python-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,python-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
     dependency-audit    Audit npm lockfile vulnerabilities
     python-audit        Audit fully pinned Python requirements without installing
                         packages
+    python-health       Check a selected Python environment; query outdated versions
+                        only with --outdated
+    python-licenses     Match installed Python license metadata against an explicit
+                        allowlist
     coverage            Check line coverage from coverage.py JSON
     bundle              Check built artifacts against a byte budget
     benchmark           Compare median process time against a local baseline
