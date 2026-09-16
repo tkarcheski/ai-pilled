@@ -8,6 +8,7 @@ import unittest
 
 from ai_pilled.checks import command_check
 from ai_pilled.config import ConfigError, load
+from ai_pilled.runtime import run
 
 
 class ConfigTests(unittest.TestCase):
@@ -72,3 +73,29 @@ class ConfigTests(unittest.TestCase):
         self.configure({'commands': {'test': [sys.executable, '-c',
                         'import os,signal; os.kill(os.getpid(), signal.SIGTERM)']}})
         self.assertEqual(command_check(self.repo, 'test').status, 'incomplete')
+
+
+    def test_symlink_configuration_is_not_silently_defaulted_or_followed(self):
+        path = self.repo / '.ai-pilled.json'
+        target = self.repo / 'outside.json'
+        path.symlink_to(target)
+        with self.assertRaises(ConfigError):
+            load(self.repo)
+        target.write_text('{"require_tests": false}')
+        with self.assertRaises(ConfigError):
+            load(self.repo)
+
+    def test_configuration_size_is_bounded(self):
+        (self.repo / '.ai-pilled.json').write_text(' ' * 64_000 + '{}')
+        with self.assertRaises(ConfigError):
+            load(self.repo)
+
+    def test_named_pipe_configuration_is_rejected_without_waiting(self):
+        os.mkfifo(self.repo / '.ai-pilled.json')
+        code = ('import sys; from ai_pilled.config import load,ConfigError\n'
+                'try: load(sys.argv[1])\n'
+                'except ConfigError: print("rejected")\n'
+                'else: raise SystemExit(1)')
+        output = run([sys.executable, '-c', code, str(self.repo)],
+                     Path(__file__).resolve().parents[1], timeout=5)
+        self.assertEqual(output.strip(), b'rejected')

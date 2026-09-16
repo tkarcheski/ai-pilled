@@ -37,7 +37,8 @@ informational notices. Truncated reports remain blocking. Recognizable credentia
 are redacted from reports, command errors, hook context, and legacy history views;
 private-key redaction removes the body as well as its header.
 
-Configure the target repository in .ai-pilled.json:
+Configure the target repository in .ai-pilled.json (a regular file, at most 64 KB;
+symlinks and special files are rejected):
 
 ~~~json
 {

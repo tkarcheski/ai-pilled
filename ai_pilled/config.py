@@ -1,6 +1,8 @@
 """Strict project configuration; commands are argument lists, never shell strings."""
 from dataclasses import dataclass, field
 import json
+import os
+import stat
 from pathlib import Path
 
 
@@ -22,10 +24,24 @@ class Config:
 
 def load(repo):
     path = Path(repo) / '.ai-pilled.json'
-    if not path.exists():
-        return Config()
+    if path.is_symlink():
+        raise ConfigError('Configuration must not be a symlink')
     try:
-        data = json.loads(path.read_text())
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return Config()
+    except OSError as exc:
+        raise ConfigError('Cannot open .ai-pilled.json') from exc
+    try:
+        with os.fdopen(fd, 'rb') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise ConfigError('Configuration must be a regular file')
+            content = stream.read(64_001)
+        if len(content) > 64_000:
+            raise ConfigError('Configuration exceeds the 64 KB size limit')
+        data = json.loads(content)
+    except ConfigError:
+        raise
     except (ValueError, OSError) as exc:
         raise ConfigError('Cannot read valid JSON from .ai-pilled.json') from exc
     allowed = {'version', 'commands', 'protected_branches', 'timeout',
