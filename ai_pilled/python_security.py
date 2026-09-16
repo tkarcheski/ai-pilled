@@ -30,6 +30,16 @@ def inspect_python(report, path, content):
         return '.'.join([base, *reversed(attributes)])
 
     def environment_dump(node):
+        if isinstance(node, ast.JoinedStr):
+            return any(environment_dump(value) for value in node.values)
+        if isinstance(node, ast.FormattedValue):
+            return environment_dump(node.value)
+        if isinstance(node, ast.BinOp):
+            return environment_dump(node.left) or environment_dump(node.right)
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            return any(environment_dump(value) for value in node.elts)
+        if isinstance(node, ast.Dict):
+            return any(environment_dump(value) for value in [*node.keys, *node.values])
         name = qualified(node)
         if name == 'os.environ':
             return True

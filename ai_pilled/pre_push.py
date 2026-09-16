@@ -5,7 +5,7 @@ import re
 from .checks import command_check
 from .config import load
 from .runtime import CommandError, Report, run
-from .security import MAX_FILE_BYTES, scan_text
+from .security import MAX_FILE_BYTES, scan_text, scan_bytes
 from .python_security import inspect_python
 
 OID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
@@ -29,7 +29,7 @@ def scan_revision(repo, revision, patterns=False):
             if int(run(['git', 'cat-file', '-s', oid.decode()], repo)) > MAX_FILE_BYTES:
                 raise CommandError('File exceeds scan size limit')
             content = run(['git', 'cat-file', 'blob', oid.decode()], repo, limit=MAX_FILE_BYTES)
-            scan_text(report, path, content.decode('latin-1'))
+            scan_bytes(report, path, content)
             if patterns:
                 inspect_python(report, path, content)
         except CommandError as exc:

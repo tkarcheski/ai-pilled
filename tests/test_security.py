@@ -110,3 +110,23 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(scan(self.repo).status, 'pass')
         self.assertEqual(scan(self.repo, patterns=True).status, 'fail')
         self.assertEqual(scan(self.repo, 'worktree', patterns=True).status, 'pass')
+
+    def test_unicode_encoded_credentials_are_found_in_index_and_history(self):
+        from ai_pilled.pre_push import scan_revision
+        token = 'ghp_' + 'Z' * 36
+        self.git('config', 'user.name', 'Test')
+        self.git('config', 'user.email', 'test@example.invalid')
+        for encoding in ('utf-16', 'utf-32'):
+            (self.repo / 'encoded.txt').write_bytes(('first line\n' + token).encode(encoding))
+            self.git('add', 'encoded.txt')
+            self.assertEqual(scan(self.repo).findings[0].line, 2)
+            self.assertEqual(scan(self.repo, 'worktree').status, 'fail')
+            self.git('commit', '-qm', 'test: encoded credential fixture')
+            self.assertEqual(scan_revision(self.repo, 'HEAD').status, 'fail')
+
+    def test_slack_webhook_is_detected_without_echoing_it(self):
+        webhook = 'https://hooks.slack.com/services/' + 'T' * 9 + '/' + 'B' * 9 + '/' + 'X' * 24
+        self.write('settings.txt', webhook)
+        result = scan(self.repo)
+        self.assertEqual(result.findings[0].rule, 'slack-webhook')
+        self.assertNotIn(webhook, json.dumps(result.to_dict()))

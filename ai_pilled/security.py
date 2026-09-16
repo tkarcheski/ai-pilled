@@ -13,6 +13,7 @@ PATTERNS = (
     ('github-fine-grained-token', re.compile(r'\bgithub_pat_[A-Za-z0-9_]{40,}\b')),
     ('private-key', re.compile(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----')),
     ('openai-token', re.compile(r'\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}\b')),
+    ('slack-webhook', re.compile(r'https://hooks\.slack\.com/services/[A-Za-z0-9_-]{8,}/[A-Za-z0-9_-]{8,}/[A-Za-z0-9_-]{16,}')),
     ('slack-token', re.compile(r'\bxox[baprs]-[A-Za-z0-9-]{20,}\b')),
 )
 MAX_FILE_BYTES = 2_000_000
@@ -24,6 +25,18 @@ def scan_text(report, path, text):
             if pattern.search(line):
                 report.add(rule, 'Potential credential detected; remove and rotate if genuine.',
                            path=path, line=number)
+
+
+def scan_bytes(report, path, content):
+    # A BOM identifies UTF-16/32 where ASCII tokens contain interleaved NULs.
+    # Replacement decoding retains scannable prefixes even in malformed text.
+    if content.startswith((b'\xff\xfe\x00\x00', b'\x00\x00\xfe\xff')):
+        text = content.decode('utf-32', errors='replace')
+    elif content.startswith((b'\xff\xfe', b'\xfe\xff')):
+        text = content.decode('utf-16', errors='replace')
+    else:
+        text = content.decode('latin-1')
+    scan_text(report, path, text)
 
 
 def scan(repo, scope='staged', patterns=False):
@@ -72,8 +85,7 @@ def scan(repo, scope='staged', patterns=False):
                     raise CommandError('File exceeds scan size limit')
                 digest.update(path.encode(errors='surrogateescape') + b'\0')
                 digest.update(hashlib.sha256(content).digest())
-            # Byte-preserving decode catches ASCII credentials even in non-UTF8 files.
-            scan_text(report, path, content.decode('latin-1'))
+            scan_bytes(report, path, content)
             if patterns:
                 inspect_python(report, path, content)
         except (CommandError, OSError) as exc:

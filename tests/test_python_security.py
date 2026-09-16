@@ -46,3 +46,12 @@ class PythonPatternTests(unittest.TestCase):
         self.assertEqual(self.inspect('eval(data)').status, 'fail')
         self.assertEqual(self.inspect('def broken(').status, 'incomplete')
         self.assertEqual(self.inspect('# café\nvalue = 1').status, 'pass')
+
+    def test_formatted_and_nested_environment_dumps_are_blocked(self):
+        for expression in ('f"environment: {os.environ}"',
+                           '"environment: %s" % os.environ',
+                           '{"env": dict(os.environ)}', '[os.environ.copy()]'):
+            result = self.inspect('import os\nlogger.info(' + expression + ')')
+            self.assertEqual(result.status, 'fail', expression)
+            self.assertEqual(result.findings[0].rule, 'environment-dump')
+        self.assertEqual(self.inspect("import os\nprint(f\"home: {os.environ.get('HOME')}\")").status, 'pass')
