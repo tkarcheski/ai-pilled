@@ -18,8 +18,9 @@ at `1ad8ac4` caught a performance-budget failure: 0.273 seconds median versus th
 work to parsing/traversing Python source. Security coverage is retained; performance
 acceptance remains open, and the saved baseline has not been raised. Loading only the
 selected CLI command and skipping literal-free AST identifier leaves reduced the
-follow-up median to 0.211 seconds (27.5% over baseline). The latest cold-start rerun
-measured 0.216 seconds (30.3% over baseline); the budget still fails. Separately, reusing
+follow-up median to 0.211 seconds (27.5% over baseline). An earlier cold-start rerun
+measured 0.216 seconds (30.3% over baseline). The latest rerun at `2e32729`
+measured 0.244 seconds (47.4% over baseline); the unchanged budget still fails. Separately, reusing
 the same per-file AST for credential and pattern checks reduced five-run in-process
 comprehensive-scan medians from 0.384 to 0.322 seconds with identical reports. That
 improves comprehensive scans but does not turn the cold-start budget into a passing check.
@@ -48,7 +49,10 @@ also exit 2. Historical summaries describe recorded evidence, not the current fi
 [lifecycle.py](../ai_pilled/lifecycle.py).
 
 Credential scanning covers file contents, names, UTF-16/32 BOM encodings, and staged
-Git blobs. ASCII token boundaries prevent non-ASCII neighboring bytes or text from
+Git blobs. Worktree reads compare descriptor identities before/after reading and
+verify the path still names that file, rejecting observed edits, replacements, deletions,
+permission changes, and symlink swaps. This prevents stale-descriptor false passes;
+it does not claim an atomic repository-wide snapshot. ASCII token boundaries prevent non-ASCII neighboring bytes or text from
 hiding recognizable credentials in scans or redacted output. Quoted JSON strings are decoded once for Unicode/slash escapes, including
 values hidden by duplicate keys; malformed literals do not suppress raw scanning.
 AWS secret-key field names are paired with their decoded JSON values, including

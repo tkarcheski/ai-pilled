@@ -4,6 +4,7 @@ import hashlib
 import os
 import stat
 
+from .file_io import file_identity
 from .git_blobs import read_blobs
 from .runtime import CommandError, Report, run, git_path
 from .python_security import inspect_python, parse_python
@@ -130,10 +131,16 @@ def scan(repo, scope='staged', patterns=False):
                 continue
             fd = os.open(file, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
             with os.fdopen(fd, 'rb') as stream:
-                mode = os.fstat(stream.fileno()).st_mode
+                metadata = os.fstat(stream.fileno())
+                identity = file_identity(metadata)
+                mode = metadata.st_mode
                 if not stat.S_ISREG(mode):
                     raise CommandError('Only regular files can be scanned')
                 content = stream.read(MAX_FILE_BYTES + 1)
+                if file_identity(os.fstat(stream.fileno())) != identity:
+                    raise CommandError('File changed during reading; finish edits and rerun the scan')
+            if file_identity(file.lstat()) != identity:
+                raise CommandError('File was changed or replaced during the scan; rerun after reviewing edits')
             if len(content) > MAX_FILE_BYTES:
                 raise CommandError('File exceeds scan size limit')
             digest.update(path.encode(errors='surrogateescape') + b'\0')

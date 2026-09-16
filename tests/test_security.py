@@ -382,3 +382,60 @@ class SecurityTests(unittest.TestCase):
                   'rk_test_example', 'sk_org_example', 'prefixglpat-' + 'A' * 20]
         self.write('ordinary.txt', '\n'.join(values))
         self.assertEqual(scan(self.repo).status, 'pass')
+
+    def test_worktree_changes_after_read_cannot_certify_stale_content(self):
+        from contextlib import contextmanager
+        path = self.repo / 'config.txt'
+        token = 'ghp_' + 'Z' * 36
+        original = os.fdopen
+        for change in ('replace', 'edit', 'delete', 'mode', 'symlink'):
+            with self.subTest(change=change):
+                if path.is_symlink():
+                    path.unlink()
+                self.write(path.name, 'ordinary')
+                @contextmanager
+                def changed(fd, *args, change=change, **kwargs):
+                    with original(fd, *args, **kwargs) as stream:
+                        yield stream
+                    if change == 'replace':
+                        replacement = self.repo / 'replacement'
+                        replacement.write_text(token)
+                        replacement.replace(path)
+                    elif change == 'edit':
+                        path.write_text(token)
+                    elif change == 'delete':
+                        path.unlink()
+                    elif change == 'mode':
+                        path.chmod(0o700)
+                    else:
+                        path.unlink()
+                        path.symlink_to('/dev/null')
+                with patch('ai_pilled.security.os.fdopen', side_effect=changed):
+                    result = scan(self.repo, 'worktree')
+                self.assertEqual(result.status, 'incomplete', result.to_dict())
+                self.assertEqual(result.findings[0].rule, 'scan-incomplete')
+                self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_worktree_mutation_during_descriptor_read_is_incomplete(self):
+        from contextlib import contextmanager
+        path = self.repo / 'config.txt'
+        self.write(path.name, 'ordinary')
+        original = os.fdopen
+        class MutatingReader:
+            def __init__(self, stream):
+                self.stream = stream
+            def fileno(self):
+                return self.stream.fileno()
+            def read(self, size):
+                data = self.stream.read(size)
+                path.write_text('changed!')
+                return data
+        @contextmanager
+        def changed(fd, *args, **kwargs):
+            with original(fd, *args, **kwargs) as stream:
+                yield MutatingReader(stream)
+        with patch('ai_pilled.security.os.fdopen', side_effect=changed):
+            result = scan(self.repo, 'worktree')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('during reading', result.findings[0].message)
+        self.assertEqual(path.read_text(), 'changed!')
