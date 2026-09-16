@@ -79,6 +79,7 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         for secret, rule in (('ghp_' + 'A' * 36, b'github-token'),
                              ('pypi-' + 'A' * 85, b'pypi-token'),
+                             ('aws_secret_access_key: |-\n  ' + 'aB3/+' * 8, b'aws-secret-key'),
                              (json.dumps('ghp_' + 'A' * 36).replace('g', '\\u0067', 1), b'github-token')):
             (self.repo / 'note.txt').write_text(secret)
             self.git('add', 'note.txt')

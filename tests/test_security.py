@@ -484,6 +484,39 @@ class SecurityTests(unittest.TestCase):
             self.write('fields.py', source)
             self.assertEqual(scan(self.repo).status, 'pass', source[:40])
 
+    def test_yaml_block_and_toml_multiline_aws_fields(self):
+        secret = 'aB3/+' * 8
+        for header in ('|', '>', '|-', '>+', '|2', '>2-', '|-2', '|+2 # fixture'):
+            for newline in ('\n', '\r\n', '\r'):
+                source = 'AWS_SECRET_ACCESS_KEY: ' + header + newline + '  ' + secret + newline
+                report = Report('text')
+                scan_text(report, 'config.yaml', source)
+                self.assertEqual([(f.rule, f.line) for f in report.findings], [('aws-secret-key', 2)])
+        for quote in (chr(34) * 3, chr(39) * 3):
+            for newline in ('', '\n', '\r\n'):
+                source = 'aws_secret_access_key = ' + quote + newline + secret + quote
+                self.write('settings.toml', source)
+                for scope in ('staged', 'worktree'):
+                    result = scan(self.repo, scope)
+                    self.assertEqual([(f.rule, f.line) for f in result.findings],
+                                     [('aws-secret-key', 2 if newline else 1)])
+                    self.assertNotIn(secret, json.dumps(result.to_dict()))
+
+    def test_multiline_config_secret_detection_preserves_context_and_lengths(self):
+        for length in (39, 41):
+            for prefix, suffix in (('aws_secret_access_key: |-\n  ', '\n'),
+                                    ('aws_secret_access_key = ' + chr(34) * 3 + '\n', chr(34) * 3)):
+                report = Report('text')
+                scan_text(report, 'config', prefix + 'A' * length + suffix)
+                self.assertEqual(report.status, 'pass')
+        for source in ('ordinary: |-\n  ' + 'A' * 40,
+                       'aws_secret_access_key: |-\n  description\n  ' + 'A' * 40,
+                       'aws_secret_access_key: |0\n  ' + 'A' * 40,
+                       'aws_secret_access_key: |\n  ${AWS_SECRET_ACCESS_KEY}'):
+            report = Report('text')
+            scan_text(report, 'config', source)
+            self.assertEqual(report.status, 'pass')
+
     def test_plaintext_multiline_aws_assignments_report_the_value_line(self):
         secret = 'aB3/+' * 8
         for newline in ('\n', '\r\n', '\r', '\v'):

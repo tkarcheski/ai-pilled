@@ -90,7 +90,14 @@ Provider distinctions: [GitLab token overview](https://docs.gitlab.com/security/
 and [Stripe key types](https://docs.stripe.com/keys).
 Python string/byte constants are parsed without
 execution, including adjacent literals and Python escapes; findings cite the start of
-the source literal. Direct AWS secret fields are also paired with literal values in
+the source literal. The shared text matcher also detects and redacts contiguous AWS secret values in
+YAML literal/folded block scalars (including header comments, indentation, and
+chomping indicators) and triple-quoted configuration strings, reporting the value's
+source line. This is a credential heuristic, not a complete YAML/TOML parser;
+alias resolution and arbitrary split/escaped configuration values are not evaluated.
+See [YAML block headers](https://yaml.org/spec/1.2.2/#811-block-scalar-headers)
+and [TOML strings](https://toml.io/en/v1.0.0#string).
+Direct AWS secret fields are also paired with literal values in
 assignments, annotations, named expressions, dictionaries, keyword arguments, and
 function defaults. Multiline parentheses, adjacent strings, byte strings, and Python
 escapes cannot hide a recognized field's literal value; arbitrary variable data flow

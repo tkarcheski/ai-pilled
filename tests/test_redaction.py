@@ -197,6 +197,23 @@ class RedactionTests(unittest.TestCase):
                 self.assertEqual(json.loads(redact(encoded)), '[REDACTED]')
                 self.assertEqual(redact(chr(255) + token + chr(255)), chr(255) + '[REDACTED]' + chr(255))
 
+    def test_multiline_config_secrets_are_removed_from_text_history_and_dashboard(self):
+        secret = 'aB3/+' * 8
+        sources = ['aws_secret_access_key: ' + header + '\n  ' + secret
+                   for header in ('|', '>-', '|2+', '|-2 # fixture')]
+        sources += ['SecretAccessKey = ' + quote + '\n' + secret + quote
+                    for quote in (chr(34) * 3, chr(39) * 3)]
+        for source in sources:
+            with self.subTest(source=source[:30]):
+                self.assertNotIn(secret, redact(source))
+                report = Report('fixture')
+                report.add('fixture', source)
+                entry = record(self.repo, report, 'fixture')
+                self.assertNotIn(secret, json.dumps(entry))
+                self.assertNotIn(secret, (self.repo / '.ai-pilled/events.jsonl').read_text())
+                self.assertNotIn(secret, dashboard(self.repo).read_text())
+                self.assertNotIn(secret, json.dumps(summarize(self.repo)))
+
     def test_multiline_and_annotated_aws_assignments_are_redacted(self):
         secret = 'aB3/+' * 8
         for source in ('aws_secret_access_key = (\n' + repr(secret) + '\n)',
