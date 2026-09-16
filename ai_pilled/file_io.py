@@ -46,17 +46,8 @@ def open_beneath(root, name):
     relative = Path(name)
     if relative.is_absolute() or not relative.parts or '..' in relative.parts:
         raise CommandError('Input path must stay beneath its root')
-    directories = []
-    try:
-        parent = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        directories.append(parent)
-        for component in relative.parts[:-1]:
-            parent = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-            directories.append(parent)
+    with directory_beneath(root, relative.parent) as parent:
         fd = os.open(relative.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
-    finally:
-        for directory in reversed(directories):
-            os.close(directory)
     with os.fdopen(fd, 'rb') as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise CommandError('Only regular files can be read')

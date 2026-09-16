@@ -21,7 +21,9 @@ selected CLI command and skipping literal-free AST identifier leaves reduced the
 follow-up median to 0.211 seconds (27.5% over baseline). An earlier cold-start rerun
 measured 0.216 seconds (30.3% over baseline). The latest rerun at `2e32729`
 measured 0.244 seconds (47.4% over baseline). At `d337655`, the cold-start median
-was 0.255 seconds (54.0% over baseline); the unchanged budget still fails. Separately, reusing
+was 0.255 seconds (54.0% over baseline). The latest idle rerun at `b80ffda`
+measured 0.273 seconds (65.1% over baseline), with the saved baseline verified
+byte-for-byte unchanged; the 20% budget still fails. Separately, reusing
 the same per-file AST for credential and pattern checks reduced five-run in-process
 comprehensive-scan medians from 0.384 to 0.322 seconds with identical reports. That
 improves comprehensive scans but does not turn the cold-start budget into a passing check.
@@ -34,6 +36,11 @@ A follow-up direct JSON-string slicing experiment at `ca66a59` showed no meaning
 improvement (203.481 versus 203.506 ms across seven alternating runs), despite
 identical reports, 10,000 differential cases, and 72 passing security/redaction tests.
 It was discarded; no extra parser path or raised performance baseline was introduced.
+
+A bounded literal-result cache experiment at `b80ffda` was also discarded: seven
+alternating scans measured 210.647 ms without it and 214.442 ms with it. Reports
+were identical and 76 security/redaction fixtures passed, but the cache added cost.
+No literal cache was added to the product.
 
 ## What the statuses mean
 
@@ -404,7 +411,7 @@ that local run, not a latency guarantee for future snapshots or larger repositor
 | 4 | Commit messages — active | Shared conventional-subject checker, commit-msg and outgoing-history gates | Semantic message alignment requires optional model review. |
 | 5 | Branch protection — active locally | Actual pre-push destination patterns; local remote E2E | Hosted branch protections remain unconfigured. |
 | 6 | Coverage — active | Fresh coverage.py JSON and 80% line minimum; root-relative no-symlink reads and descriptor/current-path identity checks reject observed evidence changes; exact line-count comparisons against decimal thresholds avoid floating-point boundary errors; `test_metrics.py`, `scripts/check_coverage.py` | Line coverage is not branch coverage or a correctness proof. |
-| 7 | Performance regression — opt-in | Repeated process timing, median baseline, host/command identity; `test_performance.py` | Explicit baseline replacement; machine-dependent measurements, not application profiling. Latest recorded cold scanner comparison: 255 ms vs 166 ms baseline, 54.0% over baseline; the 20% budget fails. |
+| 7 | Performance regression — opt-in | Repeated process timing, median baseline, host/command identity; `test_performance.py` | Explicit baseline replacement; machine-dependent measurements, not application profiling. Latest recorded cold scanner comparison: 273 ms vs 166 ms baseline, 65.1% over baseline; the 20% budget fails. |
 | 8 | Bundle size — opt-in | Existing artifact byte budgets; path/link/bounds tests in `test_metrics.py` | Does not build artifacts or infer a product-specific budget. |
 | 9 | Changelog — implemented | `release-plan`, bounded explicit conventional-commit range with raw ancestry verification (truncated shallow history is incomplete); `test_releases.py` | Inspect generated notes; no automatic publication. |
 | 10 | README updater — used here | Generated CLI block with drift check; `test_documentation.py` | Handwritten prose is preserved; detected concurrent content, identity, or permission changes block publication. Documentation correctness is not inferred. |
@@ -508,6 +515,9 @@ previously passed with 1 byte while a concurrent build added another 100 bytes i
 incomplete. These checks detect observed build changes, not every hostile filesystem race.
 Partial traversal never publishes byte metrics. Filesystem filename bytes are retained
 in the fingerprint, including non-UTF-8 names; measurements do not rename input files.
+
+Root-relative file reads and publication share the directory-descriptor traversal
+helper, retaining the same symlink rejection and descriptor cleanup rules.
 
 README reads and publication are now anchored beneath the selected repository.
 Temporary creation, rename, exclusive publication, and cleanup use one opened parent
