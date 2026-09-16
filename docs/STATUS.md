@@ -41,8 +41,11 @@ single/multiple-document loaders, weak cryptographic patterns, and explicit TLS-
 Requests/HTTPX APIs or the unverified SSL context factory, including import aliases.
 Requests also rejects literal zero/empty verification values, which disable certificates;
 `None` retains Requests defaults and remains allowed.
-Import lookup separates module, function, class, and lambda bodies, including aliases
-in defaults and enclosing closures. Unrelated nested imports cannot hide outer calls;
+Import lookup separates module, function, class, lambda, and comprehension bodies, including aliases
+in defaults and enclosing closures. Comprehension bodies skip class imports, their first
+iterable uses the containing scope, and loop targets remain local, following the
+[Python scope rules](https://docs.python.org/3/reference/expressions.html#displays-for-lists-sets-and-dictionaries).
+Unrelated nested imports cannot hide outer calls;
 relative imports are not treated as public packages. Shell rules include `os.popen`,
 `subprocess.getoutput/getstatusoutput`, and `asyncio.create_subprocess_shell`; YAML
 rules include `unsafe_load`, `unsafe_load_all`, and `load_all` without an explicit safe loader.

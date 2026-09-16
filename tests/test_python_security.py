@@ -35,6 +35,31 @@ class PythonPatternTests(unittest.TestCase):
                               ' value = parser.loads(data)\n def unsafe(self, data):\n  return parser.loads(data)')
         self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-deserialization', 6)])
 
+    def test_comprehensions_skip_class_imports_for_body_filters_and_later_iterables(self):
+        for expression in ('[parser.loads(data) for data in inputs]',
+                           '{parser.loads(data) for data in inputs}',
+                           '{data: parser.loads(data) for data in inputs}',
+                           '(parser.loads(data) for data in inputs)',
+                           '[data for data in inputs if parser.loads(data)]',
+                           '[value for data in inputs for value in parser.loads(data)]'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import pickle as parser\nclass Example:\n import json as parser\n values = ' + expression)
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-deserialization', 4)])
+
+    def test_comprehension_first_iterable_uses_containing_class_scope(self):
+        result = self.inspect('import pickle as parser\nclass Example:\n import json as parser\n'
+                              ' values = [value for value in parser.loads(data)]')
+        self.assertEqual(result.status, 'pass')
+        result = self.inspect('import json as parser\nclass Example:\n import pickle as parser\n'
+                              ' values = [value for value in parser.loads(data)]')
+        self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-deserialization', 4)])
+
+    def test_comprehension_targets_shadow_imports_without_leaking_bindings(self):
+        for target, values in (('parser', 'handlers'), ('(parser, value)', 'pairs')):
+            result = self.inspect('import pickle as parser\nvalues = [parser.loads(data) for ' + target +
+                                  ' in ' + values + ']\nparser.loads(data)')
+            self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-deserialization', 3)])
+
     def test_defaults_and_nested_closures_keep_their_import_scope(self):
         result = self.inspect('import pickle as parser\ndef outer(value=parser.loads(data)):\n'
                               ' import json as parser\n def inner():\n  return parser.loads(data)\n')

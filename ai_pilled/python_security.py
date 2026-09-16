@@ -26,7 +26,8 @@ def import_scopes(tree):
     while pending:
         node, scope = pending.pop()
         scopes[node] = scope
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+        comprehension = isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
+        if comprehension or isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
             parent = scope
             while kinds[parent] == 'class':
                 enclosing = parents[parent]
@@ -35,7 +36,12 @@ def import_scopes(tree):
                 parent = enclosing
             child = len(bindings)
             local: dict[str, set[str]] = {}
-            if not isinstance(node, ast.ClassDef):
+            if comprehension:
+                for generator in node.generators:
+                    for bound_node in ast.walk(generator.target):
+                        if isinstance(bound_node, ast.Name):
+                            local[bound_node.id] = {''}
+            elif not isinstance(node, ast.ClassDef):
                 arguments = node.args
                 for argument in [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs,
                                  *([arguments.vararg] if arguments.vararg else []),
@@ -44,6 +50,17 @@ def import_scopes(tree):
             bindings.append(local)
             parents.append(parent)
             kinds.append('class' if isinstance(node, ast.ClassDef) else 'function')
+            if comprehension:
+                # Only the leftmost iterable runs in the containing (possibly class) scope.
+                for item in ast.iter_child_nodes(node):
+                    if isinstance(item, ast.comprehension):
+                        scopes[item] = child
+                        pending.append((item.target, child))
+                        pending.append((item.iter, scope if item is node.generators[0] else child))
+                        pending.extend((condition, child) for condition in item.ifs)
+                    else:
+                        pending.append((item, child))
+                continue
             # Defaults, decorators, and bases are evaluated in the containing scope.
             for field, value in ast.iter_fields(node):
                 selected = child if field == 'body' else scope
