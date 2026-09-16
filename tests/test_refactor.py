@@ -67,6 +67,38 @@ class RefactorTests(unittest.TestCase):
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         self.assertEqual((self.repo / 'code.py').read_text(), 'value = 3\n')
 
+    def test_repair_cannot_hide_candidate_changes_from_export(self):
+        for flag in ('--assume-unchanged', '--skip-worktree'):
+            with self.subTest(flag=flag):
+                self.configure(repair=['git', 'update-index', flag, 'code.py'])
+                head = self.git('rev-parse', 'HEAD')
+                result = refactor(self.repo)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertIn('index flags', result.findings[0].message)
+                self.assertFalse(result.patch)
+                self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+                self.assertEqual(self.git('status', '--porcelain'), b'')
+                self.assertEqual((self.repo / 'code.py').read_text(), 'value = 1\n')
+                self.assertFalse(list((self.repo / '.ai-pilled').glob('refactor-work-*')))
+
+    def test_quality_cannot_hide_candidate_changes_before_patch_export(self):
+        self.configure()
+        config_path = self.repo / '.ai-pilled.json'
+        config = json.loads(config_path.read_text())
+        config['commands']['test'] = ['git', 'update-index', '--assume-unchanged', 'code.py']
+        config_path.write_text(json.dumps(config))
+        self.git('add', '.ai-pilled.json')
+        self.git('commit', '-qm', 'test: candidate index mutation')
+        head = self.git('rev-parse', 'HEAD')
+        result = refactor(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual([step['status'] for step in result.steps], ['pass', 'pass', 'pass'])
+        self.assertIn('index flags', result.findings[0].message)
+        self.assertFalse(result.patch)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual(self.git('status', '--porcelain'), b'')
+        self.assertFalse(list((self.repo / '.ai-pilled').glob('refactor-work-*')))
+
     def test_failed_repair_exports_nothing(self):
         self.configure(repair=[sys.executable, '-c', 'raise SystemExit(1)'])
         result = refactor(self.repo)

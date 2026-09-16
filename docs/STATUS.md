@@ -256,7 +256,9 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 Readiness, release publication, refactor, and healing also reject hidden index flags
 when a clean committed checkout is required. Fixtures verify that hidden local fixes
 or metadata cannot certify a different commit, export a misleading patch, or trigger
-provider calls; rejected operations preserve the local edits.
+provider calls; rejected operations preserve the local edits. Refactor also checks its
+disposable candidate after each editing step and after quality: a command cannot hide
+the tested fix with index flags and export an empty or incomplete patch.
 
 Refactor and healing policy comparisons use bounded regular-file reads; generated
 FIFO, symlink, and oversized policies produce incomplete results without exporting

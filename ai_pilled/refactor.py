@@ -74,6 +74,7 @@ def refactor(repo):
                 if read_regular(clone / '.ai-pilled.json', 64_000) != policy:
                     raise CommandError('Refactor commands must not change the quality configuration')
                 with isolated_git():
+                    require_visible_index(clone)
                     security = scan(clone, 'worktree', patterns=config.aggressiveness == 'strict')
                 if security.status != 'pass':
                     report.status = security.status
@@ -86,6 +87,8 @@ def refactor(repo):
                 report.status = verified.status
                 report.findings = verified.findings
                 return report
+            with isolated_git():
+                require_visible_index(clone)
             require_visible_index(root)
             if run(['git', 'rev-parse', 'HEAD'], root).decode().strip() != base or run(
                     ['git', 'status', '--porcelain', '--untracked-files=normal'], root):
