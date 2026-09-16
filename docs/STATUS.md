@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `8f87670`: 637 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `1d21740`
-passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `ca66a59` also passed all seven gates with zero
+The verification baseline is `a72713c`: 643 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `fdf5c0d`
+passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `a72713c` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -380,6 +380,12 @@ external actions are never replayed automatically. Nested newer check results su
 older child results; priority, bounds, redaction, and no-execution tests are in
 `test_suggestions.py`.
 
+Benchmark locks and baseline reads are anchored beneath the repository. Explicit
+baseline saves use descriptor-relative publication and recheck the written data.
+A state-directory swap cannot create an outside lock, supply an outside baseline,
+or overwrite an outside baseline file. These guards do not change the saved budget;
+security fixtures use synthetic timings and disposable baseline files.
+
 An earlier scan benchmark at `ac70b2a` passed its unchanged 20% budget: three-run
 median 0.16828 seconds versus baseline 0.16558 seconds (1.63% increase). This measures
 that local run, not a latency guarantee for future snapshots or larger repositories.
@@ -443,7 +449,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `1d21740`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.68% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `fdf5c0d`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.64% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags

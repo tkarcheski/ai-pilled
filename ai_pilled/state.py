@@ -165,5 +165,5 @@ def atomic_text_beneath(root, relative, text, mode=0o600, *, before_publish=None
                 pass
 
 
-def atomic_json(path, data):
-    atomic_text(path, json.dumps(data, indent=2) + '\n')
+def atomic_json(path, data, *, root=None):
+    atomic_text(path, json.dumps(data, indent=2) + '\n', root=root)

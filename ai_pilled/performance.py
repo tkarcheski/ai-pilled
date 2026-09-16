@@ -8,19 +8,20 @@ from .json_data import loads
 import math
 import os
 import platform
+from pathlib import Path
 import statistics
 import stat
 import time
 
-from .file_io import read_regular
+from .file_io import directory_beneath, read_beneath
 from .config import load
 from .runtime import CommandError, Report, run
 from .state import atomic_json, directory, record
 
 
-def baseline_data(path):
+def baseline_data(path, *, root):
     try:
-        data = loads(read_regular(path, 10_000))
+        data = loads(read_beneath(root, path.relative_to(root), 10_000))
     except FileNotFoundError:
         return None
     if (not isinstance(data, dict) or type(data.get('version')) is not int or data['version'] != 1
@@ -33,6 +34,7 @@ def baseline_data(path):
 
 
 def benchmark(repo, runs=3, maximum_regression=20, save_baseline=False):
+    repo = Path(repo).resolve()
     report = Report('performance-baseline' if save_baseline else 'performance-regression')
     try:
         if type(runs) is not int or not 1 <= runs <= 10:
@@ -48,13 +50,15 @@ def benchmark(repo, runs=3, maximum_regression=20, save_baseline=False):
         host_hash = hashlib.sha256(json.dumps((platform.node(), platform.machine(),
                                              platform.processor())).encode()).hexdigest()
         state = directory(repo)
-        fd = os.open(state / 'benchmark.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        with directory_beneath(repo, '.ai-pilled') as parent:
+            fd = os.open('benchmark.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK,
+                         0o600, dir_fd=parent)
         with os.fdopen(fd, 'rb') as lock:
             if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
                 raise CommandError('Performance lock must be a regular file')
             acquire_lock(lock, fcntl.LOCK_EX)
             path = state / 'benchmark.json'
-            baseline = baseline_data(path)
+            baseline = baseline_data(path, root=repo)
             if not save_baseline:
                 if baseline is None:
                     raise CommandError('No performance baseline; run benchmark --save-baseline first')
@@ -75,9 +79,12 @@ def benchmark(repo, runs=3, maximum_regression=20, save_baseline=False):
             report.metrics = {'median_seconds': median, 'runs': runs}
             report.snapshot = command_hash
             if save_baseline:
-                atomic_json(path, {'version': 1, 'command_hash': command_hash, 'host_hash': host_hash,
-                                   'median_seconds': median, 'runs': runs,
-                                   'at': datetime.now(timezone.utc).isoformat()})
+                saved = {'version': 1, 'command_hash': command_hash, 'host_hash': host_hash,
+                         'median_seconds': median, 'runs': runs,
+                         'at': datetime.now(timezone.utc).isoformat()}
+                atomic_json(path, saved, root=repo)
+                if baseline_data(path, root=repo) != saved:
+                    raise CommandError('Performance baseline changed during publication; inspect before retrying')
             else:
                 change = (median / baseline['median_seconds'] - 1) * 100
                 if not math.isfinite(change):

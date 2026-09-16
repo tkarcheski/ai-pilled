@@ -169,3 +169,63 @@ class PerformanceTests(unittest.TestCase):
             result = benchmark(self.repo)
         self.assertEqual(result.status, 'incomplete')
         command.assert_not_called()
+
+    def outside_baseline(self):
+        self.measure(1, save=True)
+        parent = self.repo / '.ai-pilled'
+        outside = self.repo / 'outside'
+        outside.mkdir()
+        content = (parent / 'benchmark.json').read_bytes()
+        (outside / 'benchmark.json').write_bytes(content)
+        return parent, outside, content
+
+    def test_parent_swap_before_lock_never_runs_command_or_creates_outside_lock(self):
+        from ai_pilled.state import directory
+        parent, outside, content = self.outside_baseline()
+
+        def swap(repo):
+            path = directory(repo)
+            parent.rename(self.repo / 'original')
+            parent.symlink_to(outside, target_is_directory=True)
+            return path
+
+        with patch('ai_pilled.performance.directory', side_effect=swap), \
+                patch('ai_pilled.performance.run') as command, patch('ai_pilled.performance.record'):
+            result = benchmark(self.repo, save_baseline=True)
+        self.assertEqual(result.status, 'incomplete')
+        command.assert_not_called()
+        self.assertEqual((outside / 'benchmark.json').read_bytes(), content)
+        self.assertEqual(sorted(path.name for path in outside.iterdir()), ['benchmark.json'])
+
+    def test_parent_swap_before_baseline_read_never_uses_outside_evidence(self):
+        from ai_pilled.performance import baseline_data
+        parent, outside, content = self.outside_baseline()
+
+        def swap(path, **options):
+            parent.rename(self.repo / 'original')
+            parent.symlink_to(outside, target_is_directory=True)
+            return baseline_data(path, **options)
+
+        with patch('ai_pilled.performance.baseline_data', side_effect=swap), \
+                patch('ai_pilled.performance.run') as command, patch('ai_pilled.performance.record'):
+            result = benchmark(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        command.assert_not_called()
+        self.assertEqual((outside / 'benchmark.json').read_bytes(), content)
+
+    def test_parent_swap_before_baseline_publication_preserves_outside_file(self):
+        from ai_pilled.state import atomic_json
+        parent, outside, content = self.outside_baseline()
+
+        def swap(path, data, **options):
+            parent.rename(self.repo / 'original')
+            parent.symlink_to(outside, target_is_directory=True)
+            return atomic_json(path, data, **options)
+
+        with patch('ai_pilled.performance.atomic_json', side_effect=swap), \
+                patch('ai_pilled.performance.run'), patch('ai_pilled.performance.record'):
+            result = self.measure(2, save=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual((outside / 'benchmark.json').read_bytes(), content)
+        self.assertEqual((self.repo / 'original/benchmark.json').read_bytes(), content)
+        self.assertEqual(sorted(path.name for path in outside.iterdir()), ['benchmark.json'])
