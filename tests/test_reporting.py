@@ -39,12 +39,16 @@ class ReportingTests(unittest.TestCase):
     def test_dashboard_escapes_untrusted_findings(self):
         report = Report('<script>alert(1)</script>')
         report.add('test', '</td><script>alert(2)</script>')
+        report.metrics = {'coverage_percent': 86.5, '<script>': '<img src=x>'}
         record(self.repo, report, 'test')
         content = dashboard(self.repo).read_text()
         self.assertNotIn('<script>', content)
         self.assertIn('&lt;script&gt;', content)
         self.assertIn('Content-Security-Policy', content)
         self.assertIn('Historical results only', content)
+        self.assertIn('coverage_percent', content)
+        self.assertIn('86.5', content)
+        self.assertNotIn('<img src=x>', content)
 
     def test_dashboard_does_not_follow_symlink(self):
         record(self.repo, Report('test'), 'test')

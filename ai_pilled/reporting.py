@@ -59,8 +59,9 @@ def dashboard(repo):
     for entry in reversed(recent):
         report = entry['report']
         details = json.dumps(report['findings'], ensure_ascii=True)
+        metrics = json.dumps(report.get('metrics', {}), ensure_ascii=True)
         rows.append('<tr>' + ''.join(f'<td>{escape(value)}</td>' for value in (
-            entry['at'], report['check'], report['status'], details)) + '</tr>')
+            entry['at'], report['check'], report['status'], metrics, details)) + '</tr>')
     content = '''<!doctype html>
 <html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -77,7 +78,7 @@ h1{font-size:32px;margin-bottom:8px}p{line-height:1.5}.muted{color:#b6c2d3}
 ''' + f'<p>{escape(summary["summary"])}</p><p>{escape(summary["evidence"])}</p>' + (
         f'<div class="cards">{cards}</div><p><strong>Next:</strong> {escape(summary["next"])}</p>'
         '<h2>Recent results</h2><p class="muted">Latest 100 recorded runs. Cards count the latest result per check.</p>'
-        '<div class="table"><table><thead><tr><th>Recorded</th><th>Check</th><th>Result</th><th>Findings</th>'
+        '<div class="table"><table><thead><tr><th>Recorded</th><th>Check</th><th>Result</th><th>Measurements</th><th>Findings</th>'
         '</tr></thead><tbody>' + ''.join(rows) + '</tbody></table></div></html>')
     path = directory(repo) / 'dashboard.html'
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
