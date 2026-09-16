@@ -17,7 +17,8 @@ def command_check(repo, name, executable_root=None):
     argv = list(argv)
     if executable_root is not None and not Path(argv[0]).is_absolute() and '/' in argv[0]:
         executable = Path(executable_root) / argv[0]
-        if executable.is_file():
+        if (not (Path(repo) / argv[0]).exists() and executable.is_file()
+                and not run(['git', 'ls-files', '--', argv[0]], executable_root)):
             argv[0] = str(executable.absolute())
     try:
         # Git hooks export routing variables. A test creating another repo must

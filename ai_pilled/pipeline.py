@@ -27,7 +27,7 @@ def combine(report, result):
                    path=finding.path, line=finding.line, severity=finding.severity)
 
 
-def quality(repo, ready=False, executable_root=None):
+def quality(repo, ready=False, executable_root=None, comprehensive=False):
     report = PipelineReport('pr-readiness' if ready else 'quality')
     root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
     config = load(root)
@@ -52,18 +52,18 @@ def quality(repo, ready=False, executable_root=None):
             record(root, report, 'ready')
             return report
     index_before = run(['git', 'ls-files', '--stage', '-z'], root)
-    before = scan(root, 'worktree', patterns=config.aggressiveness == 'strict')
+    before = scan(root, 'worktree', patterns=(comprehensive or config.aggressiveness == 'strict'))
     report.snapshot = before.snapshot
     combine(report, before)
     record(root, before, 'quality:security')
     # Do not invoke project commands or registry tools after a credential failure.
     if before.status == 'pass':
         names = []
-        if config.require_tests or 'test' in config.commands or config.aggressiveness == 'strict':
+        if config.require_tests or 'test' in config.commands or (comprehensive or config.aggressiveness == 'strict'):
             names.append('test')
-        if config.aggressiveness != 'lazy':
+        if comprehensive or config.aggressiveness != 'lazy':
             names += [name for name in QUALITY_CHECKS if name in config.commands]
-        if config.aggressiveness == 'strict':
+        if (comprehensive or config.aggressiveness == 'strict'):
             for name in ('lint', 'typecheck', 'deadcode', 'coverage'):
                 if name not in names:
                     names.append(name)
@@ -72,10 +72,10 @@ def quality(repo, ready=False, executable_root=None):
                 result = command_check(root, name, executable_root=executable_root)
                 combine(report, result)
                 record(root, result, 'quality:' + name)
-            if config.aggressiveness != 'lazy' and 'dependency' not in names and any(
+            if (comprehensive or config.aggressiveness != 'lazy') and 'dependency' not in names and any(
                     (root / name).exists() for name in ('package-lock.json', 'npm-shrinkwrap.json')):
                 combine(report, audit(root))
-            after = scan(root, 'worktree', patterns=config.aggressiveness == 'strict')
+            after = scan(root, 'worktree', patterns=(comprehensive or config.aggressiveness == 'strict'))
             record(root, after, 'quality:security-final')
             if after.status != 'pass':
                 combine(report, after)

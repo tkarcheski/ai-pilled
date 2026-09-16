@@ -22,6 +22,18 @@ python -m ai_pilled check test
 python -m ai_pilled review                  # subscription-backed, read-only staged review
 ~~~
 
+Run `python -m ai_pilled review-checks` to check the exact index in a disposable
+copy. It always requires tests, lint, type checking, dead-code checks, and coverage,
+even with a lazy profile. Missing commands are incomplete. Staged configuration is
+used; unstaged source and fixes cannot make a staged defect pass. Source executables
+come from that copy; untracked local tool installations may be reused from the original
+checkout. Changes made by checks invalidate the result. Configured commands must be
+trusted: this disposable copy is not an operating-system security sandbox.
+
+`review --comprehensive` requires those checks to pass before invoking the model and
+verifies that both stages reviewed the same index. `review-checks` runs without a model
+or subscription call. Stage the intended files before using either command.
+
 Use `review --codex /absolute/path/to/codex` to select an installed binary explicitly.
 This avoids PATH wrappers that install or update the CLI before each invocation. The
 reviewer uses the existing Codex login, disables hooks, and receives a copy of staged
@@ -514,13 +526,14 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,review-checks,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,review-checks,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
+    review-checks       Run strict quality checks on the exact staged snapshot
     dependency-audit    Audit npm lockfile vulnerabilities
     python-audit        Audit fully pinned Python requirements without installing
                         packages

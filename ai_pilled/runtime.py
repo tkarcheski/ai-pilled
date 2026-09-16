@@ -1,4 +1,6 @@
 """Bounded processes and structured, secret-free check results."""
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import os
@@ -9,6 +11,19 @@ import subprocess
 import tempfile
 
 from .credentials import redact_data
+
+
+_ISOLATED_GIT = ContextVar('ai_pilled_isolated_git', default=False)
+
+
+@contextmanager
+def isolated_git():
+    """Ignore inherited Git routing only inside disposable repository operations."""
+    token = _ISOLATED_GIT.set(True)
+    try:
+        yield
+    finally:
+        _ISOLATED_GIT.reset(token)
 
 
 MAX_FINDINGS = 100
@@ -79,6 +94,9 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
     # Replacement refs change local reads but not the original objects sent by push.
     if Path(argv[0]).name == 'git':
         argv = [argv[0], '--no-replace-objects', *argv[1:]]
+        if _ISOLATED_GIT.get():
+            env = {k: v for k, v in (os.environ if env is None else env).items()
+                   if not k.startswith('GIT_')}
     with tempfile.TemporaryFile() as input_stream:
         if input_data is not None:
             input_stream.write(input_data)

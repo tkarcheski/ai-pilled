@@ -9,6 +9,7 @@ from .python_dependencies import audit_python
 from .python_health import health_python, licenses_python
 from .dependency_health import health, licenses
 from .codex_review import review
+from .staged_review import review_checks
 from .lifecycle import handle, read_payload
 from .checks import command_check
 from .git_hooks import dispatch, install, uninstall
@@ -42,6 +43,8 @@ def build_parser():
     check = commands.add_parser('check', help='Run a configured quality command')
     check.add_argument('name', choices=['test', 'lint', 'typecheck', 'deadcode', 'coverage', 'dependency'])
     review_parser = commands.add_parser('review', help='Review the staged snapshot with Codex')
+    commands.add_parser('review-checks', help='Run strict quality checks on the exact staged snapshot')
+    review_parser.add_argument('--comprehensive', action='store_true', help='Require staged quality checks before model review')
     review_parser.add_argument('--codex', help='Codex executable path or command name')
     dependency = commands.add_parser('dependency-audit', help='Audit npm lockfile vulnerabilities')
     dependency.add_argument('--npm', default='npm', help='npm executable path or command name')
@@ -142,7 +145,9 @@ def main(argv=None):
         if args.command == 'nightly-refactor' and args.watch:
             return watch(args.repo, args.at, args.timezone)
         if args.command == 'review':
-            report = review(args.repo, args.codex)
+            report = review_checks(args.repo, model=True, executable=args.codex) if args.comprehensive else review(args.repo, args.codex)
+        elif args.command == 'review-checks':
+            report = review_checks(args.repo)
         elif args.command == 'update-readme':
             report = update_readme(args.repo, args.path, args.check)
         elif args.command == 'notify':
