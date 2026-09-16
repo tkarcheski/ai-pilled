@@ -112,6 +112,9 @@ currently enabled on every local commit. Model output requires engineering judgm
 protected branch patterns, all selected outgoing commit subjects and credential
 history, tip security patterns, configured tests, and a stable clean snapshot.
 Raw commit headers, author identities, tag chains, and destination names are scanned.
+Non-deletion pushes reject assume-unchanged/skip-worktree flags, including hidden policy
+changes. Before/after test scans compare actual source, permissions, index, and HEAD;
+a hidden local fix or hidden test mutation cannot certify a different pushed commit.
 New refs exclude ancestry only after verifying advertisements from the actual destination;
 forged local tracking refs cannot hide unpublished commits. Tips retain security scans.
 Traversal parents must match raw outgoing commit parents: unverified shallow boundaries
@@ -215,7 +218,7 @@ older child results; priority, bounds, redaction, and no-execution tests are in
 2. Reject a bad subject, a staged credential, a TLS bypass hidden by an unstaged fix,
    and a failing test hidden by partial staging;
    confirm HEAD does not move.
-3. Reject a protected destination and a failing-test push; confirm remote refs do not move.
+3. Reject hidden worktree changes, a protected destination, and a failing-test push; confirm remote refs do not move.
 4. Run Python audit/lifecycle through a fixture provider; preserve vulnerability and
    incomplete statuses, including cache behavior.
 

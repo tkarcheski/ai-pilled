@@ -2,11 +2,11 @@
 import fnmatch
 import re
 
-from .checks import command_check
+from .checks import command_check, require_visible_index
 from .config import load
 from .commit_messages import check_subject
 from .runtime import CommandError, Report, run
-from .security import MAX_FILE_BYTES, scan_text, scan_bytes, scan_path
+from .security import MAX_FILE_BYTES, scan, scan_text, scan_bytes, scan_path
 from .python_security import inspect_python
 
 OID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
@@ -196,17 +196,36 @@ def pre_push(repo, updates, destination=None):
                        line=finding.line, severity=finding.severity)
     if report.status != 'pass':
         return report
+    if tips:
+        try:
+            require_visible_index(repo)
+        except CommandError as exc:
+            report.add('hidden-worktree', str(exc))
+            return report
     if tips and config.require_tests:
         if tips != {head}:
             report.add('untested-tip', 'Check out the pushed commit before running required tests.')
         elif run(['git', 'status', '--porcelain', '--untracked-files=normal'], repo):
             report.add('dirty-worktree', 'Commit or isolate working changes before testing the pushed commit.')
         else:
+            before = scan(repo, 'worktree', patterns=config.aggressiveness == 'strict')
+            report.snapshot = before.snapshot
+            if before.status != 'pass':
+                report.status, report.findings = before.status, before.findings
+                return report
+            index = run(['git', 'ls-files', '--stage', '-z'], repo)
             tests = command_check(repo, 'test')
             for finding in tests.findings:
                 report.add(finding.rule, finding.message, severity=finding.severity)
+            after = scan(repo, 'worktree', patterns=config.aggressiveness == 'strict')
             current_head = run(['git', 'rev-parse', '--verify', 'HEAD'], repo).decode().strip()
-            if current_head != head or run(['git', 'status', '--porcelain', '--untracked-files=normal'], repo):
+            try:
+                require_visible_index(repo)
+            except CommandError as exc:
+                report.add('test-snapshot-changed', str(exc))
+            if (after.status != 'pass' or after.snapshot != before.snapshot
+                    or current_head != head or run(['git', 'ls-files', '--stage', '-z'], repo) != index
+                    or run(['git', 'status', '--porcelain', '--untracked-files=normal'], repo)):
                 report.add('test-snapshot-changed',
-                           'Tests changed HEAD or working files; restore a clean pushed snapshot and rerun.')
+                           'Tests changed source, permissions, index, or HEAD; restore the pushed snapshot and rerun.')
     return report

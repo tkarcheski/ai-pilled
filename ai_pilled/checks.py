@@ -39,3 +39,10 @@ def resolve_executable(repo, executable, executable_root=None):
                 return executable
             return str(original.absolute())
     return executable
+
+
+def require_visible_index(repo):
+    """Status alone cannot certify source hidden by these per-file index flags."""
+    flags = run(['git', 'ls-files', '-v', '-z'], repo).split(b'\0')
+    if any(item[:1] == b'S' or item[:1].islower() for item in flags if item):
+        raise CommandError('Validation requires no assume-unchanged or skip-worktree index flags')

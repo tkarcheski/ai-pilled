@@ -73,6 +73,43 @@ class PrePushTests(unittest.TestCase):
         self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote),
                                                 'for-each-ref']), b'')
 
+    def test_hidden_local_fix_cannot_authorize_broken_commit_push(self):
+        (self.repo / 'value.txt').write_text('broken')
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {'test': [
+            sys.executable, '-c', 'from pathlib import Path; assert Path("value.txt").read_text() == "correct"']}}))
+        self.commit()
+        install(self.repo)
+        for flag, clear in (('--assume-unchanged', '--no-assume-unchanged'),
+                            ('--skip-worktree', '--no-skip-worktree')):
+            with self.subTest(flag=flag):
+                self.git('update-index', flag, 'value.txt')
+                (self.repo / 'value.txt').write_text('correct')
+                self.assertEqual(self.git('status', '--porcelain').stdout, b'')
+                result = self.git('push', 'origin', 'HEAD:feature', success=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(b'hidden-worktree', result.stdout + result.stderr)
+                self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote),
+                                                         'for-each-ref']), b'')
+                self.git('update-index', clear, 'value.txt')
+                (self.repo / 'value.txt').write_text('broken')
+
+    def test_hidden_mutation_during_tests_cannot_authorize_push(self):
+        (self.repo / 'value.txt').write_text('before')
+        program = ('import subprocess; from pathlib import Path; '
+                   'subprocess.run(["git", "update-index", "--assume-unchanged", "value.txt"], check=True); '
+                   'Path("value.txt").write_text("after")')
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {'test': [sys.executable, '-c', program]}}))
+        self.commit()
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertIn('test-snapshot-changed', [f.rule for f in result.findings])
+        self.assertEqual(self.git('status', '--porcelain').stdout, b'')
+
+    def test_hidden_policy_cannot_disable_test_gate(self):
+        self.git('update-index', '--assume-unchanged', '.ai-pilled.json')
+        (self.repo / '.ai-pilled.json').write_text('{"require_tests":false}')
+        self.assertEqual(pre_push(self.repo, self.update()).status, 'fail')
+
     def test_secret_removed_in_later_commit_still_blocks(self):
         (self.repo / 'credential').write_text('ghp_' + 'A' * 36)
         self.commit()

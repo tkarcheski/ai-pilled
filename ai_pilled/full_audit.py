@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import tempfile
 
+from .checks import require_visible_index
 from .codex_review import invoke_review, materialize_index, validate_locations
 from .config import ConfigError, load
 from .pipeline import PipelineReport, combine, quality
@@ -52,9 +53,7 @@ def full_audit(repo, model_reviews=False, executable=None, workers=3):
                 raise CommandError('Model audits require a clean committed checkout')
             if run(['git', 'rev-parse', '--verify', 'HEAD'], root) != head:
                 raise CommandError('HEAD changed after quality checks; rerun before model audit')
-            flags = run(['git', 'ls-files', '-v', '-z'], root).split(b'\0')
-            if any(item[:1] == b'S' or item[:1].islower() for item in flags if item):
-                raise CommandError('Model audit requires no assume-unchanged or skip-worktree index flags')
+            require_visible_index(root)
             current = scan(root, 'worktree', patterns=True)
             if current.status != 'pass' or current.snapshot != checked.snapshot:
                 raise CommandError('Source changed after quality checks; rerun before model audit')
