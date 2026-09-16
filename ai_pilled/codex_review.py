@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 
-from .file_io import read_regular
+from .file_io import read_beneath, read_regular
 from .git_blobs import read_blobs
 from .config import load
 from .runtime import CommandError, Report, run, git_path
@@ -45,11 +45,9 @@ def validated_findings(data):
 
 def validate_locations(snapshot, findings):
     for path, line, _ in findings:
-        source = snapshot / path
         try:
-            valid = (source.resolve().is_relative_to(snapshot.resolve())
-                     and line <= len(read_regular(source, 2_000_000).splitlines()))
-        except OSError as exc:
+            valid = line <= len(read_beneath(snapshot, path, 2_000_000).splitlines())
+        except (CommandError, OSError) as exc:
             raise CommandError('Reviewer cited a location outside the supplied source') from exc
         if not valid:
             raise CommandError('Reviewer cited a location outside the supplied source')

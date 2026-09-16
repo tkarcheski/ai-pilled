@@ -192,6 +192,54 @@ class ReviewTests(unittest.TestCase):
                 self.assertEqual(result.status, 'incomplete')
                 self.assertEqual(result.findings[0].rule, 'review-unavailable')
 
+    def test_citation_parent_swap_cannot_read_outside_snapshot(self):
+        from ai_pilled.codex_review import validate_locations
+        from ai_pilled.file_io import read_beneath
+        from ai_pilled.runtime import CommandError
+        snapshot = self.repo / 'snapshot'
+        parent = snapshot / 'nested'
+        parent.mkdir(parents=True)
+        (parent / 'code.py').write_text('inside\n')
+        outside = self.repo / 'outside'
+        outside.mkdir()
+        (outside / 'code.py').write_text('outside\nextra\n')
+
+        def swap(root, path, maximum):
+            parent.rename(snapshot / 'original')
+            parent.symlink_to(outside, target_is_directory=True)
+            return read_beneath(root, path, maximum)
+
+        with patch('ai_pilled.codex_review.read_beneath', side_effect=swap):
+            with patch('ai_pilled.file_io.os.fdopen', side_effect=AssertionError('Outside file opened')):
+                with self.assertRaisesRegex(CommandError, 'outside the supplied source'):
+                    validate_locations(snapshot, [('nested/code.py', 2, 'fixture')])
+        self.assertEqual((outside / 'code.py').read_text(), 'outside\nextra\n')
+
+    def test_citation_replacement_after_read_is_incomplete(self):
+        from contextlib import contextmanager
+        from ai_pilled.codex_review import validate_locations
+        from ai_pilled.file_io import open_beneath
+        from ai_pilled.runtime import CommandError
+        snapshot = self.repo / 'snapshot'
+        parent = snapshot / 'nested'
+        parent.mkdir(parents=True)
+        source = parent / 'code.py'
+        source.write_text('first\nsecond\n')
+        validate_locations(snapshot, [('nested/code.py', 2, 'valid nested citation')])
+
+        @contextmanager
+        def replace_after_read(root, path):
+            with open_beneath(root, path) as stream:
+                yield stream
+            if not (parent / 'original.py').exists():
+                source.rename(parent / 'original.py')
+                source.write_text('replacement\n')
+
+        with patch('ai_pilled.file_io.open_beneath', replace_after_read):
+            with self.assertRaisesRegex(CommandError, 'outside the supplied source'):
+                validate_locations(snapshot, [('nested/code.py', 2, 'stale citation')])
+        self.assertEqual(source.read_text(), 'replacement\n')
+
     def test_invalid_location_rejects_entire_model_response(self):
         self.response({'findings': [
             {'path': 'code.py', 'line': 1, 'message': 'Claimed defect'},

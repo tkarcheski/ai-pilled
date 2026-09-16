@@ -6,7 +6,7 @@ behavior, reproducible tests, actual activation, and work still needed.
 
 The verification baseline is `0b7141b`: 629 tests and seven configured quality gates
 passed through the active Python 3.14 staged review. Prepared CI snapshot `ce5adae`
-passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `9b63679` also passed all seven gates with zero
+passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `ca66a59` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -29,6 +29,11 @@ A later JSON string-scanner experiment at `dbcdd8c` reduced seven-run staged sca
 medians from 0.213 to 0.196 seconds (about 8%) with identical reports, 10,000
 differential parser cases, and passing security/redaction fixtures. This is an
 in-process comparison; the subsequent cold-start measurement above still fails.
+
+A follow-up direct JSON-string slicing experiment at `ca66a59` showed no meaningful
+improvement (203.481 versus 203.506 ms across seven alternating runs), despite
+identical reports, 10,000 differential cases, and 72 passing security/redaction tests.
+It was discarded; no extra parser path or raised performance baseline was introduced.
 
 ## What the statuses mean
 
@@ -252,8 +257,12 @@ in the working tree. Changed source, permissions, index, or HEAD invalidate evid
 The commit-msg hook checks conventional subjects, length, and credentials. Optional
 model review checks message alignment and concrete correctness/security defects. It
 uses the existing Codex subscription login, a bounded staged snapshot, read-only mode,
-disabled hooks, a restricted environment, and validated structured source locations. Model output and cited source use bounded
-regular-file reads without following final symlinks.
+disabled hooks, a restricted environment, and validated structured source locations.
+Model output uses bounded regular-file reads without following final symlinks.
+Cited source opens each relative directory beneath the supplied snapshot without
+following symlinks and compares file identities during and after the bounded read.
+Parent-directory swaps and observed replacements cannot validate an outside or stale
+source line. This is a read-time consistency check, not an atomic filesystem snapshot.
 `review --comprehensive` requires deterministic evidence and model findings to refer
 to the same index.
 
