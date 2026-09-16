@@ -45,6 +45,21 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(scan(self.repo).status, 'pass')
         self.assertEqual(scan(self.repo, 'worktree').status, 'fail')
 
+    def test_pypi_publishing_tokens_are_detected_in_contents_and_filenames(self):
+        token = 'pypi-' + 'Ab0_-' * 17
+        self.write('publishing.txt', token)
+        self.write(token + '.txt', 'ordinary')
+        for scope in ('staged', 'worktree'):
+            result = scan(self.repo, scope)
+            self.assertEqual(result.status, 'fail')
+            self.assertEqual({finding.rule for finding in result.findings}, {'pypi-token'})
+            self.assertEqual(len(result.findings), 2)
+            self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_short_pypi_examples_are_not_treated_as_tokens(self):
+        self.write('notes.txt', 'pypi-example\npypi-' + 'A' * 84)
+        self.assertEqual(scan(self.repo).status, 'pass')
+
     def test_clean_snapshot_changes_with_content(self):
         self.write('file.txt', 'first')
         before = scan(self.repo)

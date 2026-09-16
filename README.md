@@ -414,7 +414,9 @@ the distinction between replacement refs and legacy grafts.
 
 Credential matching recognizes AWS access-key IDs and same-line, 40-character secret-key
 assignments named AWS_SECRET_ACCESS_KEY, aws_secret_access_key, or SecretAccessKey.
-It also recognizes GitHub, OpenAI, Slack, and private-key patterns. AWS field names
+It also recognizes GitHub, OpenAI, Slack, PyPI publishing tokens, and private-key patterns.
+PyPI matching follows its [published secret format](https://docs.pypi.org/api/secrets/),
+including the `pypi-` prefix and at least 85 URL-safe payload characters. AWS field names
 follow the [credential settings reference](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html);
 the secret-key length follows the [AWS access-key description](https://docs.aws.amazon.com/AmazonS3/latest/developerguide/MakingRequests.html).
 Credential matching is a limited deterministic check, not a complete security audit.

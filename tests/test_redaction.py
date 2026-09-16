@@ -40,6 +40,16 @@ class RedactionTests(unittest.TestCase):
         history = (self.repo / '.ai-pilled' / 'events.jsonl').read_text()
         self.assertFalse(self.token in history)
 
+    def test_pypi_tokens_are_redacted_from_reports_history_and_dashboard(self):
+        self.token = 'pypi-' + 'Ab0_-' * 17
+        result = Report('security')
+        result.add('pypi-token', 'Remove ' + self.token, path=self.token + '.txt')
+        self.assert_redacted(result.to_dict())
+        record(self.repo, result, 'scan')
+        self.assertNotIn(self.token, (self.repo / '.ai-pilled/events.jsonl').read_text())
+        self.assert_redacted(summarize(self.repo))
+        self.assertNotIn(self.token, dashboard(self.repo).read_text())
+
     def test_cli_missing_executable_error_redacts_its_name(self):
         (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {'test': [str(self.repo / self.token)]}}))
         with contextlib.redirect_stdout(io.StringIO()) as output:

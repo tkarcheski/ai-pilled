@@ -233,6 +233,16 @@ class PythonDependencyTests(unittest.TestCase):
         with patch('ai_pilled.python_dependencies.run_completed', return_value=CompletedCommand(json.dumps([self.row]).encode(), 0)):
             self.assertEqual(audit_python(self.repo).status, 'pass')
 
+    def test_pypi_token_identity_is_not_sent_to_the_registry(self):
+        token = 'pypi-' + 'A' * 85
+        self.path.write_text(token + '==1.0\n')
+        with patch('ai_pilled.python_dependencies.run_completed') as provider:
+            result = audit_python(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('credentials', result.findings[0].message)
+        self.assertNotIn(token, json.dumps(result.to_dict()))
+        provider.assert_not_called()
+
     def test_credentials_are_blocked_before_provider_invocation(self):
         token = 'ghp_' + 'A' * 36
         self.path.write_text(token + '==1.0')

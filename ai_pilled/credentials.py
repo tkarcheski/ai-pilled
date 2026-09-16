@@ -9,6 +9,7 @@ PATTERNS = (
         r"[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])")),
     ('github-token', re.compile(r'\bgh[pousr]_[A-Za-z0-9]{36,}\b')),
     ('github-fine-grained-token', re.compile(r'\bgithub_pat_[A-Za-z0-9_]{40,}\b')),
+    ('pypi-token', re.compile(r'\bpypi-[A-Za-z0-9_-]{85,}')),
     ('private-key', re.compile(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----')),
     ('openai-token', re.compile(r'\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}\b')),
     ('slack-webhook', re.compile(r'https://hooks\.slack\.com/services/[A-Za-z0-9_-]{8,}/[A-Za-z0-9_-]{8,}/[A-Za-z0-9_-]{16,}')),

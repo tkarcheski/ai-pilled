@@ -77,13 +77,14 @@ class EndToEndTests(unittest.TestCase):
         self.git('add', 'note.txt')
         self.git('commit', '-m', 'bad subject', codes=(1,))
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
-        secret = 'ghp_' + 'A' * 36
-        (self.repo / 'note.txt').write_text(secret)
-        self.git('add', 'note.txt')
-        output = self.git('commit', '-m', 'feat: rejected credential', codes=(1,))
-        self.assertFalse(secret.encode() in output, 'Hook output must redact credentials')
-        self.assertIn(b'github-token', output)
-        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        for secret, rule in (('ghp_' + 'A' * 36, b'github-token'),
+                             ('pypi-' + 'A' * 85, b'pypi-token')):
+            (self.repo / 'note.txt').write_text(secret)
+            self.git('add', 'note.txt')
+            output = self.git('commit', '-m', 'feat: rejected credential', codes=(1,))
+            self.assertFalse(secret.encode() in output, 'Hook output must redact credentials')
+            self.assertIn(rule, output)
+            self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         (self.repo / 'note.txt').write_text('safe note\n')
         (self.repo / 'transport.py').write_text('import requests as http\nhttp.get(url, verify=False)\n'
                                               'def unrelated():\n import json as http\n return http.dumps({})\n')
