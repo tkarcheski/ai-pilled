@@ -159,13 +159,13 @@ def audit_python(repo, files=None, executable='pip-audit', timeout=None):
 def audit_python_changed(repo):
     """Reuse recent complete evidence only for unchanged explicitly selected pins."""
     from datetime import datetime, timezone
-    from .runtime import Finding
+    from .audit_cache import cached_audit
     from .state import history
 
     repo = Path(repo)
     config = load(repo)
     try:
-        fingerprint = requirements(repo, config.python_requirements)[0]
+        fingerprint, packages = requirements(repo, config.python_requirements)
         for entry in reversed(history(repo)):
             if not isinstance(entry, dict) or entry.get('event') != 'python-dependency-audit':
                 continue
@@ -175,19 +175,8 @@ def audit_python_changed(repo):
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(entry['at'])).total_seconds()
             if not 0 <= age < 3600 or data.get('status') not in ('pass', 'fail'):
                 break
-            metrics = data.get('metrics')
-            if (not isinstance(metrics, dict) or type(metrics.get('evidence_version')) is not int
-                    or metrics['evidence_version'] != EVIDENCE_VERSION):
-                break
-            findings = [Finding(**finding) for finding in data['findings']]
-            if any(f.severity not in ('error', 'warning', 'info') or not isinstance(f.message, str)
-                   for f in findings):
-                break
-            if ((data['status'] == 'pass' and any(f.severity != 'info' for f in findings))
-                    or (data['status'] == 'fail' and not any(f.severity == 'error' for f in findings))):
-                break
-            cached = Report('python-dependency-vulnerabilities', status=data['status'],
-                            findings=findings, snapshot=fingerprint, metrics=data.get('metrics', {}))
+            cached = cached_audit(data, 'python-dependency-vulnerabilities',
+                                  'python-dependency-vulnerability', EVIDENCE_VERSION, packages)
             if requirements(repo, config.python_requirements)[0] == fingerprint:
                 return cached, True
             break

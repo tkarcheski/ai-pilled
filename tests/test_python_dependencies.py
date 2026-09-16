@@ -124,6 +124,39 @@ class PythonDependencyTests(unittest.TestCase):
                 self.assertEqual(result.status, 'pass')
                 provider.assert_called_once()
 
+    def test_inconsistent_cached_counts_and_findings_trigger_fresh_audit(self):
+        from ai_pilled.python_dependencies import audit_python_changed
+        self.configure_automation()
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()):
+            audit_python(self.repo)
+        path = self.repo / '.ai-pilled/events.jsonl'
+        original = path.read_text()
+        for field, value in [('vulnerabilities', 1), ('vulnerabilities', True),
+                             ('packages_audited', 0), ('packages_audited', True)]:
+            with self.subTest(field=field, value=value):
+                entry = json.loads(original)
+                entry['report']['metrics'][field] = value
+                path.write_text(json.dumps(entry) + '\n')
+                with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()) as provider:
+                    result, reused = audit_python_changed(self.repo)
+                self.assertFalse(reused)
+                self.assertEqual(result.status, 'pass')
+                provider.assert_called_once()
+
+    def test_truncated_but_consistent_vulnerability_cache_remains_blocking(self):
+        from ai_pilled.python_dependencies import audit_python_changed
+        self.configure_automation()
+        self.row['vulns'] = [{'id': f'ISSUE-{number}', 'fix_versions': []} for number in range(105)]
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()):
+            audit_python(self.repo)
+        with patch('ai_pilled.python_dependencies.run_completed') as provider:
+            result, reused = audit_python_changed(self.repo)
+        self.assertTrue(reused)
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual(result.metrics['vulnerabilities'], 105)
+        self.assertEqual(len(result.findings), 101)
+        provider.assert_not_called()
+
     def test_duplicate_vulnerability_keys_are_incomplete(self):
         raw = json.dumps({'dependencies': [self.row]})
         raw = raw.replace('"vulns": []', '"vulns":[{"id":"hidden","fix_versions":[]}],"vulns":[]')

@@ -88,6 +88,25 @@ class DependencyTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual(result.findings[0].rule, 'dependency-audit-unavailable')
 
+    def test_inconsistent_cache_never_suppresses_fresh_audit(self):
+        from ai_pilled.dependencies import audit_changed
+        original = audit(self.repo, str(self.fake))
+        path = self.repo / '.ai-pilled/events.jsonl'
+        saved = path.read_text()
+        variants = [('metrics', {'evidence_version': 2, 'vulnerabilities': 1}),
+                    ('check', 'unrelated'),
+                    ('findings', [{'rule': 'notice', 'severity': 'info', 'message': 'unknown', 'path': '', 'line': 0}])]
+        for field, value in variants:
+            with self.subTest(field=field):
+                entry = json.loads(saved)
+                entry['report'][field] = value
+                path.write_text(json.dumps(entry) + '\n')
+                with patch('ai_pilled.dependencies.audit', return_value=original) as provider:
+                    result, reused = audit_changed(self.repo)
+                self.assertFalse(reused)
+                self.assertEqual(result.status, 'pass')
+                provider.assert_called_once()
+
     def test_registry_error_does_not_leak_response(self):
         self.provider({'error': {'summary': 'private registry credential'}}, 1)
         result = audit(self.repo, str(self.fake))
