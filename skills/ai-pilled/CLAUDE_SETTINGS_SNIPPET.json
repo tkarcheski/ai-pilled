@@ -1,0 +1,78 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Security audit: XSS, SQL injection, env leaks, hardcoded secrets, unsafe patterns. Be strict.",
+            "timeout": 15,
+            "statusMessage": "Running security review..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(git commit)",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Quick review: commit message clear? Code changes aligned? Any obvious bugs? Flag blockers only.",
+            "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "npm test 2>&1 | head -50",
+            "statusMessage": "Running test suite...",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(git push)",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Pre-push validation: branch correct? Commits sound? No secrets? PR-ready? Flag only blockers.",
+            "timeout": 25,
+            "statusMessage": "Validating push..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(npm install|yarn|pnpm)",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Check: known vulns in new deps? Critical updates? Lock file committal check?",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostToolBatch": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Batch summary: what ran? Errors? Next logical step? Blocker or go-ahead?",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git status --short && echo '---' && git log --oneline -3",
+            "statusMessage": "Loading repo state..."
+          }
+        ]
+      }
+    ]
+  }
+}

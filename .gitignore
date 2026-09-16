@@ -1,0 +1,46 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# API Keys
+*.key
+*.pem
+*.private
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-error.log
+
+# Build outputs
+dist/
+build/
+*.o
+*.a
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+.tmp/
+temp/
+*.tmp
+
+# Project-specific
+audit-reports/
+ai/audits/
+hook-activity.log
