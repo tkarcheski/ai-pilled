@@ -139,3 +139,17 @@ class SecurityTests(unittest.TestCase):
             self.assertEqual(result.status, 'fail')
             self.assertFalse(token in json.dumps(result.to_dict()))
             self.assertIn('file name', result.findings[0].message)
+
+
+    def test_tracked_file_replaced_by_pipe_does_not_block_scan(self):
+        self.write('pipe.txt', 'ordinary')
+        (self.repo / 'pipe.txt').unlink()
+        os.mkfifo(self.repo / 'pipe.txt')
+        # A separate bounded process makes a blocking-read regression fail promptly.
+        code = ('import json,sys; from ai_pilled.security import scan; '
+                'print(json.dumps(scan(sys.argv[1], "worktree").to_dict()))')
+        output = run([sys.executable, '-c', code, str(self.repo)],
+                     Path(__file__).resolve().parents[1], timeout=5)
+        result = json.loads(output)
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertTrue(any('regular files' in f['message'] for f in result['findings']))

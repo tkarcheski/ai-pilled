@@ -1,5 +1,7 @@
 """Deterministic secret checks; semantic vulnerability review is a separate check."""
 import hashlib
+import os
+import stat
 from pathlib import Path
 
 from .runtime import CommandError, Report, run
@@ -78,7 +80,10 @@ def scan(repo, scope='staged', patterns=False):
                 if not file.exists():
                     digest.update(path.encode(errors='surrogateescape') + b'\0deleted\0')
                     continue
-                with file.open('rb') as stream:
+                fd = os.open(file, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+                with os.fdopen(fd, 'rb') as stream:
+                    if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                        raise CommandError('Only regular files can be scanned')
                     content = stream.read(MAX_FILE_BYTES + 1)
                 if len(content) > MAX_FILE_BYTES:
                     raise CommandError('File exceeds scan size limit')
