@@ -75,7 +75,9 @@ and environment value/item views, including starred arguments and byte environme
 Credential-named literal lookups through `environ`, `environb`, `getenv`, and `getenvb`
 are blocked at logging calls. Names ending in TOKEN, SECRET, PASSWORD, API_KEY, or
 PRIVATE_KEY, plus AWS access/secret key names, are review signals; ordinary HOME/PATH
-and metadata names remain allowed. This does not trace assignments or arbitrary data flow.
+and metadata names remain allowed. Lookup fallbacks, conditional result branches,
+boolean results, and assignment expressions are inspected; condition-only credential
+checks do not expose their value. This does not trace separate assignments or arbitrary data flow.
 Argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Referenced conflicting imports
 in one scope are incomplete. Verified defaults/custom CA bundles remain allowed.
 General assignment/rebinding, global/nonlocal mutation, and session-instance data flow
@@ -325,6 +327,7 @@ an installer mutation section. The scheduler already reports busy without waitin
 
 | Priority | Follow-up | Why / completion evidence |
 | --- | --- | --- |
+| P1 | Reduce Python-literal scan overhead | Actual dogfooding exceeds the unchanged performance budget; retain decoded-literal security coverage and require measured improvement. |
 | P1 | Complete hosted GitHub acceptance when credentials permit | Workflow refresh and local parity are complete. Publishing remains blocked by OAuth scope. Inspect both matrix jobs and downloaded artifacts after publication; never substitute local evidence for a hosted result. |
 | Done / monitor | Isolate watch fixture interruption | A captured failure identified a shared `time.sleep` patch that could interrupt Git subprocess cleanup before the watch report. A deterministic delayed-command probe reproduced it; the fixture now replaces only the scheduling module’s time reference. Older failures without named diagnostics cannot be attributed conclusively. Keep redacted failure capture active. |
 | Done | Isolate disposable operations from inherited Git routing | Reproduced a refactor credential-export bypass and healing candidate misrouting. Candidate scans/quality now isolate routing; real fixtures verify rejection and preservation of original HEAD/index/worktree. Model review already strips Git variables from its subprocess environment. |

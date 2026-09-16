@@ -140,6 +140,12 @@ def inspect_python(report, path, content):
                 pending.extend(value.values)
             elif isinstance(value, (ast.FormattedValue, ast.Starred)):
                 pending.append(value.value)
+            elif isinstance(value, ast.IfExp):
+                pending.extend((value.body, value.orelse))
+            elif isinstance(value, ast.BoolOp):
+                pending.extend(value.values)
+            elif isinstance(value, ast.NamedExpr):
+                pending.append(value.value)
             elif isinstance(value, ast.BinOp):
                 pending.extend((value.left, value.right))
             elif isinstance(value, (ast.List, ast.Tuple, ast.Set)):
@@ -163,6 +169,8 @@ def inspect_python(report, path, content):
                         (keyword.value for keyword in value.keywords if keyword.arg == 'key'), None)
                     if credential_key(key):
                         return 'environment-secret-log'
+                    pending.extend(value.args[1:])
+                    pending.extend(keyword.value for keyword in value.keywords if keyword.arg == 'default')
                 literal_format = (isinstance(value.func, ast.Attribute)
                                   and isinstance(value.func.value, ast.Constant)
                                   and isinstance(value.func.value.value, str)

@@ -262,3 +262,22 @@ class PythonPatternTests(unittest.TestCase):
                        'from builtins import print as emit\nimport os\nemit(os.getenv("TOKEN"))'):
             with self.subTest(source=source):
                 self.assertEqual(self.inspect(source).status, 'fail')
+
+    def test_environment_fallbacks_and_conditional_results_are_inspected(self):
+        expressions = ('os.getenv("HOME", os.getenv("TOKEN"))',
+                       'os.getenv(key="HOME", default=os.environb)',
+                       'os.environ.get("HOME", os.environ)',
+                       'os.getenv("API_KEY") if enabled else "ordinary"',
+                       '"ordinary" if enabled else os.environ',
+                       'os.getenv("HOME") or os.getenv("API_KEY")',
+                       '(secret := os.getenv("API_KEY"))')
+        for expression in expressions:
+            with self.subTest(expression=expression):
+                self.assertEqual(self.inspect('import os\nprint(' + expression + ')').status, 'fail')
+
+    def test_condition_only_secret_access_does_not_log_its_value(self):
+        for expression in ('"configured" if os.getenv("API_KEY") else "absent"',
+                           'bool(os.getenv("API_KEY"))',
+                           'os.getenv("HOME", "unknown")'):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.inspect('import os\nprint(' + expression + ')').status, 'pass')
