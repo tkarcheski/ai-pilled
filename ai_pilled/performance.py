@@ -23,7 +23,7 @@ def baseline_data(path):
         data = loads(read_regular(path, 10_000))
     except FileNotFoundError:
         return None
-    if (not isinstance(data, dict) or data.get('version') != 1
+    if (not isinstance(data, dict) or type(data.get('version')) is not int or data['version'] != 1
             or type(data.get('median_seconds')) not in (int, float)
             or not math.isfinite(data['median_seconds']) or data['median_seconds'] <= 0
             or not isinstance(data.get('command_hash'), str)
@@ -37,7 +37,8 @@ def benchmark(repo, runs=3, maximum_regression=20, save_baseline=False):
     try:
         if type(runs) is not int or not 1 <= runs <= 10:
             raise CommandError('Benchmark runs must be between 1 and 10')
-        if not math.isfinite(maximum_regression) or maximum_regression < 0:
+        if (type(maximum_regression) not in (int, float)
+                or not math.isfinite(maximum_regression) or maximum_regression < 0):
             raise CommandError('Maximum regression must be a finite nonnegative percentage')
         config = load(repo)
         argv = config.commands.get('benchmark')
@@ -64,8 +65,13 @@ def benchmark(repo, runs=3, maximum_regression=20, save_baseline=False):
             for _ in range(runs):
                 start = time.perf_counter()
                 run(argv, repo, timeout=config.timeout, env=env)
-                durations.append(time.perf_counter() - start)
+                duration = time.perf_counter() - start
+                if not math.isfinite(duration) or duration <= 0:
+                    raise CommandError('Benchmark timing must be finite and positive')
+                durations.append(duration)
             median = statistics.median(durations)
+            if not math.isfinite(median) or median <= 0:
+                raise CommandError('Benchmark median must be finite and positive')
             report.metrics = {'median_seconds': median, 'runs': runs}
             report.snapshot = command_hash
             if save_baseline:
@@ -74,12 +80,14 @@ def benchmark(repo, runs=3, maximum_regression=20, save_baseline=False):
                                    'at': datetime.now(timezone.utc).isoformat()})
             else:
                 change = (median / baseline['median_seconds'] - 1) * 100
+                if not math.isfinite(change):
+                    raise CommandError('Performance comparison overflowed; inspect the baseline before retrying')
                 report.metrics.update(baseline_seconds=baseline['median_seconds'],
                                       regression_percent=change, maximum_regression_percent=maximum_regression)
                 if change > maximum_regression:
                     report.add('performance-regression',
                                f'Median duration increased {change:.1f}%; budget is {maximum_regression:g}%.')
-    except (CommandError, ValueError, OSError) as exc:
+    except (CommandError, ValueError, OSError, OverflowError) as exc:
         report.add('performance-unavailable', str(exc) if isinstance(exc, CommandError)
                    else 'Cannot read or record performance evidence', severity='warning')
     record(repo, report, 'benchmark')

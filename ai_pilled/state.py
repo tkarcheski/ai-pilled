@@ -26,7 +26,10 @@ def directory(repo):
 def record(repo, report, event):
     entry = {'id': uuid.uuid4().hex, 'at': datetime.now(timezone.utc).isoformat(),
              'event': event, 'report': report.to_dict()}
-    encoded = (json.dumps(entry) + '\n').encode('utf-8')
+    try:
+        encoded = (json.dumps(entry, allow_nan=False) + '\n').encode('utf-8')
+    except ValueError as exc:
+        raise CommandError('Check records require finite JSON numbers') from exc
     if len(encoded) > MAX_HISTORY_BYTES:
         raise CommandError('Check record exceeds the local history size limit')
     path = directory(repo) / 'events.jsonl'

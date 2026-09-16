@@ -223,3 +223,15 @@ class ReportingTests(unittest.TestCase):
         record(self.repo, Report('test'), 'second')
         self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         self.assertEqual([item['event'] for item in history(self.repo)], ['first', 'second'])
+
+    def test_nonfinite_nested_metrics_cannot_corrupt_existing_history(self):
+        record(self.repo, Report('valid'), 'fixture')
+        path = self.repo / '.ai-pilled/events.jsonl'
+        before = path.read_bytes()
+        for value in (float('nan'), float('inf'), -float('inf')):
+            report = Report('invalid')
+            report.metrics = {'nested': {'values': [value]}}
+            with self.assertRaisesRegex(CommandError, 'finite JSON'):
+                record(self.repo, report, 'fixture')
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(len(history(self.repo)), 1)

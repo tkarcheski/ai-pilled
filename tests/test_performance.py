@@ -108,3 +108,64 @@ class PerformanceTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertTrue(path.is_fifo())
         command.assert_not_called()
+
+    def test_extreme_baselines_never_corrupt_history_or_change_baseline(self):
+        from ai_pilled.state import history
+        self.measure(1, save=True)
+        path = self.repo / '.ai-pilled/benchmark.json'
+        original = json.loads(path.read_text())
+        for value in (10 ** 400, 5e-324):
+            with self.subTest(value_type=type(value).__name__):
+                path.write_text(json.dumps(dict(original, median_seconds=value)))
+                before = path.read_bytes()
+                with patch('ai_pilled.performance.run') as command:
+                    result = self.measure(1)
+                self.assertEqual(result.status, 'incomplete')
+                if isinstance(value, int):
+                    command.assert_not_called()
+                self.assertEqual(path.read_bytes(), before)
+                json.dumps(result.to_dict(), allow_nan=False)
+                self.assertEqual(history(self.repo)[-1]['report']['status'], 'incomplete')
+
+    def test_invalid_timings_never_replace_saved_baseline(self):
+        from ai_pilled.state import history
+        self.measure(1, save=True)
+        path = self.repo / '.ai-pilled/benchmark.json'
+        before = path.read_bytes()
+        for duration in (0, -1, float('inf'), float('nan')):
+            with self.subTest(duration=str(duration)):
+                result = self.measure(duration, save=True)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.metrics, {})
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(history(self.repo)[-1]['report']['status'], 'incomplete')
+
+    def test_invalid_numeric_budgets_do_not_run_commands(self):
+        for value in (True, '20', 10 ** 400, float('inf')):
+            with self.subTest(value_type=type(value).__name__):
+                with patch('ai_pilled.performance.run') as command:
+                    result = benchmark(self.repo, maximum_regression=value)
+                self.assertEqual(result.status, 'incomplete')
+                command.assert_not_called()
+                json.dumps(result.to_dict(), allow_nan=False)
+
+    def test_finite_samples_with_overflowing_median_do_not_replace_baseline(self):
+        self.measure(1, save=True)
+        path = self.repo / '.ai-pilled/benchmark.json'
+        before = path.read_bytes()
+        with patch('ai_pilled.performance.time.perf_counter', side_effect=[0, 1e308, 0, 1e308]):
+            result = benchmark(self.repo, runs=2, save_baseline=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.metrics, {})
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_boolean_baseline_schema_version_is_rejected(self):
+        self.measure(1, save=True)
+        path = self.repo / '.ai-pilled/benchmark.json'
+        data = json.loads(path.read_text())
+        data['version'] = True
+        path.write_text(json.dumps(data))
+        with patch('ai_pilled.performance.run') as command:
+            result = benchmark(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        command.assert_not_called()

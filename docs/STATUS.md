@@ -391,6 +391,12 @@ two-file updates are not claimed to be fully atomic. Tests exercise second-write
 failure, edits before publication/during rollback, and lost completion after a write.
 No live release was prepared or published during this hardening work.
 
+Performance evidence rejects invalid numeric budgets, nonpositive/nonfinite timings,
+and overflowed medians or comparisons. Extreme finite baselines cannot create infinite
+report values, and failed measurements do not replace the saved baseline. History
+serialization independently rejects nonfinite numbers before opening its file, so
+invalid nested metrics cannot poison otherwise readable history.
+
 ## Known gaps and prioritized follow-ups
 
 | Priority | Follow-up | Why / completion evidence |
