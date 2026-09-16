@@ -4,6 +4,7 @@ import os
 import stat
 from pathlib import Path
 
+from .git_blobs import read_blobs
 from .runtime import CommandError, Report, run
 from .python_security import inspect_python
 from .credentials import PATTERNS
@@ -65,32 +66,37 @@ def scan(repo, scope='staged', patterns=False):
         paths = run(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], root)
         sources = [(p.decode('utf-8', errors='surrogateescape'), None)
                    for p in sorted(set(filter(None, paths.split(b'\0'))))]
+    if scope == 'staged':
+        for path, content, error in read_blobs(root, sources, MAX_FILE_BYTES):
+            scan_path(report, path)
+            if error is not None:
+                report.add('scan-incomplete', error, path=path, severity='warning')
+            else:
+                scan_bytes(report, path, content)
+                if patterns:
+                    inspect_python(report, path, content)
+        report.snapshot = digest.hexdigest()
+        return report
     for path, oid in sources:
         scan_path(report, path)
         try:
-            if oid:
-                size = int(run(['git', 'cat-file', '-s', oid], root))
-                if size > MAX_FILE_BYTES:
-                    raise CommandError('File exceeds scan size limit')
-                content = run(['git', 'cat-file', 'blob', oid], root, limit=MAX_FILE_BYTES)
-            else:
-                file = root / path
-                if file.is_symlink() or not file.resolve().is_relative_to(root.resolve()):
-                    raise CommandError('Symlink content requires a separate scan')
-                if not file.exists():
-                    digest.update(path.encode(errors='surrogateescape') + b'\0deleted\0')
-                    continue
-                fd = os.open(file, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-                with os.fdopen(fd, 'rb') as stream:
-                    mode = os.fstat(stream.fileno()).st_mode
-                    if not stat.S_ISREG(mode):
-                        raise CommandError('Only regular files can be scanned')
-                    content = stream.read(MAX_FILE_BYTES + 1)
-                if len(content) > MAX_FILE_BYTES:
-                    raise CommandError('File exceeds scan size limit')
-                digest.update(path.encode(errors='surrogateescape') + b'\0')
-                digest.update(str(stat.S_IMODE(mode)).encode() + b'\0')
-                digest.update(hashlib.sha256(content).digest())
+            file = root / path
+            if file.is_symlink() or not file.resolve().is_relative_to(root.resolve()):
+                raise CommandError('Symlink content requires a separate scan')
+            if not file.exists():
+                digest.update(path.encode(errors='surrogateescape') + b'\0deleted\0')
+                continue
+            fd = os.open(file, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+            with os.fdopen(fd, 'rb') as stream:
+                mode = os.fstat(stream.fileno()).st_mode
+                if not stat.S_ISREG(mode):
+                    raise CommandError('Only regular files can be scanned')
+                content = stream.read(MAX_FILE_BYTES + 1)
+            if len(content) > MAX_FILE_BYTES:
+                raise CommandError('File exceeds scan size limit')
+            digest.update(path.encode(errors='surrogateescape') + b'\0')
+            digest.update(str(stat.S_IMODE(mode)).encode() + b'\0')
+            digest.update(hashlib.sha256(content).digest())
             scan_bytes(report, path, content)
             if patterns:
                 inspect_python(report, path, content)

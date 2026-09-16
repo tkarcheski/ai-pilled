@@ -153,3 +153,45 @@ class SecurityTests(unittest.TestCase):
         result = json.loads(output)
         self.assertEqual(result['status'], 'incomplete')
         self.assertTrue(any('regular files' in f['message'] for f in result['findings']))
+
+
+    def test_batched_binary_blobs_preserve_findings_and_path_order(self):
+        token = ('ghp_' + 'Z' * 36).encode()
+        content = b'\x00\nnot-a-header blob 99\n' + token + b'\n'
+        self.write('empty.txt', '')
+        for name in ('a.bin', 'b.bin', 'c.bin'):
+            (self.repo / name).write_bytes(content)
+            self.git('add', '--', name)
+        with patch('ai_pilled.git_blobs.MAX_BATCH_BYTES', 160):
+            result = scan(self.repo)
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual([f.path for f in result.findings], ['a.bin', 'b.bin', 'c.bin'])
+        self.assertTrue(all(f.line == 3 for f in result.findings))
+
+    def test_oversized_blob_does_not_hide_neighboring_credentials(self):
+        self.write('a.txt', 'ordinary')
+        self.write('large.txt', 'x' * 2_000_001)
+        self.write('z.txt', 'ghp_' + 'Z' * 36)
+        result = scan(self.repo)
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual([f.rule for f in result.findings], ['scan-incomplete', 'github-token'])
+
+    def test_missing_blob_does_not_hide_other_findings(self):
+        self.write('missing.txt', 'missing blob fixture')
+        oid = self.git('rev-parse', ':missing.txt').decode().strip()
+        (self.repo / '.git' / 'objects' / oid[:2] / oid[2:]).unlink()
+        self.write('secret.txt', 'ghp_' + 'Z' * 36)
+        result = scan(self.repo)
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual([f.rule for f in result.findings], ['scan-incomplete', 'github-token'])
+
+    def test_malformed_batch_output_is_incomplete(self):
+        self.write('ordinary.txt', 'ordinary')
+        def corrupt(argv, *args, **kwargs):
+            if argv == ['git', 'cat-file', '--batch']:
+                return b'invalid header\n'
+            return run(argv, *args, **kwargs)
+        with patch('ai_pilled.git_blobs.run', side_effect=corrupt):
+            result = scan(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.findings[0].rule, 'scan-incomplete')
