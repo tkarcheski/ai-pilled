@@ -2,6 +2,9 @@
 from collections import Counter
 import html
 import json
+from pathlib import Path
+
+from .file_io import read_beneath
 
 from .runtime import CommandError
 from .credentials import redact_data
@@ -89,6 +92,7 @@ def summarize(repo):
 
 
 def dashboard(repo):
+    repo = Path(repo).resolve()
     summary = summarize(repo)
     recent = entries(repo)[-100:]
     def escape(value):
@@ -123,5 +127,8 @@ h1{font-size:32px;margin-bottom:8px}p{line-height:1.5}.muted{color:#b6c2d3}
     path = directory(repo) / 'dashboard.html'
     if path.is_symlink() or (path.exists() and not path.is_file()):
         raise CommandError('Dashboard output must be a regular file')
-    atomic_text(path, content)
+    atomic_text(path, content, root=repo)
+    encoded = content.encode('utf-8')
+    if read_beneath(repo, path.relative_to(repo), len(encoded)) != encoded:
+        raise CommandError('Dashboard changed during publication; regenerate from current evidence')
     return path

@@ -37,9 +37,11 @@ def record(repo, report, event):
         loads(encoded)
     except ValueError as exc:
         raise CommandError('Check record exceeds history JSON constraints') from exc
-    path = directory(repo) / 'events.jsonl'
+    root = Path(repo).resolve()
+    directory(root)
     flags = os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK
-    fd = os.open(path, flags, 0o600)
+    with directory_beneath(root, '.ai-pilled') as parent:
+        fd = os.open('events.jsonl', flags, 0o600, dir_fd=parent)
     with os.fdopen(fd, 'r+b') as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise CommandError('Local history must be a regular file')
@@ -91,11 +93,13 @@ def record(repo, report, event):
 
 
 def history(repo):
-    path = Path(repo) / '.ai-pilled' / 'events.jsonl'
+    root = Path(repo).resolve()
+    path = root / '.ai-pilled' / 'events.jsonl'
     if path.is_symlink() or path.parent.is_symlink():
         raise CommandError('Refusing symlink state files')
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with directory_beneath(root, '.ai-pilled') as parent:
+            fd = os.open('events.jsonl', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
     except FileNotFoundError:
         return []
     with os.fdopen(fd, 'rb') as stream:

@@ -361,3 +361,66 @@ class ReportingTests(unittest.TestCase):
             record(self.repo, Report('fourth'), 'fixture')
             self.assertLessEqual(path.stat().st_size, maximum)
             self.assertEqual([entry['report']['check'] for entry in history(self.repo)], ['third', 'fourth'])
+
+    def test_history_parent_swap_cannot_append_or_read_outside_evidence(self):
+        from ai_pilled.state import directory
+        original_symlink = Path.is_symlink
+        for operation in ('append', 'read'):
+            with self.subTest(operation=operation):
+                root = self.repo / operation
+                root.mkdir()
+                record(root, Report('inside'), 'fixture')
+                parent = root / '.ai-pilled'
+                outside = root / 'outside'
+                outside.mkdir()
+                target = outside / 'events.jsonl'
+                before = json.dumps({'at': 'now', 'report': Report('outside').to_dict()}) + '\n'
+                target.write_text(before)
+                target.chmod(0o644)
+
+                def swap(parent=parent, root=root, outside=outside):
+                    parent.rename(root / 'original')
+                    parent.symlink_to(outside, target_is_directory=True)
+
+                def after_directory(repo):
+                    result = directory(repo)
+                    swap()
+                    return result
+
+                def after_symlink_check(path, selected=parent):
+                    result = original_symlink(path)
+                    if path == selected:
+                        swap()
+                    return result
+
+                if operation == 'append':
+                    with patch('ai_pilled.state.directory', side_effect=after_directory):
+                        with self.assertRaises((CommandError, OSError)):
+                            record(root, Report('attempt'), 'fixture')
+                else:
+                    with patch.object(Path, 'is_symlink', after_symlink_check):
+                        with self.assertRaises((CommandError, OSError)):
+                            history(root)
+                self.assertEqual(target.read_text(), before)
+                self.assertEqual(target.stat().st_mode & 0o777, 0o644)
+
+    def test_dashboard_publication_parent_swap_preserves_outside_file(self):
+        original_replace = os.replace
+        record(self.repo, Report('test'), 'fixture')
+        parent = self.repo / '.ai-pilled'
+        outside = self.repo / 'outside'
+        outside.mkdir()
+        target = outside / 'dashboard.html'
+        target.write_text('outside must survive')
+
+        def swap(*args, **kwargs):
+            parent.rename(self.repo / 'original')
+            parent.symlink_to(outside, target_is_directory=True)
+            return original_replace(*args, **kwargs)
+
+        with patch('ai_pilled.state.os.replace', side_effect=swap):
+            with self.assertRaises((CommandError, OSError)):
+                dashboard(self.repo)
+        self.assertEqual(target.read_text(), 'outside must survive')
+        self.assertEqual(sorted(path.name for path in outside.iterdir()), ['dashboard.html'])
+        self.assertEqual(list((self.repo / 'original').glob('.ai-pilled-*.tmp')), [])

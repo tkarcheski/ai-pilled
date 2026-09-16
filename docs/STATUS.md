@@ -359,6 +359,12 @@ nested check/step results; a newer child result supersedes older evidence for th
 A passing parent cannot hide a failed child. Each recorded check must also agree with its own findings: error findings cannot report pass/incomplete, and warning findings cannot report pass. Malformed or contradictory evidence stops summaries, suggestions, and dashboard publication; existing dashboard output is preserved. Legacy records without finding severities remain readable only when already blocked. Raw tool transcripts are not retained in the summary/history.
 
 **Evidence:** `test_lifecycle.py`, `test_reporting.py`, and real CLI E2E checks.
+History reads and appends open the state directory through a root-relative descriptor,
+so a swapped `.ai-pilled` parent cannot redirect an append, change an outside file's
+mode, or supply outside check records. Existing lock, regular-file, hard-link, and
+size checks still apply. Dashboard temporary files and publication use the same
+root-anchored writer as README updates, followed by a bounded content recheck.
+
 The dashboard escapes content, uses a restrictive content policy, and writes private
 output atomically. Symlinks/special files cannot redirect dashboard writes.
 
