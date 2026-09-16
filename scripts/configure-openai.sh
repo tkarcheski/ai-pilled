@@ -1,28 +1,4 @@
-#!/bin/bash
-# Configure ai-pilled for OpenAI (ChatGPT, GPT-4)
-
-echo "Configuring ai-pilled for OpenAI..."
-echo ""
-echo "Setup Steps:"
-echo ""
-echo "1. Get your OpenAI API key from:"
-echo "   https://platform.openai.com/api-keys"
-echo ""
-echo "2. Set environment variable:"
-echo "   export OPENAI_API_KEY=\"sk_...\""
-echo ""
-echo "3. Add the system prompt to ChatGPT custom instructions:"
-echo "   https://platform.openai.com/account/user/settings"
-echo ""
-echo "   Copy this:"
-cat scripts/../skills/ai-pilled/SYSTEM_PROMPT.txt
-echo ""
-echo "4. Paste into the 'System prompt' section"
-echo ""
-echo "5. Enable ai-pilled:"
-echo "   export ENABLE_AI_PILLED=1"
-echo "   export LLM_PROVIDER=\"openai\""
-echo ""
-echo "6. Try it:"
-echo "   bash automation/lazy-flow.sh"
-echo ""
+#!/usr/bin/env bash
+set -euo pipefail
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec bash "$script_dir/setup.sh" "$@"

@@ -1,347 +1,107 @@
-# ai-pilled 🤖
+# ai-pilled
 
-> **Full-stack automation for engineers who hate thinking about tooling.**
->
-> Intelligent agents automatically review your code for security, validate git operations, run tests, audit dependencies, and suggest next steps. All automatic. All fast. All configurable.
+Codex-first quality checks for Git repositories. ai-pilled uses itself as its first target.
 
-## What Is This?
+The approved backlog is preserved in [docs/FEATURES.md](docs/FEATURES.md). The initial
+prototype's installation and provider claims were not reliable. The list below describes
+the running implementation, not the entire backlog.
 
-A **skill** that transforms any LLM-powered IDE into an automated code-quality machine:
+## Use it
 
-- Every file edit → Custom Security audit
-- Every commit → Code review + async test runner
-- Every push → Pre-flight validation (secrets, conventions, branch)
-- Every dependency install → Vulnerability audit
-- Every tool batch → Summarizer suggests next action
-- Session start → Load repo state
+Requires Linux, Python 3.10+, and Git. Model review additionally requires a logged-in
+Codex CLI. The Python runtime has no third-party dependencies.
 
-**Result**: You write code. Agents handle quality control. You never think about linting, testing, or conventions again.
+From this repository:
 
-## Quick Start
+~~~sh
+python -m ai_pilled scan --scope worktree
+python -m ai_pilled scan                    # reads the index, including partial staging
+python -m ai_pilled check test
+python -m ai_pilled review                  # subscription-backed, read-only staged review
+~~~
 
-### Claude Code
-```bash
-# Clone into skills directory
-git clone https://github.com/tkarcheski/ai-pilled ~/.claude/skills/ai-pilled
+Commands emit JSON. Exit codes: **0** passed, **1** found blockers, **2** incomplete or
+unable to run. Missing tools and missing configuration do not count as passing.
 
-# Or install via OpenCode
-cd /path/to/project
-opencode install ai-pilled
+Configure the target repository in .ai-pilled.json:
 
-# Then activate
-/ai-pilled
-```
-
-### Any Other LLM (Generic)
-```bash
-# Clone anywhere
-git clone https://github.com/tkarcheski/ai-pilled
-cd ai-pilled
-
-# Run setup helper
-bash scripts/setup.sh
-
-# Configure for your LLM
-export LLM_PROVIDER="openai"  # or "anthropic", "generic"
-export LLM_API_KEY="your_key_here"
-
-# Apply the ruleset manually (add to your LLM's system prompt)
-cat skills/ai-pilled/SYSTEM_PROMPT.txt
-```
-
-## Installation by Provider
-
-### Claude Code (Official)
-```bash
-# Option A: Via OpenCode
-opencode install ai-pilled
-/ai-pilled
-
-# Option B: Manual (Editable Setup)
-git clone https://github.com/tkarcheski/ai-pilled ~/.claude/skills/ai-pilled
-
-# Auto-configures ~/.claude/settings.json with hooks
-```
-
-### OpenAI (ChatGPT, GPT-4)
-```bash
-export OPENAI_API_KEY="sk_..."
-export LLM_PROVIDER="openai"
-
-# Configure your system prompt with:
-cat skills/ai-pilled/SYSTEM_PROMPT.txt
-
-# Then use in GPT with custom instructions
-```
-
-### Anthropic Console
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-export LLM_PROVIDER="anthropic-console"
-
-# Use the system prompt from:
-cat skills/ai-pilled/SYSTEM_PROMPT.txt
-```
-
-### Generic/Any Other LLM
-```bash
-export LLM_PROVIDER="generic"
-export LLM_ENDPOINT="https://your-llm-api.com/v1/messages"
-export LLM_API_KEY="your_key"
-
-# Apply system prompt to your LLM's setup
-```
-
-## Core Features
-
-### 1. **Security Auditor Agent**
-Runs on every file edit. Checks for:
-- Hardcoded secrets (AWS keys, tokens)
-- Environment variable leaks
-- Unsafe crypto/parsing patterns
-
-### 2. **Code Reviewer Agent**
-Runs on every `git commit`. Checks:
-- Commit message clarity (conventional commits)
-- Changes align with message
-- Obvious bugs or logic errors
-- Dead code or unused imports
-
-### 3. **Pre-Push Validator Agent**
-Runs on every `git push`. Validates:
-- Pushing to correct branch
-- No secrets in commits
-- Follows project conventions
-- Tests passed (if configured)
-
-### 4. **Dependency Auditor Agent**
-Runs on `npm install`, `yarn add`, etc. Audits:
-- Known vulnerabilities (CVE)
-- Outdated or security-critical updates
-- Conflicting versions
-- License compliance
-
-### 5. **Batch Summarizer Agent**
-Runs after every tool chain. Provides:
-- One-sentence summary (what just happened)
-- Any errors or warnings
-- Next logical step
-- Blocker status (proceed or wait)
-
-## Quick Commands
-
-```bash
-# Activate the skill (this session)
-/ai-pilled
-
-# Run full pipeline: lint → test → commit → push → PR
-bash ~/.claude/automation/lazy-flow.sh
-
-# Watch agents in real-time
-watch -n 1 'bash ~/.claude/automation/agent-status.sh'
-
-# Background code review
-claude --bg /code-review ultra
-
-```
-
-## Workflows
-
-### "I just edited stuff, make it production-ready"
-```bash
-# Auto-runs on save:
-# 1. Security audit
-# 2. Type check (if configured)
-# 3. Lint suggestions
-```
-
-### "Ready to commit?"
-```bash
-git commit -m "your message"
-# Auto-runs:
-# 1. Code review (message clarity, aligned changes)
-# 2. Background test runner
-```
-
-### "Ready to push?"
-```bash
-git push
-# Auto-runs:
-# 1. Pre-flight validation (branch, secrets, conventions)
-# 2. Auto-creates PR (if GitHub MCP configured)
-# 3. Posts agent review as PR comment
-```
-
-### "Should I refactor this module?"
-```bash
-# Runs 5-step audit:
-# 1. Audit requirements (owner clarity)
-# 2. Delete the part (delete 90%+)
-# 3. Simplify (optimize survivors)
-# 4. Accelerate cycle time
-# 5. Automate (last)
-```
-
-## Configuration
-
-### Claude Code
-Edit `~/.claude/settings.json`:
-```json
+~~~json
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit",
-        "hooks": [{
-          "type": "agent",
-          "prompt": "Security audit...",
-          "timeout": 15
-        }]
-      }
-    ]
-  }
+  "version": 1,
+  "commands": {
+    "test": ["python", "-m", "unittest", "discover", "-s", "tests", "-v"],
+    "lint": ["ruff", "check", "."]
+  },
+  "protected_branches": ["main", "master"],
+  "require_tests": true,
+  "timeout": 120,
+  "aggressiveness": "normal"
 }
-```
+~~~
 
-### Any Other LLM
-```bash
-# 1. Copy system prompt
-cat skills/ai-pilled/SYSTEM_PROMPT.txt
+Commands are argument arrays, never shell strings. Configure only commands you trust.
+Supported check names are test, lint, typecheck, deadcode, coverage, and dependency.
+These commands report the configured tool's result; they do not invent coverage numbers
+or dependency vulnerability data.
 
-# 2. Apply to your LLM's config/instructions
-# For OpenAI: Custom instructions
-# For Anthropic: System prompt
-# For others: Prepend to conversation
+## Install hooks
 
-# 3. Set environment
-export LLM_PROVIDER="your_provider"
-export LLM_API_KEY="your_key"
-```
+~~~sh
+python -m ai_pilled --repo /path/to/project install-git-hooks
+python -m ai_pilled --repo /path/to/project install-codex-hooks
+~~~
 
-## Customization
+Git installation refuses to replace an existing hook manager or executable hooks.
+Linked worktree installation uses worktree-specific Git configuration. Keep this source
+checkout available: generated hook commands reference its Python runtime.
 
-### Aggressiveness Levels
+Codex installation merges project-local .codex/hooks.json entries. **Review and trust
+the hooks with /hooks in Codex before expecting them to run.** Installation does not
+bypass Codex permissions or hook trust. See the
+[official hook documentation](https://learn.chatgpt.com/docs/hooks).
 
-**Lazy** (fewer checks, faster):
-```bash
-export AGGRESSIVENESS="lazy"
-```
-- Only critical security checks
-- Commit message validation only
-- No performance audits
+~~~sh
+python -m ai_pilled --repo /path/to/project uninstall-codex-hooks
+python -m ai_pilled --repo /path/to/project uninstall-git-hooks
+~~~
 
-**Normal** (default):
-```bash
-export AGGRESSIVENESS="normal"
-```
-- Full security audit
-- Code review + tests
-- Dependency checks
+Uninstall preserves unrelated hooks and refuses to erase user-modified owned hooks.
+Local reports live in .ai-pilled/; add that directory to the target's .gitignore.
 
-**Strict** (everything):
-```bash
-export AGGRESSIVENESS="strict"
-```
-- Full security audit
-- Code review + tests + coverage
-- Dependency audits + licenses
-- Performance regressions
+## What runs today
 
-### Enable GitHub Integration
-```bash
-export GITHUB_TOKEN="ghp_your_token"
-export ENABLE_GITHUB_INTEGRATION=true
-# Agents auto-create PRs and post reviews
-```
+| Trigger | Behavior |
+| --- | --- |
+| Git pre-commit | Scan the exact staged blobs for recognizable credential patterns |
+| Git commit-msg | Validate conventional subject format and a 72-character limit |
+| Git pre-push | Protect destination branches, scan outgoing commit snapshots, run required tests |
+| Codex session start | Load branch and working-tree status |
+| Codex post-tool | Scan working-tree credentials and report findings |
+| Codex stop | Run configured tests; request one repair pass if they fail |
+| Explicit review | Ask Codex to review the staged diff with a strict result schema |
 
-### Enable Slack Notifications
-```bash
-export SLACK_WEBHOOK="https://hooks.slack.com/..."
-export ENABLE_SLACK_NOTIFICATIONS=true
-# Agent findings post to Slack
-```
+Pre-push tests require a clean working tree and the pushed commit checked out at HEAD.
+A secret removed in a later outgoing commit is still caught. More than 2,000 outgoing
+commits requires a smaller audited range. Files larger than 2 MB produce an incomplete
+scan, not a clean bill of health.
 
-## Default Automations
+Credential matching is a limited deterministic check, not a complete security audit.
+Semantic code review is currently explicit; automatic model review on every commit,
+dependency-provider adapters, coverage thresholds, performance baselines, release
+workflows, notifications, and other backlog items are still being implemented.
+The aggressiveness setting is validated but does not yet select different pipelines.
+Claude Code, OpenCode, and Pi integrations are not verified.
 
-### Tier 1: Merge Requests 
-1. Dead code detector
-2. Type safety verifier
-3. Dependency health checker
-4. Commit message validator
-5. Branch protector
+## Development
 
-### Tier 2: Nightly/Release
-6. Test coverage auditor
-7. Performance regression detector
-8. Bundle size watcher
-9. Changelog auto-generator
-10. README updater
+~~~sh
+PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -v
+python -m ai_pilled check test
+~~~
 
-### Tier 3: Weekly/Planning
-11. Full audit workflow (parallel agents)
-12. PR-ready checker
-13. Release flow automation
-14. Refactor flow (simplify → fix → test)
+Tests exercise actual commits and pushes against disposable repositories, isolate inherited
+Git environment variables, and use a fake Codex executable for deterministic provider failure
+tests. Live Codex validation is reported separately; a fake-provider test is not proof of
+account access or model quality.
 
-### Tier 4: Instant Integrations
-15. Slack notifications
-16. Linear ticket creation
-17. GitHub auto-comments
-18. Email digests
-19. Metrics dashboards
-
-### Roadmap Experimental Features
-20. Semantic release (auto-version)
-21. Trunk-based dev (auto-merge)
-22. AI bug bounty (find issues)
-23. Nightly refactoring
-24. Self-healing (auto-revert breaks)
-
-## Agent Feature Comparison: Provider Support (PENDING VERIFICATION)
-
-| Feature | Claude Code | OpenAI | OpenCode | Pi-Code-Agent |
-|---------|------------|--------|-----------|---------|
-| Security audits |  |  |  |  |
-| Code reviews |  |  |  |  |
-| Git validation |  |  |  |  |
-| Auto hooks |  |  |  |  |
-| GitHub integration |  |  |  |  |
-| Slack notifications |  |  |  |  |
-| Background agents |  |  |  |  |
-| Status line |  |  |  |  |
-
-## FAQ: How Disable (OR PAUSE) Everything
-
-```bash
-# Temporary (this session)
-export CLAUDE_CODE_DISABLE_HOOKS=1
-claude
-
-# Permanent (any provider)
-unset ENABLE_AI_PILLED
-# Remove system prompt from your LLM config
-```
-
-## Philosophy
-
-> **Ship better code faster, by not thinking about tooling.**
-
-You write code. The machine validates quality. You never manually run linters, write tests, or think about conventions.
-
-**Result**: Every commit has been reviewed. Every push validated. Every file audited for security. All automatic.
-
-## Support
-
-- **Claude Code users**: See `skills/ai-pilled/SKILL.md`
-- **OpenCode users**: See `opencode.json` and `skills/ai-pilled/SYSTEM_PROMPT.txt`
-- **Generic LLM users**: See `scripts/setup.sh` and `skills/ai-pilled/PROMPTS.json`
-- **Ideas to add**: See `automation/README.md`
-- **Command reference**: See `automation/QUICK-REF.md`
-
-## License
-
-MIT — Use freely, modify, share.
-
----
-
-**You are now full AI-pilled.** Enjoy your lazy engineering life. 🚀
+MIT license.
