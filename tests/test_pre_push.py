@@ -60,12 +60,18 @@ class PrePushTests(unittest.TestCase):
         result = self.git('push', 'origin', 'HEAD:main', success=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b'protected-branch', result.stdout + result.stderr)
+        self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote),
+                                                'for-each-ref']), b'')
 
     def test_failed_tests_block_actual_push(self):
         self.configure(1)
         self.commit()
         install(self.repo)
-        self.assertNotEqual(self.git('push', 'origin', 'HEAD:feature', success=False).returncode, 0)
+        result = self.git('push', 'origin', 'HEAD:feature', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'command-failed', result.stdout + result.stderr)
+        self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote),
+                                                'for-each-ref']), b'')
 
     def test_secret_removed_in_later_commit_still_blocks(self):
         (self.repo / 'credential').write_text('ghp_' + 'A' * 36)
