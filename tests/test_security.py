@@ -89,6 +89,17 @@ class SecurityTests(unittest.TestCase):
         with self.assertRaises(CommandError):
             run([sys.executable, '-c', 'print("x" * 100)'], self.repo, limit=10)
 
+    def test_stderr_output_limit(self):
+        with self.assertRaises(CommandError):
+            run([sys.executable, '-c', 'import sys; sys.stderr.write("x" * 1000)'],
+                self.repo, limit=100)
 
-if __name__ == '__main__':
-    unittest.main()
+    def test_limit_stops_writer_before_process_finishes(self):
+        import time
+        started = time.monotonic()
+        with self.assertRaises(CommandError) as error:
+            run([sys.executable, '-c',
+                 'import sys,time; sys.stderr.write("x" * 10000); sys.stderr.flush(); time.sleep(5)'],
+                self.repo, timeout=4, limit=100)
+        self.assertIn('output exceeded', str(error.exception))
+        self.assertLess(time.monotonic() - started, 2)

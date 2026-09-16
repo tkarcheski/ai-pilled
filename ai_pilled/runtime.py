@@ -3,6 +3,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import os
 import signal
+import selectors
+import time
 import subprocess
 import tempfile
 
@@ -39,28 +41,55 @@ class CommandError(RuntimeError):
 
 
 def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None):
-    """Never invoke a shell; kill the process group on timeout; cap captured data."""
-    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr, tempfile.TemporaryFile() as input_stream:
+    """Bound stdout + stderr while running and kill descendants on failure."""
+    if timeout <= 0 or limit < 0:
+        raise ValueError('timeout must be positive and limit nonnegative')
+    with tempfile.TemporaryFile() as input_stream:
         if input_data is not None:
             input_stream.write(input_data)
             input_stream.seek(0)
         try:
-            child = subprocess.Popen(argv, cwd=cwd, stdout=stdout, stderr=stderr,
-                                     stdin=input_stream if input_data is not None else subprocess.DEVNULL,
-                                     start_new_session=True, env=env)
+            child = subprocess.Popen(
+                argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                stdin=input_stream if input_data is not None else subprocess.DEVNULL,
+                start_new_session=True, env=env)
         except OSError as exc:
             raise CommandError(f'Cannot start {Path(argv[0]).name}: {exc.strerror}') from exc
+        deadline = time.monotonic() + timeout
+        captured = bytearray()
+        total = 0
         try:
-            code = child.wait(timeout=timeout)
-        except subprocess.TimeoutExpired as exc:
-            os.killpg(child.pid, signal.SIGKILL)
+            with selectors.DefaultSelector() as selector:
+                selector.register(child.stdout, selectors.EVENT_READ, 'stdout')
+                selector.register(child.stderr, selectors.EVENT_READ, 'stderr')
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise CommandError(f'{Path(argv[0]).name} exceeded {timeout}s')
+                    for key, _ in selector.select(min(remaining, 0.1)):
+                        chunk = os.read(key.fileobj.fileno(), 65536)
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                            continue
+                        total += len(chunk)
+                        if total > limit:
+                            raise CommandError(f'{Path(argv[0]).name} output exceeded {limit} bytes')
+                        if key.data == 'stdout':
+                            captured.extend(chunk)
+                try:
+                    code = child.wait(timeout=max(0.001, deadline - time.monotonic()))
+                except subprocess.TimeoutExpired as exc:
+                    raise CommandError(f'{Path(argv[0]).name} exceeded {timeout}s') from exc
+                if code:
+                    raise CommandError(f'{Path(argv[0]).name} exited with status {code}')
+                return bytes(captured)
+        except BaseException:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             child.wait()
-            raise CommandError(f'{Path(argv[0]).name} exceeded {timeout}s') from exc
-        size = stdout.tell()
-        if size > limit:
-            raise CommandError(f'{Path(argv[0]).name} output exceeded {limit} bytes')
-        if code:
-            # Tool output may contain source, credentials, URLs, or environment values.
-            raise CommandError(f'{Path(argv[0]).name} exited with status {code}')
-        stdout.seek(0)
-        return stdout.read()
+            raise
+        finally:
+            child.stdout.close()
+            child.stderr.close()
