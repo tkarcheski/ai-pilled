@@ -135,7 +135,11 @@ write failure, uncertain completion, and symlink targets on Python 3.10 and 3.14
 **Activation / limits:** Git commit/push scanning is active here. Codex hook files
 are installed, but live trust/activation has not been verified. A manual lifecycle
 smoke test passed. AST checks are conservative Python patterns, not whole-program
-analysis; other languages currently receive credential checks. An after-tool hook
+analysis; other languages currently receive credential checks. Literal `**{...}` keyword
+mappings are inspected for TLS, shell, YAML-loader, and hash settings, including nested
+mappings and later-key overrides. Opaque keyword expansions at those security-sensitive
+calls report incomplete evidence; they are never evaluated to discover runtime values.
+Dictionary overwrite semantics follow the [Python language reference](https://docs.python.org/3.10/reference/expressions.html#dictionary-displays). An after-tool hook
 can report a problem but cannot undo an already completed edit or external action.
 
 **Remaining acceptance:** verify actual Codex lifecycle delivery in a trusted project;

@@ -372,3 +372,58 @@ class PythonPatternTests(unittest.TestCase):
                 self.assertEqual(self.inspect(source).status, 'fail')
         safe = 'import logging, os\nlogging.getLogger().info(os.getenv("HOME"))'
         self.assertEqual(self.inspect(safe).status, 'pass')
+
+    def test_literal_keyword_mappings_cannot_hide_security_flags(self):
+        cases = (
+            ('import requests as http\nhttp.get(url, **{"verify": False})', 'tls-verification-disabled'),
+            ('import requests\nrequests.Session().get(url, **{"verify": 0})', 'tls-verification-disabled'),
+            ('import httpx\nhttpx.Client(**{"verify": False})', 'tls-verification-disabled'),
+            ('import subprocess as sp\nsp.run(command, **{"shell": True})', 'shell-execution'),
+            ('import yaml\nyaml.load(data, **{"Loader": yaml.UnsafeLoader})', 'unsafe-yaml'),
+            ('import hashlib\nhashlib.new(**{"name": "md5"})', 'weak-hash-review'))
+        for source, rule in cases:
+            with self.subTest(rule=rule):
+                self.assertEqual([f.rule for f in self.inspect(source).findings], [rule])
+
+    def test_literal_keyword_mappings_respect_dictionary_override_order(self):
+        for mapping in ('{"verify": True, "verify": False}',
+                        '{**{"verify": True}, **{"verify": False}}',
+                        '{**{**{"verify": False}}}',
+                        '{"verify": True, **{"verify": False}, "timeout": 5}'):
+            with self.subTest(mapping=mapping):
+                result = self.inspect('import requests\nrequests.get(url, **' + mapping + ')')
+                self.assertEqual([f.rule for f in result.findings], ['tls-verification-disabled'])
+        for mapping in ('{"verify": False, "verify": True}',
+                        '{**{"verify": False}, **{"verify": True}}'):
+            with self.subTest(mapping=mapping):
+                self.assertFalse(self.inspect('import requests\nrequests.get(url, **' + mapping + ')').findings)
+
+    def test_safe_expanded_settings_and_unrelated_calls_remain_allowed(self):
+        for source in ('import yaml\nyaml.load(data, **{"Loader": yaml.SafeLoader})',
+                       'import subprocess\nsubprocess.run(args, **{"shell": False})',
+                       'import hashlib\nhashlib.new(**{"name": "md5", "usedforsecurity": False})',
+                       'import requests\nrequests.get(url, **{})',
+                       'custom.get(url, **options)',
+                       'from . import requests\nrequests.get(url, **options)'):
+            with self.subTest(source=source):
+                self.assertFalse(self.inspect(source).findings)
+
+    def test_unresolved_expanded_security_settings_report_incomplete_evidence(self):
+        for source in ('import requests\nrequests.get(url, **options)',
+                       'import requests\nrequests.get(url, **{key: value})',
+                       'import requests\nrequests.get(url, **{"verify": True, **options})',
+                       'import subprocess\nsubprocess.Popen(command, **options)',
+                       'import hashlib\nhashlib.new(**options)',
+                       'import yaml\nyaml.load(data, **{"Loader": yaml.SafeLoader, **options})'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual([f.rule for f in result.findings], ['python-keywords-unresolved'])
+
+    def test_expanded_environment_lookup_keywords_keep_leak_checks(self):
+        for expression in ('os.getenv(**{"key": "TOKEN"})',
+                           'os.getenv(**{"key": "HOME", "default": os.environ})',
+                           'os.getenv(**{**{"key": "HOME"}, "key": "API_KEY"})'):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.inspect('import os\nprint(' + expression + ')').status, 'fail')
+        self.assertFalse(self.inspect('import os\nprint(os.getenv(**{"key": "HOME"}))').findings)

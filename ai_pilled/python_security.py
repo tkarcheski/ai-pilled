@@ -12,6 +12,11 @@ IMPLICIT_SHELL_CALLS = {'os.system', 'os.popen', 'subprocess.getoutput',
                         'subprocess.getstatusoutput', 'asyncio.create_subprocess_shell',
                         'asyncio.subprocess.create_subprocess_shell'}
 
+SHELL_KEYWORD_CALLS = {'subprocess.run', 'subprocess.Popen', 'subprocess.call',
+                       'subprocess.check_call', 'subprocess.check_output'}
+KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | SHELL_KEYWORD_CALLS | {
+    'yaml.load', 'yaml.load_all', 'hashlib.new', 'hashlib.md5', 'hashlib.sha1'}
+
 SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
                      'yaml.loader.SafeLoader', 'yaml.cyaml.CSafeLoader'}
 
@@ -92,6 +97,29 @@ def import_scopes(tree):
                 bindings[scope].setdefault(name, set()).add(target)
         pending.extend((child, scope) for child in ast.iter_child_nodes(node))
     return scopes, bindings, parents
+
+
+def call_keywords(node):
+    """Expand literal mappings without evaluating source; preserve unknown entries."""
+    result = []
+    for keyword in node.keywords:
+        if keyword.arg is not None or not isinstance(keyword.value, ast.Dict):
+            result.append(keyword)
+            continue
+        values = {}
+        unknown = []
+        pending = list(reversed(list(zip(keyword.value.keys, keyword.value.values, strict=True))))
+        while pending:
+            key, value = pending.pop()
+            if key is None and isinstance(value, ast.Dict):
+                pending.extend(reversed(list(zip(value.keys, value.values, strict=True))))
+            elif isinstance(key, ast.Constant) and isinstance(key.value, str):
+                values[key.value] = value
+            else:
+                unknown.append(ast.keyword(arg=None, value=value))
+        result.extend(ast.keyword(arg=key, value=value) for key, value in values.items())
+        result.extend(unknown)
+    return result
 
 
 def inspect_python(report, path, content):
@@ -181,12 +209,13 @@ def inspect_python(report, path, content):
                                      for method in ('copy', 'items', 'values')):
                     return 'environment-dump'
                 if function in ('os.getenv', 'os.getenvb', 'os.environ.get', 'os.environb.get'):
+                    lookup_keywords = call_keywords(value)
                     key = value.args[0] if value.args else next(
-                        (keyword.value for keyword in value.keywords if keyword.arg == 'key'), None)
+                        (keyword.value for keyword in lookup_keywords if keyword.arg == 'key'), None)
                     if credential_key(key):
                         return 'environment-secret-log'
                     pending.extend(value.args[1:])
-                    pending.extend(keyword.value for keyword in value.keywords if keyword.arg == 'default')
+                    pending.extend(keyword.value for keyword in lookup_keywords if keyword.arg == 'default')
                 literal_format = (isinstance(value.func, ast.Attribute)
                                   and isinstance(value.func.value, ast.Constant)
                                   and isinstance(value.func.value.value, str)
@@ -207,9 +236,14 @@ def inspect_python(report, path, content):
                 name = 'requests.' + node.func.attr
             elif constructor in ('pickle.Unpickler', '_pickle.Unpickler', 'dill.Unpickler') and node.func.attr == 'load':
                 name = 'pickle.load'
+        keywords = call_keywords(node)
+        if name in KEYWORD_SECURITY_CALLS and any(keyword.arg is None for keyword in keywords):
+            report.add('python-keywords-unresolved',
+                       'Expanded keyword settings cannot be fully inspected; make security options explicit.',
+                       path=path, line=node.lineno, severity='warning')
         if name == 'hashlib.new':
             algorithm = node.args[0] if node.args else next(
-                (keyword.value for keyword in node.keywords if keyword.arg == 'name'), None)
+                (keyword.value for keyword in keywords if keyword.arg == 'name'), None)
             if (isinstance(algorithm, ast.Constant) and isinstance(algorithm.value, str)
                     and algorithm.value.lower() in ('md5', 'sha1')):
                 name = 'hashlib.' + algorithm.value.lower()
@@ -225,7 +259,7 @@ def inspect_python(report, path, content):
                 k.arg == 'verify' and isinstance(k.value, ast.Constant)
                 and (k.value.value is False or name.startswith('requests.')
                      and k.value.value is not None and not k.value.value)
-                for k in node.keywords):
+                for k in keywords):
             rule, message = 'tls-verification-disabled', (
                 'TLS certificate verification is disabled; use verified defaults or a trusted CA bundle.')
         elif name == 'ssl._create_unverified_context':
@@ -234,19 +268,18 @@ def inspect_python(report, path, content):
         elif name in ('yaml.unsafe_load', 'yaml.unsafe_load_all'):
             rule, message = 'unsafe-yaml', 'Use safe_load or safe_load_all for untrusted YAML.'
         elif name in ('yaml.load', 'yaml.load_all'):
-            loader = next((k.value for k in node.keywords if k.arg == 'Loader'), None)
+            loader = next((k.value for k in keywords if k.arg == 'Loader'), None)
             if loader is None and len(node.args) > 1:
                 loader = node.args[1]
             if qualified(loader, SAFE_YAML_LOADERS) not in SAFE_YAML_LOADERS:
                 rule, message = 'unsafe-yaml', 'Use safe_load or an explicit SafeLoader for untrusted YAML.'
-        elif name in IMPLICIT_SHELL_CALLS or (name in ('subprocess.run', 'subprocess.Popen', 'subprocess.call',
-                                             'subprocess.check_call', 'subprocess.check_output') and
+        elif name in IMPLICIT_SHELL_CALLS or (name in SHELL_KEYWORD_CALLS and
                                      any(k.arg == 'shell' and isinstance(k.value, ast.Constant)
-                                         and bool(k.value.value) for k in node.keywords)):
+                                         and bool(k.value.value) for k in keywords)):
             rule, message = 'shell-execution', 'Shell execution requires review; prefer argument arrays without shell=True.'
         elif (name in ('print', 'builtins.print') or log_method in
               ('debug', 'info', 'warning', 'error', 'critical', 'exception', 'log')):
-            rule = next((found for arg in [*node.args, *(keyword.value for keyword in node.keywords)]
+            rule = next((found for arg in [*node.args, *(keyword.value for keyword in keywords)]
                          if (found := environment_dump(arg))), None)
             if rule == 'environment-dump':
                 message = 'Do not log the complete environment; it can contain credentials.'
@@ -254,7 +287,7 @@ def inspect_python(report, path, content):
                 message = 'Do not log credential-named environment values; redact them before logging.'
         elif name in ('hashlib.md5', 'hashlib.sha1'):
             if not any(k.arg == 'usedforsecurity' and isinstance(k.value, ast.Constant)
-                       and k.value.value is False for k in node.keywords):
+                       and k.value.value is False for k in keywords):
                 rule, message = 'weak-hash-review', 'Confirm this weak hash is not used for security-sensitive decisions.'
                 severity = 'info'
         if rule:
