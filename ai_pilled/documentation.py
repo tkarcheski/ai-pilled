@@ -23,6 +23,17 @@ def replace_block(original, block):
     return original[:start] + block + original[end + len(END):]
 
 
+def readme_snapshot(path):
+    try:
+        content = read_regular(path, 2_000_000)
+    except FileNotFoundError:
+        return None, None
+    metadata = path.lstat()
+    identity = (metadata.st_dev, metadata.st_ino, metadata.st_size,
+                metadata.st_mtime_ns, metadata.st_ctime_ns, metadata.st_mode)
+    return content, identity
+
+
 def update_readme(repo, name='README.md', check=False):
     report = Report('readme-reference')
     try:
@@ -41,10 +52,8 @@ def update_readme(repo, name='README.md', check=False):
                            'Configuration is not proof that checks passed; use quality to run them.', '',
                            '~~~text', help_text, '~~~', END))
         path = local_path(repo, name)
-        try:
-            original = read_regular(path, 2_000_000).decode('utf-8')
-        except FileNotFoundError:
-            original = ''
+        content, identity = readme_snapshot(path)
+        original = content.decode('utf-8') if content is not None else ''
         rendered = replace_block(original, block)
         report.snapshot = hashlib.sha256(rendered.encode()).hexdigest()
         changed = rendered != original
@@ -52,8 +61,13 @@ def update_readme(repo, name='README.md', check=False):
         if check and changed:
             report.add('readme-outdated', 'Regenerate the ai-pilled command reference.', path=name)
         elif changed:
-            mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
-            atomic_text(path, rendered, mode)
+            mode = identity[-1] & 0o777 if identity is not None else 0o644
+
+            def guard():
+                if readme_snapshot(path) != (content, identity):
+                    raise CommandError('README changed concurrently; rerun after reviewing those edits')
+
+            atomic_text(path, rendered, mode, before_publish=guard)
     except (CommandError, ConfigError, OSError, UnicodeError) as exc:
         report.add('readme-update-unavailable', str(exc) if isinstance(exc, (CommandError, ConfigError))
                    else 'Cannot read or update README', severity='warning')

@@ -72,3 +72,73 @@ class DocumentationTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertTrue(self.path.is_symlink())
         self.assertEqual(target.read_text(), 'private unrelated content')
+
+    def test_concurrent_prose_edit_is_preserved_and_can_be_retried(self):
+        from ai_pilled.state import atomic_text
+        self.path.write_text('# Original prose\n')
+
+        def concurrent(path, text, mode, **options):
+            path.write_text('# Concurrent user edit\n')
+            return atomic_text(path, text, mode, **options)
+
+        with patch('ai_pilled.documentation.atomic_text', side_effect=concurrent):
+            result = update_readme(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('concurrently', result.findings[0].message)
+        self.assertEqual(self.path.read_text(), '# Concurrent user edit\n')
+        self.assertEqual(update_readme(self.repo).status, 'pass')
+        self.assertTrue(self.path.read_text().startswith('# Concurrent user edit\n'))
+
+    def test_concurrent_creation_and_deletion_are_preserved(self):
+        from ai_pilled.state import atomic_text
+        for initially_present in (False, True):
+            with self.subTest(initially_present=initially_present):
+                self.path.unlink(missing_ok=True)
+                if initially_present:
+                    self.path.write_text('# Original\n')
+
+                def concurrent(path, text, mode, *, present=initially_present, **options):
+                    if present:
+                        path.unlink()
+                    else:
+                        path.write_text('')
+                    return atomic_text(path, text, mode, **options)
+
+                with patch('ai_pilled.documentation.atomic_text', side_effect=concurrent):
+                    result = update_readme(self.repo)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(self.path.exists(), not initially_present)
+                if not initially_present:
+                    self.assertEqual(self.path.read_text(), '')
+
+    def test_concurrent_symlink_replacement_preserves_target(self):
+        from ai_pilled.state import atomic_text
+        self.path.write_text('# Original\n')
+        target = self.repo / 'user.md'
+        target.write_text('# Private unrelated prose\n')
+
+        def concurrent(path, text, mode, **options):
+            path.unlink()
+            path.symlink_to(target)
+            return atomic_text(path, text, mode, **options)
+
+        with patch('ai_pilled.documentation.atomic_text', side_effect=concurrent):
+            result = update_readme(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertTrue(self.path.is_symlink())
+        self.assertEqual(target.read_text(), '# Private unrelated prose\n')
+
+    def test_concurrent_permission_change_is_preserved(self):
+        from ai_pilled.state import atomic_text
+        self.path.write_text('# Original\n')
+        self.path.chmod(0o644)
+
+        def concurrent(path, text, mode, **options):
+            path.chmod(0o600)
+            return atomic_text(path, text, mode, **options)
+
+        with patch('ai_pilled.documentation.atomic_text', side_effect=concurrent):
+            result = update_readme(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(self.path.read_text(), '# Original\n')
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
