@@ -37,10 +37,17 @@ def blob_findings(repo, oid, path, patterns, cache):
 def scan_revision(repo, revision, patterns=False, cache=None):
     report = Report('history-security', snapshot=revision)
     cache = {} if cache is None else cache
-    metadata = run(['git', 'log', '-1', '--format=%B%x00%an <%ae>%n%cn <%ce>', revision], repo, limit=64_000)
-    message, _, identity = metadata.partition(b'\0')
+    metadata = run(['git', 'cat-file', 'commit', revision], repo, limit=128_000)
+    headers, separator, message = metadata.partition(b'\n\n')
+    if not separator:
+        raise CommandError('Cannot read complete commit metadata')
+    identity: list[bytes] = []
+    other: list[bytes] = []
+    for line in headers.splitlines():
+        (identity if line.startswith((b'author ', b'committer ')) else other).append(line)
     scan_text(report, '(commit message)', message.decode('latin-1'))
-    scan_text(report, '(commit identity)', identity.decode('latin-1'))
+    scan_text(report, '(commit identity)', b'\n'.join(identity).decode('latin-1'))
+    scan_text(report, '(commit headers)', b'\n'.join(other).decode('latin-1'))
     records = run(['git', 'ls-tree', '-rz', '--full-tree', revision], repo).split(b'\0')
     for record in filter(None, records):
         metadata, raw_path = record.split(b'\t', 1)

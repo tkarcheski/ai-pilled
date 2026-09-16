@@ -222,3 +222,16 @@ class PrePushTests(unittest.TestCase):
         self.git('tag', '-a', 'v1.0.0', '-m', 'Release annotation')
         oid = self.git('rev-parse', 'refs/tags/v1.0.0').stdout.decode().strip()
         self.assertEqual(pre_push(self.repo, f'tag {oid} refs/tags/v1.0.0 {"0" * 40}\n').status, 'pass')
+
+
+    def test_additional_commit_headers_are_scanned(self):
+        token = 'ghp_' + 'Z' * 36
+        original = self.git('cat-file', 'commit', 'HEAD').stdout
+        content = original.replace(b'\n\n', b'\nx-ai-pilled ' + token.encode() + b'\n\n', 1)
+        written = subprocess.run(['git', 'hash-object', '-t', 'commit', '-w', '--stdin'],
+                                 cwd=self.repo, input=content, capture_output=True, check=True)
+        self.git('update-ref', 'HEAD', written.stdout.decode().strip())
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.path == '(commit headers)' for f in result.findings))
+        self.assertNotIn(token, json.dumps(result.to_dict()))
