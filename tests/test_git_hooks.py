@@ -165,3 +165,32 @@ class GitHookTests(unittest.TestCase):
             'review_on_commit': True, 'codex_executable': str(provider)}))
         self.git('add', '.ai-pilled.json')
         self.git('commit', '-m', 'feat: reviewed change')
+
+
+    def test_forged_checksums_cannot_authorize_deleting_user_hooks(self):
+        import hashlib
+        import json
+        install(self.repo)
+        manifest = self.repo / '.ai-pilled' / 'installation.json'
+        hook = self.repo / '.ai-pilled' / 'hooks' / 'pre-commit'
+        hook.write_text('#!/bin/sh\n# Replacement user hook\nexit 0\n')
+        data = json.loads(manifest.read_text())
+        data['hashes']['pre-commit'] = hashlib.sha256(hook.read_bytes()).hexdigest()
+        manifest.write_text(json.dumps(data))
+        for operation in (uninstall, install):
+            with self.assertRaises(CommandError):
+                operation(self.repo)
+        self.assertIn('Replacement user hook', hook.read_text())
+        self.assertEqual(self.git('config', '--get', 'core.hooksPath').stdout.decode().strip(), str(hook.parent))
+
+    def test_manifest_cannot_restore_an_unrelated_hook_manager(self):
+        import json
+        install(self.repo)
+        manifest = self.repo / '.ai-pilled' / 'installation.json'
+        data = json.loads(manifest.read_text())
+        data['previous'] = 'unrelated-hooks'
+        manifest.write_text(json.dumps(data))
+        with self.assertRaises(CommandError):
+            uninstall(self.repo)
+        self.assertNotEqual(self.git('config', '--get', 'core.hooksPath').stdout.strip(), b'unrelated-hooks')
+        self.assertTrue((self.repo / '.ai-pilled' / 'hooks' / 'pre-commit').exists())

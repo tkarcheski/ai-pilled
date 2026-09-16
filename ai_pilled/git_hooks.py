@@ -55,6 +55,15 @@ def hook_config_scope(repo):
     return '--worktree'
 
 
+def hook_contents(repo):
+    source = str(Path(__file__).resolve().parent.parent)
+    return {event: ('#!/bin/sh\n# Managed by ai-pilled.\n'
+                   f'PYTHONDONTWRITEBYTECODE=1 PYTHONPATH={shlex.quote(source)} '
+                   f'exec {shlex.quote(sys.executable)} -m ai_pilled '
+                   f'--repo {shlex.quote(str(repo))} hook {event} "$@"\n')
+            for event in ('pre-commit', 'commit-msg', 'pre-push')}
+
+
 def install(repo):
     repo = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
     directory = repo / '.ai-pilled' / 'hooks'
@@ -83,14 +92,9 @@ def install(repo):
         if directory.exists():
             raise CommandError('Unmanaged .ai-pilled/hooks directory already exists')
     installed = read_manifest(manifest, directory) if manifest.exists() else None
-    source = str(Path(__file__).resolve().parent.parent)
-    contents = {}
+    contents = hook_contents(repo)
     hashes = {}
-    for event in ('pre-commit', 'commit-msg', 'pre-push'):
-        content = ('#!/bin/sh\n# Managed by ai-pilled.\n'
-                   f'PYTHONDONTWRITEBYTECODE=1 PYTHONPATH={shlex.quote(source)} '
-                   f'exec {shlex.quote(sys.executable)} -m ai_pilled '
-                   f'--repo {shlex.quote(str(repo))} hook {event} "$@"\n')
+    for event, content in contents.items():
         path = directory / event
         if path.is_symlink():
             raise CommandError('Refusing to replace a symlink hook')
@@ -98,7 +102,6 @@ def install(repo):
             raise CommandError('Existing hook differs from generated content; preserve and reconcile manually')
         if path.exists() and not os.access(path, os.X_OK):
             raise CommandError('Installed hook is no longer executable; reconcile manually')
-        contents[event] = content
         hashes[event] = hashlib.sha256(content.encode()).hexdigest()
     if installed:
         if installed['scope'] != scope or installed['hashes'] != hashes:
@@ -143,6 +146,10 @@ def read_manifest(manifest, expected):
     if (not isinstance(hashes, dict) or set(hashes) != {'pre-commit', 'commit-msg', 'pre-push'}
             or any(not isinstance(h, str) or not re.fullmatch('[0-9a-f]{64}', h) for h in hashes.values())):
         raise CommandError('Invalid installation hook checksums')
+    expected_hashes = {name: hashlib.sha256(content.encode()).hexdigest()
+                       for name, content in hook_contents(expected.parent.parent).items()}
+    if hashes != expected_hashes or data['previous'] not in (None, str(expected)):
+        raise CommandError('Manifest does not match owned hooks; preserve and reconcile manually')
     return data
 
 
