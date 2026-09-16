@@ -256,3 +256,9 @@ class PythonPatternTests(unittest.TestCase):
                        'import os\nprint(os.environb.get(b"HOME"))'):
             with self.subTest(source=source):
                 self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_qualified_builtin_print_and_aliases_cannot_hide_environment_leaks(self):
+        for source in ('import builtins, os\nbuiltins.print(os.environ)',
+                       'from builtins import print as emit\nimport os\nemit(os.getenv("TOKEN"))'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'fail')

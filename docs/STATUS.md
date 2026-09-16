@@ -12,6 +12,12 @@ staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
 scope. GitLab pipelines are **planned and deferred at the user's request**.
 
+Python-literal credential inspection adds mandatory parsing to secret scans. Dogfooding
+caught a performance-budget failure: 0.272 seconds median versus the unchanged
+0.166-second baseline (64.1% increase; 20% budget). Profiling attributes the extra
+work to parsing/traversing Python source. Security coverage is retained; performance
+acceptance remains open, and the saved baseline has not been raised.
+
 ## What the statuses mean
 
 - **Implemented / tested:** code exists and named tests exercise it. Provider fixtures
@@ -46,7 +52,11 @@ private-key block redaction still precedes individual quoted-string handling.
 This is direct string-escape handling, not arbitrary encoding or runtime data-flow analysis.
 PyPI publishing tokens follow the provider’s documented prefix and minimum
 payload length; the shared pattern also redacts reports/history and blocks credential-like
-package identities before registry queries. Strict Python AST checks flag environment dumps, unsafe parsing, shell
+package identities before registry queries. Python string/byte constants are parsed without
+execution, including adjacent literals and Python escapes; findings cite the start of
+the source literal. Unparseable Python yields incomplete evidence. Runtime string
+computations and arbitrary encodings are not evaluated. History caches separate
+Python interpretation from identical non-Python blobs. Strict Python AST checks flag environment dumps, unsafe parsing, shell
 execution (including implicit shell APIs and literal truthy shell flags), unsafe YAML
 single/multiple-document loaders, weak cryptographic patterns, and explicit TLS-verification bypasses in
 Requests/HTTPX APIs or the unverified SSL context factory, including import aliases.

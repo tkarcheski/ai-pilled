@@ -1,4 +1,5 @@
 """Deterministic secret checks; semantic vulnerability review is a separate check."""
+import ast
 import hashlib
 import os
 import stat
@@ -46,6 +47,28 @@ def scan_bytes(report, path, content):
     else:
         text = content.decode('latin-1')
     scan_text(report, path, text)
+    if path.endswith('.py'):
+        try:
+            tree = ast.parse(content, filename=path)
+        except (SyntaxError, ValueError, RecursionError):
+            report.add('python-literals-unparsed', 'Python string literals could not be inspected by this interpreter.',
+                       path=path, severity='warning')
+            return
+        seen = {(finding.rule, finding.path, finding.line) for finding in report.findings}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, (str, bytes)):
+                continue
+            value = node.value.decode('latin-1') if isinstance(node.value, bytes) else node.value
+            if len(value) < 20:  # Shortest recognizable credential is an AWS access-key ID.
+                continue
+            decoded = Report('literal-security')
+            scan_text(decoded, path, value)
+            for finding in decoded.findings:
+                key = (finding.rule, path, node.lineno)
+                if key not in seen:
+                    report.add(finding.rule, 'Potential credential in a Python literal; remove and rotate if genuine.',
+                               path=path, line=node.lineno, severity=finding.severity)
+                    seen.add(key)
 
 
 def scan(repo, scope='staged', patterns=False):

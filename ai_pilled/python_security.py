@@ -205,7 +205,7 @@ def inspect_python(report, path, content):
                                      any(k.arg == 'shell' and isinstance(k.value, ast.Constant)
                                          and bool(k.value.value) for k in node.keywords)):
             rule, message = 'shell-execution', 'Shell execution requires review; prefer argument arrays without shell=True.'
-        elif (name == 'print' or name.rsplit('.', 1)[-1] in
+        elif (name in ('print', 'builtins.print') or name.rsplit('.', 1)[-1] in
               ('debug', 'info', 'warning', 'error', 'critical', 'exception', 'log')):
             rule = next((found for arg in [*node.args, *(keyword.value for keyword in node.keywords)]
                          if (found := environment_dump(arg))), None)

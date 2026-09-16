@@ -304,3 +304,43 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(result.status, 'fail')
         self.assertTrue(any(f.path == 'credential.txt' for f in result.findings))
         self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_python_adjacent_and_escaped_literals_are_credentials_without_pattern_opt_in(self):
+        token = 'ghp_' + 'A' * 36
+        forms = ["'ghp_' '" + 'A' * 36 + "'",
+                 "b'ghp_' b'" + 'A' * 36 + "'",
+                 "'" + ''.join('\\x%02x' % ord(char) for char in token) + "'",
+                 "('ghp_'\n '" + 'A' * 36 + "')"]
+        for literal in forms:
+            with self.subTest(literal=literal):
+                self.write('literal.py', 'value = ' + literal + '\n')
+                for scope in ('staged', 'worktree'):
+                    result = scan(self.repo, scope)
+                    self.assertEqual([(f.rule, f.line) for f in result.findings], [('github-token', 1)])
+                    self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_python_literal_scanning_never_executes_code(self):
+        self.write('literal.py', 'raise RuntimeError("must not run")\nvalue = "ordinary"\n')
+        self.assertEqual(scan(self.repo).status, 'pass')
+        self.write('literal.py', 'value = "ghp_" + "A" * 36\n')
+        self.assertEqual(scan(self.repo).status, 'pass')
+        self.write('literal.py', 'def broken(')
+        self.assertEqual(scan(self.repo).status, 'incomplete')
+
+    def test_raw_python_literal_findings_are_not_duplicated(self):
+        self.write('literal.py', 'value = ' + repr('ghp_' + 'A' * 36))
+        self.assertEqual(len(scan(self.repo).findings), 1)
+
+    def test_history_cache_separates_python_literals_from_identical_text_blobs(self):
+        from ai_pilled.pre_push import scan_revision
+        source = "value = 'ghp_' '" + 'A' * 36 + "'\n"
+        self.write('a.txt', source)
+        self.write('z.py', source)
+        self.git('config', 'user.name', 'Test')
+        self.git('config', 'user.email', 'test@example.invalid')
+        self.git('commit', '-qm', 'test: literal fixture')
+        cache = {}
+        result = scan_revision(self.repo, 'HEAD', cache=cache)
+        self.assertEqual([(f.rule, f.path) for f in result.findings], [('github-token', 'z.py')])
+        self.assertEqual(scan_revision(self.repo, 'HEAD', cache=cache).to_dict(), result.to_dict())
+        self.assertNotIn('A' * 36, repr(cache))

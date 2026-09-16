@@ -100,6 +100,8 @@ class EndToEndTests(unittest.TestCase):
                  'import subprocess\nsubprocess.run(["echo", value], check=True)\n', b'shell-execution'),
                 ('import yaml\nyaml.unsafe_load(data)\n',
                  'import yaml\nyaml.safe_load(data)\n', b'unsafe-yaml'),
+                ("value = 'ghp_' '" + 'A' * 36 + "'\n",
+                 'value = "ordinary"\n', b'github-token'),
                 ('from os import getenv\nprint(getenv("API_KEY"))\n',
                  'from os import getenv\nprint(getenv("HOME"))\n', b'environment-secret-log')):
             (self.repo / 'example.py').write_text(source)

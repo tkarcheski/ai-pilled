@@ -16,7 +16,7 @@ MAX_REMOTE_REFS = 2000
 
 
 def blob_findings(repo, oid, path, patterns, cache):
-    key = (oid, patterns and path.endswith('.py'))
+    key = (oid, path.endswith('.py'), patterns)
     if key in cache:
         return cache[key]
     result = Report('blob-security')
@@ -24,7 +24,7 @@ def blob_findings(repo, oid, path, patterns, cache):
         if int(run(['git', 'cat-file', '-s', oid], repo)) > MAX_FILE_BYTES:
             raise CommandError('File exceeds scan size limit')
         content = run(['git', 'cat-file', 'blob', oid], repo, limit=MAX_FILE_BYTES)
-        scan_bytes(result, '', content)
+        scan_bytes(result, path, content)
         if patterns:
             inspect_python(result, path, content)
     except CommandError as exc:
