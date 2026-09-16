@@ -56,7 +56,7 @@ class ReportingTests(unittest.TestCase):
         outside = self.repo / 'keep'
         outside.write_text('untouched')
         (self.repo / '.ai-pilled' / 'dashboard.html').symlink_to(outside)
-        with self.assertRaises(OSError):
+        with self.assertRaises(CommandError):
             dashboard(self.repo)
         self.assertEqual(outside.read_text(), 'untouched')
 
@@ -114,3 +114,27 @@ class ReportingTests(unittest.TestCase):
             '"status":"pass","findings":[],"metrics":{"nested":' + nested + '}}}\n')
         with self.assertRaises(CommandError):
             summarize(self.repo)
+
+    def test_dashboard_replacement_preserves_other_hard_links(self):
+        import os
+        record(self.repo, Report('test'), 'test')
+        outside = self.repo / 'keep'
+        outside.write_text('untouched')
+        path = self.repo / '.ai-pilled' / 'dashboard.html'
+        os.link(outside, path)
+        dashboard(self.repo)
+        self.assertEqual(outside.read_text(), 'untouched')
+        self.assertIn('<!doctype html>', path.read_text())
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_dashboard_rejects_named_pipe_without_waiting(self):
+        import os
+        import subprocess
+        import sys
+        record(self.repo, Report('test'), 'test')
+        os.mkfifo(self.repo / '.ai-pilled' / 'dashboard.html')
+        result = subprocess.run([sys.executable, '-m', 'ai_pilled', '--repo', str(self.repo),
+                                 'dashboard'], capture_output=True, text=True,
+                                cwd=Path(__file__).resolve().parents[1], timeout=3)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('regular file', result.stdout)

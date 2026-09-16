@@ -2,11 +2,10 @@
 from collections import Counter
 import html
 import json
-import os
 
 from .runtime import CommandError
 from .credentials import redact_data
-from .state import directory, history
+from .state import atomic_text, directory, history
 
 STATUSES = ('pass', 'fail', 'incomplete')
 
@@ -82,7 +81,7 @@ h1{font-size:32px;margin-bottom:8px}p{line-height:1.5}.muted{color:#b6c2d3}
         '<div class="table"><table><thead><tr><th>Recorded</th><th>Check</th><th>Result</th><th>Measurements</th><th>Findings</th>'
         '</tr></thead><tbody>' + ''.join(rows) + '</tbody></table></div></html>')
     path = directory(repo) / 'dashboard.html'
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'w') as stream:
-        stream.write(content)
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise CommandError('Dashboard output must be a regular file')
+    atomic_text(path, content)
     return path
