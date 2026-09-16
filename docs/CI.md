@@ -94,7 +94,7 @@ their recorded snapshots, not every later commit.
 
 Once a credential with the necessary workflow capability is available, publish the
 reviewed workflow through the normal Git process and inspect both matrix jobs. Confirm
-that all seven gates and five E2E scenarios ran, download the four evidence files,
+that all seven gates and all E2E scenarios ran, download the four evidence files,
 and test a deliberately failing proposal in a disposable branch. Configure required
 hosted checks separately if desired. Local hooks and successful YAML parsing do not
 establish server branch protection or remote pipeline success.

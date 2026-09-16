@@ -198,3 +198,34 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self.cli('bundle', '--path', '.ai-pilled/artifact.bin', '--maximum', '3')['status'], 'pass')
         self.assertEqual(self.cli('bundle', '--path', '.ai-pilled/artifact.bin', '--maximum', '2', codes=(1,))['status'], 'fail')
         self.assertTrue({'coverage-budget', 'bundle-budget'} <= set(self.cli('summary')['unresolved']))
+
+    def test_entrypoints_and_dynamic_options_block_then_allow_corrected_push(self):
+        self.git('commit', '-m', 'feat: establish security fixture')
+        original_head = self.git('rev-parse', 'HEAD')
+        header = '#!/usr/bin/env python3\n'
+        secret = 'ghp_' + 'A' * 36
+        cases = (
+            ('entrypoint', header + 'token = ' + repr('ghp_') + ' ' + repr('A' * 36),
+             header + 'print("safe")', b'github-token'),
+            ('shell-tool', header + 'import subprocess\nsubprocess.run(command, shell=enabled)',
+             header + 'import subprocess\nsubprocess.run(["echo", "safe"], check=True)', b'shell-option-unresolved'),
+            ('transport.py', 'import httpx\nhttpx.Client(verify=context)',
+             'import httpx\nhttpx.Client(verify=True)', b'tls-option-unresolved'),
+            ('window.pyw', 'import pickle\npickle.loads(data)',
+             'import json\njson.loads(data)', b'unsafe-deserialization'),
+        )
+        for name, unsafe, corrected, rule in cases:
+            with self.subTest(name=name):
+                (self.repo / name).write_text(unsafe)
+                self.git('add', name)
+                (self.repo / name).write_text(corrected)
+                output = self.git('commit', '-m', 'feat: reject unsafe staged entrypoint', codes=(1,))
+                self.assertIn(rule, output)
+                self.assertNotIn(secret.encode(), output)
+                self.assertEqual(self.git('rev-parse', 'HEAD'), original_head)
+                self.git('add', name)
+        self.git('commit', '-m', 'fix: resolve entrypoint security findings')
+        corrected_head = self.git('rev-parse', 'HEAD').strip()
+        self.assertNotEqual(corrected_head, original_head.strip())
+        self.git('push', 'origin', 'HEAD:refs/heads/feature')
+        self.assertEqual(self.git('ls-remote', 'origin', 'refs/heads/feature').split()[0], corrected_head)

@@ -364,7 +364,7 @@ that local run, not a latency guarantee for future snapshots or larger repositor
 
 ## CI and end-to-end evidence
 
-`python scripts/run_e2e.py` runs five multi-step scenarios through the real CLI:
+`python scripts/run_e2e.py` runs six multi-step scenarios through the real CLI:
 
 1. Install hooks, commit, push to a local bare remote, consume lifecycle events,
    summarize results, and generate the offline dashboard.
@@ -378,7 +378,11 @@ that local run, not a latency guarantee for future snapshots or larger repositor
    providers without credentials, and enforce coverage/artifact budgets through the CLI.
    Confirm HEAD, tags, working files, and remote refs remain unchanged by previews.
 
-All five passed on Python 3.10 and 3.14. The runner produces private
+6. Block staged extensionless/Windows Python entrypoints and dynamic shell/TLS
+   settings despite clean worktree copies, then commit and push the staged fixes
+   to a local bare remote; verify its exact HEAD.
+
+All six passed on Python 3.10 and 3.14. The runner produces private
 `.ai-pilled/e2e.json` and `.ai-pilled/e2e.xml` with every test outcome. Exported artifacts
 contain named outcomes rather than raw process transcripts. The E2E repository uses
 small configured lint/type/deadcode/coverage fixture commands; the actual development
