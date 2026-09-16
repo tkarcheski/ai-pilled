@@ -4,7 +4,7 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `c44572a`: 367 discovered tests, a shared
+The verification baseline is `a70e381`: 370 tests passed on Python 3.10 and 3.14, a shared
 four-scenario end-to-end runner, and seven configured quality gates. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -216,7 +216,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `915696c`; publication blocked | Both-runtime quality/E2E evidence, fresh3.10 environments, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `6983aae`; publication blocked | Current 3.10 seven-gate/E2E evidence, 91.20% coverage, hash-enforced development bootstrap, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Refactor and healing policy comparisons use bounded regular-file reads; generated
@@ -237,6 +237,7 @@ return incomplete without running refactor or replacing the original file.
 | Done | Isolate disposable operations from inherited Git routing | Reproduced a refactor credential-export bypass and healing candidate misrouting. Candidate scans/quality now isolate routing; real fixtures verify rejection and preservation of original HEAD/index/worktree. Model review already strips Git variables from its subprocess environment. |
 | Done | Product-generated follow-up suggestions | `suggest` prioritizes recorded failures and missing configuration, labels historical evidence, and gives explicit next check commands. It performs no checks or external actions; eight targeted tests cover ordering, nested evidence, redaction, and safe integration follow-ups. |
 | Done | Support SHA256 requirement exports | Exact pins with repeated hashes and bounded continuations; malformed syntax, split credentials, and changed hashes are covered. No setup code runs. Other lock formats and conditional dependency resolution remain outside scope. |
+| P2 | Hash-pin the audit tool’s transitive dependencies | Development pins are hash-verified; the separate pip-audit environment still resolves its own dependencies. Pin the closure and verify fresh installs on both supported runtimes before claiming a locked toolchain. |
 | P2 | Verify live Codex lifecycle and dashboard appearance | Demonstrate actual events and visual output in the allowed environment; installed files/unit tests are insufficient activation evidence. |
 | P3 | Hosted provider acceptance | Explicit target and authorization before real notifications, release publication, merging, or rollback; capture provider IDs/results once exercised. |
 | Deferred | GitLab, prerelease policy, package publishing, external bounty workflow | Keep planned until their scope and target are selected; do not present fixture coverage as live completion. |

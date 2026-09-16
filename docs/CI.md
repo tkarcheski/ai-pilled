@@ -1,14 +1,15 @@
 # Continuous integration and local parity
 
 The GitHub workflow is prepared on the local `codex/ai-pilled-ci-pending` branch,
-at `915696c`, including implementation baseline `74ef957`. Inspect its exact file:
+at `6983aae`, including implementation baseline `a70e381`. Inspect its exact file:
 
 ```sh
 git show codex/ai-pilled-ci-pending:.github/workflows/quality.yml
 ```
 
-Publication was attempted with the normal pre-push hook enabled. Local validation
-passed; GitHub rejected the OAuth login because it lacks `workflow` scope. There is
+Publication of the earlier `915696c` proposal was attempted with the normal pre-push
+hook enabled. Local validation passed; GitHub rejected the OAuth login because it lacks
+`workflow` scope. The refreshed proposal remains local; unchanged credentials were not retried. There is
 no hosted run or uploaded artifact to report. The separate visible Projects checkout
 `ai-pilled-ci` contains the prepared branch and private local evidence. Normal feature
 commits remain independently publishable on `codex/ai-pilled-implementation`.
@@ -26,10 +27,9 @@ The jobs create isolated development and pip-audit environments. Development too
 come from `requirements-dev.txt`; the separate audit tool is pinned to pip-audit 2.10.1.
 Installation permits wheels only. Runtime ai-pilled remains standard-library based.
 The audit tool's transitive installation dependencies are resolver-selected; this is
-not a claim of a fully hash-locked CI toolchain. The current primary branch adds
-a ten-package wheel hash lock verified in fresh Python 3.10 and 3.14 environments.
-The prepared CI snapshot at `915696c` predates that lock; merge current source before
-publication when credentials permit. The reproduction command below uses the current lock.
+not a claim of a fully hash-locked CI toolchain. The prepared workflow now enforces
+`--require-hashes` for the ten development packages. Fresh Python 3.10 and 3.14 installs
+verified their wheel hashes and passed `pip check`.
 
 Each job runs the seven-gate quality profile and the shared real CLI/Git E2E scenarios.
 An offline registry, missing tool, failed test, incomplete check, or malformed result
@@ -83,10 +83,12 @@ coverage; the dedicated E2E invocation additionally exports JSON/JUnit evidence.
 Fixtures use local bare remotes and controlled registry responses. The quality audit
 separately contacts PyPI for the actual selected development pins.
 
-Fresh Python 3.10 tool environments passed all seven gates and the four E2E scenarios.
-The same shared scenarios and quality profile passed with Python 3.14. The retained
-pre-ancestry-fix local CI coverage artifact measured 2,702 of 2,967 lines (91.07%).
-That measurement belongs to its recorded snapshot, not every later commit.
+At prepared snapshot `6983aae`, Python 3.10 passed all seven gates and the four E2E
+scenarios, with fresh coverage of 2,869 of 3,146 lines (91.20%). Its implementation
+baseline `a70e381` passed all 370 tests on both Python 3.10 and 3.14, and the primary
+branch passed the stronger staged quality profile on 3.14. The E2E scenario now also
+rejects a staged TLS bypass hidden by an unstaged fix. These measurements belong to
+their recorded snapshots, not every later commit.
 
 ## Hosted acceptance still required
 
