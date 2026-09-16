@@ -26,8 +26,9 @@ Run `python -m ai_pilled review-checks` to check the exact index in a disposable
 copy. It always requires tests, lint, type checking, dead-code checks, and coverage,
 even with a lazy profile. Missing commands are incomplete. Staged configuration is
 used; unstaged source and fixes cannot make a staged defect pass. Source executables
-come from that copy; untracked local tool installations may be reused from the original
-checkout. Changes made by checks invalidate the result. Configured commands must be
+come from that copy; ignored, untracked local tool installations may be reused from the original
+checkout. An executable tracked in HEAD cannot be borrowed after its staged deletion.
+Changes made by checks invalidate the result. Configured commands must be
 trusted: this disposable copy is not an operating-system security sandbox.
 
 `review --comprehensive` requires those checks to pass before invoking the model and

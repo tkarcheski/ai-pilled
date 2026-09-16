@@ -63,6 +63,7 @@ class StagedReviewTests(unittest.TestCase):
         self.assertEqual(review_checks(self.repo).status, 'fail')
 
     def test_untracked_tool_fallback_and_git_routing_isolation(self):
+        (self.repo / '.git/info/exclude').write_text('.ai-pilled/\n')
         tools = self.repo / '.ai-pilled/tools'
         tools.mkdir(parents=True)
         exe = tools / 'check'
@@ -114,3 +115,18 @@ class StagedReviewTests(unittest.TestCase):
         result.snapshot = 'different'
         with patch('ai_pilled.staged_review.review', return_value=result):
             self.assertEqual(review_checks(self.repo, model=True).status, 'incomplete')
+
+    def test_deleted_executable_cannot_be_borrowed_from_worktree(self):
+        self.git('config', 'user.name', 'Test')
+        self.git('config', 'user.email', 'test@example.invalid')
+        script = self.repo / 'check'
+        script.write_text(f'#!{sys.executable}\npass\n')
+        script.chmod(0o755)
+        self.commands['test'] = ['./check']
+        self.configure()
+        self.git('add', 'check')
+        self.git('commit', '-qm', 'test: track script')
+        self.git('rm', '--cached', 'check')
+        (self.repo / '.git/info/exclude').write_text('check\n')
+        self.assertTrue(script.exists())
+        self.assertEqual(review_checks(self.repo).status, 'incomplete')

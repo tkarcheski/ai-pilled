@@ -32,5 +32,10 @@ def resolve_executable(repo, executable, executable_root=None):
         original = Path(executable_root) / executable
         if (not (Path(repo) / executable).exists() and original.is_file()
                 and not run(['git', 'ls-files', '--', executable], executable_root)):
+            if not run(['git', 'check-ignore', '--', executable], executable_root, acceptable_codes=(0, 1)):
+                return executable
+            head = run(['git', 'rev-parse', '--verify', '--quiet', 'HEAD'], executable_root, acceptable_codes=(0, 1))
+            if head and run(['git', 'ls-tree', '--name-only', 'HEAD', '--', executable], executable_root):
+                return executable
             return str(original.absolute())
     return executable
