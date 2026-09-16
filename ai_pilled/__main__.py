@@ -25,6 +25,7 @@ from .notifications import notify
 from .full_audit import full_audit
 from .healing import heal
 from .merging import auto_merge
+from .publishing import publish_release
 
 
 def build_parser():
@@ -60,6 +61,12 @@ def build_parser():
     prepare = commands.add_parser('prepare-release', help='Validate readiness and write VERSION/CHANGELOG.md')
     prepare.add_argument('--current', required=True)
     prepare.add_argument('--since')
+    publishing = commands.add_parser('publish-release', help='Verify an existing release tag; publish only with --publish')
+    publishing.add_argument('--github-repo', required=True)
+    publishing.add_argument('--tag', required=True)
+    publishing.add_argument('--expected-head', required=True)
+    publishing.add_argument('--publish', action='store_true')
+    publishing.add_argument('--gh', default='gh')
     readme = commands.add_parser('update-readme', help='Refresh a generated README command reference')
     readme.add_argument('--path', default='README.md')
     readme.add_argument('--check', action='store_true')
@@ -122,6 +129,8 @@ def main(argv=None):
                             issue=args.issue, team=args.team, sender=args.sender, recipient=args.recipient)
         elif args.command == 'refactor':
             report = refactor(args.repo)
+        elif args.command == 'publish-release':
+            report = publish_release(args.repo, args.github_repo, args.tag, args.expected_head, args.publish, args.gh)
         elif args.command == 'prepare-release':
             report = prepare_release(args.repo, args.current, args.since)
         elif args.command == 'release-plan':

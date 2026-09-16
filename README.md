@@ -51,6 +51,25 @@ The benchmark command uses a separate commands.benchmark argument array.
 These commands report the configured tool's result; they do not invent coverage numbers
 or dependency vulnerability data.
 
+## Publish verified release metadata
+
+After preparing and committing VERSION/CHANGELOG.md, create and push the intended tag
+through your normal Git review process. Run publish-release with --github-repo OWNER/REPO,
+--tag vMAJOR.MINOR.PATCH, and --expected-head FULL-COMMIT-SHA to preview publication.
+It requires a clean committed checkout, matching VERSION, one exact changelog section,
+passing quality gates, and local and remote tags resolving to the same selected commit.
+The preview reads GitHub but does not create a release.
+
+Only --publish creates the public GitHub release. Notes are scanned for recognizable
+credentials and passed through standard input. Tags are never created or moved by this
+command; --verify-tag prevents implicit tag creation. The resulting tag, notes, and
+published state are checked, and ambiguous outcomes require inspection before retrying.
+This publishes release notes, not package-registry artifacts. GitHub.com and stable
+versions are supported. --gh selects an installed GitHub CLI. See the
+[official release creation reference](https://cli.github.com/manual/gh_release_create).
+Tests use real disposable Git repositories and fake GitHub responses; no real release
+has been published as part of implementation.
+
 ## GitHub auto-merge (experimental)
 
 Use auto-merge with --github-repo OWNER/REPO, --pr NUMBER, --base BRANCH, and
@@ -393,10 +412,10 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
@@ -408,6 +427,7 @@ positional arguments:
     licenses            Match lockfile licenses against an explicit allowlist
     release-plan        Generate changelog and semantic-version proposal
     prepare-release     Validate readiness and write VERSION/CHANGELOG.md
+    publish-release     Verify an existing release tag; publish only with --publish
     update-readme       Refresh a generated README command reference
     refactor            Run configured refactor steps in a disposable clone and export a
                         patch
