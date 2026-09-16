@@ -213,6 +213,7 @@ def inspect_python(report, path, content):
             if (isinstance(algorithm, ast.Constant) and isinstance(algorithm.value, str)
                     and algorithm.value.lower() in ('md5', 'sha1')):
                 name = 'hashlib.' + algorithm.value.lower()
+        log_method = node.func.attr if isinstance(node.func, ast.Attribute) else name.rsplit('.', 1)[-1]
         rule = message = None
         severity = 'error'
         if name in ('eval', 'exec', 'builtins.eval', 'builtins.exec'):
@@ -243,7 +244,7 @@ def inspect_python(report, path, content):
                                      any(k.arg == 'shell' and isinstance(k.value, ast.Constant)
                                          and bool(k.value.value) for k in node.keywords)):
             rule, message = 'shell-execution', 'Shell execution requires review; prefer argument arrays without shell=True.'
-        elif (name in ('print', 'builtins.print') or name.rsplit('.', 1)[-1] in
+        elif (name in ('print', 'builtins.print') or log_method in
               ('debug', 'info', 'warning', 'error', 'critical', 'exception', 'log')):
             rule = next((found for arg in [*node.args, *(keyword.value for keyword in node.keywords)]
                          if (found := environment_dump(arg))), None)

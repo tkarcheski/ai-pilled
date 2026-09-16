@@ -362,3 +362,13 @@ class PythonPatternTests(unittest.TestCase):
         result = self.inspect(template.format(fallback='Loader'))
         self.assertEqual(result.status, 'fail')
         self.assertIn('unsafe-yaml', [finding.rule for finding in result.findings])
+
+    def test_logger_factories_and_parameters_cannot_hide_environment_leaks(self):
+        for source in ('import logging, os\nlogging.getLogger(__name__).info(os.environ)',
+                       'import logging, os\nlogging.getLogger().warning(os.getenv("TOKEN"))',
+                       'import os\ndef emit(logger):\n logger.info(os.getenv("API_KEY"))',
+                       'import logging, os\nlogging.LoggerAdapter(logger, {}).debug(os.environb)'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'fail')
+        safe = 'import logging, os\nlogging.getLogger().info(os.getenv("HOME"))'
+        self.assertEqual(self.inspect(safe).status, 'pass')
