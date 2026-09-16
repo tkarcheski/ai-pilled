@@ -40,7 +40,7 @@ class CommandError(RuntimeError):
     pass
 
 
-def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None):
+def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, acceptable_codes=(0,)):
     """Bound stdout + stderr while running and kill descendants on failure."""
     if timeout <= 0 or limit < 0:
         raise ValueError('timeout must be positive and limit nonnegative')
@@ -80,7 +80,7 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None):
                     code = child.wait(timeout=max(0.001, deadline - time.monotonic()))
                 except subprocess.TimeoutExpired as exc:
                     raise CommandError(f'{Path(argv[0]).name} exceeded {timeout}s') from exc
-                if code:
+                if code not in acceptable_codes:
                     raise CommandError(f'{Path(argv[0]).name} exited with status {code}')
                 return bytes(captured)
         except BaseException:

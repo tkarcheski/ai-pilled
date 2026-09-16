@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 
 from . import codex_hooks
+from .dependencies import audit
 from .codex_review import review
 from .lifecycle import handle, read_payload
 from .checks import command_check
@@ -23,6 +24,8 @@ def main(argv=None):
     check.add_argument('name', choices=['test', 'lint', 'typecheck', 'deadcode', 'coverage', 'dependency'])
     review_parser = commands.add_parser('review', help='Review the staged snapshot with Codex')
     review_parser.add_argument('--codex', default='codex', help='Codex executable path or command name')
+    dependency = commands.add_parser('dependency-audit', help='Audit npm lockfile vulnerabilities')
+    dependency.add_argument('--npm', default='npm', help='npm executable path or command name')
     commands.add_parser('lifecycle')
     commands.add_parser('install-codex-hooks')
     commands.add_parser('uninstall-codex-hooks')
@@ -38,6 +41,8 @@ def main(argv=None):
             return 0
         if args.command == 'review':
             report = review(args.repo, args.codex)
+        elif args.command == 'dependency-audit':
+            report = audit(args.repo, args.npm)
         elif args.command == 'install-codex-hooks':
             report = codex_hooks.install(args.repo)
         elif args.command == 'uninstall-codex-hooks':

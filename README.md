@@ -16,6 +16,7 @@ From this repository:
 ~~~sh
 python -m ai_pilled scan --scope worktree
 python -m ai_pilled scan                    # reads the index, including partial staging
+python -m ai_pilled dependency-audit        # npm lockfile vulnerability report
 python -m ai_pilled check test
 python -m ai_pilled review                  # subscription-backed, read-only staged review
 ~~~
@@ -48,6 +49,20 @@ Commands are argument arrays, never shell strings. Configure only commands you t
 Supported check names are test, lint, typecheck, deadcode, coverage, and dependency.
 These commands report the configured tool's result; they do not invent coverage numbers
 or dependency vulnerability data.
+
+## Dependency vulnerabilities
+
+Run `dependency-audit` in an npm project with package.json and a lockfile. It parses
+npm audit v2 JSON, reports affected packages and fix availability, and invalidates
+results if dependency inputs change during the audit. It includes development,
+optional, and peer dependencies. Use `--npm /path/to/npm` to select the executable.
+
+This command contacts your configured npm registry with dependency metadata, as
+[documented by npm](https://docs.npmjs.com/cli/v11/commands/npm-audit/). It does not
+install packages, run lifecycle scripts, or apply fixes. Registry errors and missing
+lockfiles produce incomplete results. This checks known vulnerabilities only;
+license policy, outdated packages, version conflicts, other package managers, and
+automatic install-event auditing are separate pending features.
 
 ## Install hooks
 
@@ -92,7 +107,7 @@ scan, not a clean bill of health.
 
 Credential matching is a limited deterministic check, not a complete security audit.
 Semantic code review is currently explicit; automatic model review on every commit,
-dependency-provider adapters, coverage thresholds, performance baselines, release
+coverage thresholds, performance baselines, release
 workflows, notifications, and other backlog items are still being implemented.
 The aggressiveness setting is validated but does not yet select different pipelines.
 Claude Code, OpenCode, and Pi integrations are not verified.
