@@ -110,8 +110,27 @@ Credential matching is a limited deterministic check, not a complete security au
 Semantic code review is currently explicit; automatic model review on every commit,
 release
 workflows, notifications, and other backlog items are still being implemented.
-The aggressiveness setting is validated but does not yet select different pipelines.
 Claude Code, OpenCode, and Pi integrations are not verified.
+
+## Quality profiles and local PR readiness
+
+~~~sh
+python -m ai_pilled quality
+python -m ai_pilled ready
+~~~
+
+Both commands run the configured aggressiveness profile and return individual check
+results plus an aggregate status. lazy runs credential scanning and required/configured
+tests. normal also runs configured lint, typecheck, deadcode, coverage, and dependency
+commands; with an npm lockfile and no custom dependency command, it uses the npm
+auditor. strict additionally requires explicit lint, typecheck, deadcode, coverage,
+and test commands. Missing required commands remain incomplete.
+
+Checks run sequentially because project commands can share build artifacts. A
+credential failure stops command execution. A changed source snapshot or HEAD during
+checks invalidates the result. ready additionally requires a clean committed feature
+branch, excluding protected branches and detached HEAD. It does not open a PR, attest
+to remote CI, or automatically perform model review.
 
 ## Coverage and artifact budgets
 

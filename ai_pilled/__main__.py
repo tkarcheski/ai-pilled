@@ -16,6 +16,7 @@ from .reporting import dashboard, summarize
 from .state import record
 from .metrics import bundle, coverage
 from .performance import benchmark
+from .pipeline import quality
 
 
 def main(argv=None):
@@ -40,6 +41,8 @@ def main(argv=None):
     performance.add_argument('--runs', type=int, default=3)
     performance.add_argument('--maximum-regression', type=float, default=20)
     performance.add_argument('--save-baseline', action='store_true')
+    commands.add_parser('quality', help='Run the configured quality profile')
+    commands.add_parser('ready', help='Validate a clean proposal branch and its quality checks')
     commands.add_parser('summary', help='Summarize recorded checks and next steps')
     commands.add_parser('dashboard', help='Build an offline check-history dashboard')
     commands.add_parser('lifecycle')
@@ -63,6 +66,8 @@ def main(argv=None):
             return 0
         if args.command == 'review':
             report = review(args.repo, args.codex)
+        elif args.command in ('quality', 'ready'):
+            report = quality(args.repo, ready=args.command == 'ready')
         elif args.command == 'benchmark':
             report = benchmark(args.repo, args.runs, args.maximum_regression, args.save_baseline)
         elif args.command == 'coverage':
