@@ -145,7 +145,7 @@ class DocumentationTests(unittest.TestCase):
 
     def test_file_changed_during_snapshot_read_is_preserved(self):
         from contextlib import contextmanager
-        from ai_pilled.file_io import open_regular
+        from ai_pilled.file_io import open_beneath
         self.path.write_text('# Original\n')
 
         class ChangingReader:
@@ -161,12 +161,80 @@ class DocumentationTests(unittest.TestCase):
                 return content
 
         @contextmanager
-        def changing(path):
-            with open_regular(path) as stream:
-                yield ChangingReader(stream, path)
+        def changing(root, path):
+            with open_beneath(root, path) as stream:
+                yield ChangingReader(stream, root / path)
 
-        with patch('ai_pilled.file_io.open_regular', side_effect=changing):
+        with patch('ai_pilled.file_io.open_beneath', side_effect=changing):
             result = update_readme(self.repo)
         self.assertEqual(result.status, 'incomplete')
         self.assertIn('changed while reading', result.findings[0].message)
         self.assertEqual(self.path.read_text(), '# Edited during read\n')
+
+    def test_nested_readme_creation_and_update_preserve_prose(self):
+        result = update_readme(self.repo, 'docs/nested/README.md')
+        self.assertEqual(result.status, 'pass')
+        path = self.repo / 'docs/nested/README.md'
+        path.write_text('# Handwritten\n' + path.read_text())
+        self.assertEqual(update_readme(self.repo, 'docs/nested/README.md').metrics['changed'], 0)
+        self.assertTrue(path.read_text().startswith('# Handwritten\n'))
+        self.assertEqual(list(path.parent.glob('.ai-pilled-*.tmp')), [])
+
+    def test_parent_swaps_cannot_redirect_readme_reads_or_writes(self):
+        import os
+        from ai_pilled.documentation import local_path
+        from ai_pilled.state import atomic_text
+        original_replace = os.replace
+        for moment in ('before-read', 'before-temporary', 'before-rename'):
+            with self.subTest(moment=moment):
+                root = self.repo / moment
+                root.mkdir()
+                parent = root / 'docs'
+                parent.mkdir()
+                (parent / 'README.md').write_text('# Original\n')
+                outside = root / 'outside'
+                outside.mkdir()
+                target = outside / 'README.md'
+                target.write_text('# Outside must survive\n')
+
+                def swap(parent=parent, root=root, outside=outside):
+                    parent.rename(root / 'original')
+                    parent.symlink_to(outside, target_is_directory=True)
+
+                def after_path(*args):
+                    path = local_path(*args)
+                    swap()
+                    return path
+
+                def before_temporary(*args, **kwargs):
+                    swap()
+                    return atomic_text(*args, **kwargs)
+
+                def before_rename(*args, **kwargs):
+                    swap()
+                    return original_replace(*args, **kwargs)
+
+                target_name, replacement = {
+                    'before-read': ('ai_pilled.documentation.local_path', after_path),
+                    'before-temporary': ('ai_pilled.documentation.atomic_text', before_temporary),
+                    'before-rename': ('ai_pilled.state.os.replace', before_rename),
+                }[moment]
+                with patch(target_name, side_effect=replacement):
+                    result = update_readme(root, 'docs/README.md')
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(target.read_text(), '# Outside must survive\n')
+                self.assertEqual(sorted(p.name for p in outside.iterdir()), ['README.md'])
+                self.assertEqual(sorted(p.name for p in (root / 'original').iterdir()), ['README.md'])
+
+    def test_confined_exclusive_publication_preserves_existing_file_and_cleans_temporary(self):
+        from ai_pilled.state import atomic_text
+        self.path.write_text('# Existing\n')
+        with self.assertRaises(FileExistsError):
+            atomic_text(self.path, '# Replacement\n', root=self.repo, exclusive=True)
+        self.assertEqual(self.path.read_text(), '# Existing\n')
+        self.assertEqual(list(self.repo.glob('.ai-pilled-*.tmp')), [])
+        created = self.repo / 'new.md'
+        identity = atomic_text(created, 'new', root=self.repo, exclusive=True)
+        self.assertEqual(identity, (created.stat().st_dev, created.stat().st_ino))
+        self.assertEqual(created.read_text(), 'new')
+        self.assertEqual(list(self.repo.glob('.ai-pilled-*.tmp')), [])

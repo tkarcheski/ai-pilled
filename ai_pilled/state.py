@@ -10,6 +10,7 @@ from pathlib import Path
 import uuid
 import tempfile
 
+from .file_io import directory_beneath
 from .runtime import CommandError
 
 MAX_HISTORY_BYTES = 2_000_000
@@ -109,7 +110,10 @@ def history(repo):
         return [loads(line) for line in content.splitlines() if line.strip()]
 
 
-def atomic_text(path, text, mode=0o600, *, before_publish=None, exclusive=False):
+def atomic_text(path, text, mode=0o600, *, before_publish=None, exclusive=False, root=None):
+    if root is not None:
+        return atomic_text_beneath(root, path.relative_to(root), text, mode,
+                                   before_publish=before_publish, exclusive=exclusive)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(dir=path.parent)
     temporary = Path(name)
@@ -127,6 +131,34 @@ def atomic_text(path, text, mode=0o600, *, before_publish=None, exclusive=False)
         return metadata.st_dev, metadata.st_ino
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def atomic_text_beneath(root, relative, text, mode=0o600, *, before_publish=None, exclusive=False):
+    """Create and publish through one anchored parent, including temporary cleanup."""
+    relative = Path(relative)
+    if relative.is_absolute() or '..' in relative.parts or not relative.parts:
+        raise CommandError('Output path must stay beneath its root')
+    with directory_beneath(root, relative.parent, create=True) as parent:
+        temporary = '.ai-pilled-' + uuid.uuid4().hex + '.tmp'
+        descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
+                             0o600, dir_fd=parent)
+        try:
+            with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
+                stream.write(text)
+                os.fchmod(stream.fileno(), mode)
+                metadata = os.fstat(stream.fileno())
+            if before_publish is not None:
+                before_publish()
+            if exclusive:
+                os.link(temporary, relative.name, src_dir_fd=parent, dst_dir_fd=parent)
+            else:
+                os.replace(temporary, relative.name, src_dir_fd=parent, dst_dir_fd=parent)
+            return metadata.st_dev, metadata.st_ino
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=parent)
+            except FileNotFoundError:
+                pass
 
 
 def atomic_json(path, data):

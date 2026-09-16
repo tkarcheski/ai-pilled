@@ -4,8 +4,8 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `0b7141b`: 629 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `ce5adae`
+The verification baseline is `8f87670`: 637 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `1d21740`
 passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `ca66a59` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
@@ -487,6 +487,14 @@ previously passed with 1 byte while a concurrent build added another 100 bytes i
 incomplete. These checks detect observed build changes, not every hostile filesystem race.
 Partial traversal never publishes byte metrics. Filesystem filename bytes are retained
 in the fingerprint, including non-UTF-8 names; measurements do not rename input files.
+
+README reads and publication are now anchored beneath the selected repository.
+Temporary creation, rename, exclusive publication, and cleanup use one opened parent
+directory descriptor. Replacing a parent with an outside symlink cannot redirect the
+write; a post-publication identity check reports observed replacements as incomplete.
+A candidate already published in the original directory may remain for inspection.
+Nested destination creation, handwritten prose, modes, and the drift-check command
+remain supported. This does not provide an atomic transaction across concurrent edits.
 
 README and release generation use bounded descriptor snapshots and reject changes
 during a read. Release preparation checks HEAD and all expected metadata immediately before
