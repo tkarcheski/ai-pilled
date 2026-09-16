@@ -8,6 +8,24 @@ from .credentials import redact_data
 from .state import atomic_text, directory, history
 
 STATUSES = ('pass', 'fail', 'incomplete')
+STATUS_PRIORITY = {'pass': 0, 'incomplete': 1, 'fail': 2}
+FINDING_PRIORITY = {'info': 0, 'warning': 1, 'error': 2}
+
+
+def validate_findings(report):
+    findings = report.get('findings', [])
+    if not isinstance(findings, list):
+        raise CommandError('Historical check findings must be a list')
+    for finding in findings:
+        if not isinstance(finding, dict):
+            raise CommandError('Historical check contains an invalid finding')
+        severity = finding.get('severity')
+        if severity is None and 'severity' not in finding and report['status'] != 'pass':
+            continue  # Legacy blocked records remain blocked without inventing severity.
+        if not isinstance(severity, str) or severity not in FINDING_PRIORITY:
+            raise CommandError('Historical check contains an invalid finding severity')
+        if FINDING_PRIORITY[severity] > STATUS_PRIORITY[report['status']]:
+            raise CommandError('Historical check status contradicts its findings')
 
 
 def entries(repo):
@@ -39,6 +57,7 @@ def latest_entries(records):
             if (not isinstance(report, dict) or report.get('status') not in STATUSES
                     or not isinstance(report.get('check'), str)):
                 raise CommandError('Cannot summarize invalid nested check evidence')
+            validate_findings(report)
             latest[report['check']] = {**entry, 'report': report}
             for key in ('checks', 'steps'):
                 children = report.get(key, [])

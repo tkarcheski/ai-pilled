@@ -70,6 +70,38 @@ class ReportingTests(unittest.TestCase):
         record(self.repo, missing, 'check')
         self.assertEqual(summarize(self.repo)['blocker'], 'wait')
 
+    def test_contradictory_findings_cannot_produce_clean_consumers(self):
+        from ai_pilled.suggestions import suggest
+        record(self.repo, Report('security'), 'scan')
+        output = dashboard(self.repo)
+        original = output.read_bytes()
+        path = self.repo / '.ai-pilled/events.jsonl'
+        for status, severity in (('pass', 'error'), ('pass', 'warning'), ('incomplete', 'error')):
+            for nested in (False, True):
+                with self.subTest(status=status, severity=severity, nested=nested):
+                    report = {'check': 'security', 'status': status,
+                              'findings': [{'severity': severity, 'message': 'fixture'}]}
+                    if nested:
+                        report = {**Report('quality').to_dict(), 'checks': [report]}
+                    path.write_text(json.dumps({'at': 'now', 'report': report}) + '\n')
+                    for consumer in (summarize, suggest, dashboard):
+                        with self.assertRaisesRegex(CommandError, 'contradicts'):
+                            consumer(self.repo)
+                    self.assertEqual(output.read_bytes(), original)
+
+    def test_invalid_findings_are_rejected_and_legacy_failures_stay_blocked(self):
+        for findings in (None, {}, ['invalid'], [{'severity': []}],
+                         [{'severity': 'unknown'}], [{'severity': None}], [{'message': 'legacy'}]):
+            with self.subTest(findings=findings):
+                with self.assertRaises(CommandError):
+                    latest_entries([{'report': {'check': 'test', 'status': 'pass', 'findings': findings}}])
+        for status, findings in (('pass', [{'severity': 'info'}]),
+                                 ('incomplete', [{'severity': 'warning'}]),
+                                 ('fail', [{'severity': 'error'}]),
+                                 ('fail', [{'message': 'legacy'}]), ('fail', [])):
+            report = {'check': 'test', 'status': status, 'findings': findings}
+            self.assertEqual(latest_entries([{'report': report}])['test']['report'], report)
+
     def test_dashboard_escapes_untrusted_findings(self):
         report = Report('<script>alert(1)</script>')
         report.add('test', '</td><script>alert(2)</script>')

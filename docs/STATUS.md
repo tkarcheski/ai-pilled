@@ -333,7 +333,7 @@ preserved. Stop-hook recursion metadata must be a real boolean; strings such as
 `"false"` cannot suppress a blocking result and are rejected before configured tests run.
 Summaries, dashboard counts, and suggestions share bounded traversal of
 nested check/step results; a newer child result supersedes older evidence for that check.
-A passing parent cannot hide a failed child. Raw tool transcripts are not retained in the summary/history.
+A passing parent cannot hide a failed child. Each recorded check must also agree with its own findings: error findings cannot report pass/incomplete, and warning findings cannot report pass. Malformed or contradictory evidence stops summaries, suggestions, and dashboard publication; existing dashboard output is preserved. Legacy records without finding severities remain readable only when already blocked. Raw tool transcripts are not retained in the summary/history.
 
 **Evidence:** `test_lifecycle.py`, `test_reporting.py`, and real CLI E2E checks.
 The dashboard escapes content, uses a restrictive content policy, and writes private
