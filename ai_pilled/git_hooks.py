@@ -13,6 +13,7 @@ import stat
 
 from .runtime import CommandError, CommandFailed, Report, run
 from .config import load
+from .file_io import read_regular
 from .commit_messages import check_subject
 from .security import scan, scan_text
 from .state import directory as state_directory
@@ -20,11 +21,7 @@ from .state import directory as state_directory
 
 def commit_message(path):
     report = Report('commit-message')
-    with Path(path).open('rb') as stream:
-        raw = stream.read(64_001)
-    if len(raw) > 64_000:
-        report.add('message-size', 'Commit message exceeds the 64 KB limit.')
-        return report
+    raw = read_regular(Path(path), 64_000)
     text = raw.decode('utf-8', errors='replace')
     scan_text(report, '(commit message)', text)
     lines = text.splitlines()
@@ -116,7 +113,7 @@ def _install(repo):
         path = directory / event
         if path.is_symlink():
             raise CommandError('Refusing to replace a symlink hook')
-        if path.exists() and (not path.is_file() or path.read_text() != content):
+        if path.exists() and read_regular(path, 64_000) != content.encode():
             raise CommandError('Existing hook differs from generated content; preserve and reconcile manually')
         if path.exists() and not os.access(path, os.X_OK):
             raise CommandError('Installed hook is no longer executable; reconcile manually')
@@ -152,7 +149,7 @@ def _install(repo):
 
 def read_manifest(manifest, expected):
     try:
-        data = loads(manifest.read_text())
+        data = loads(read_regular(manifest, 64_000))
     except (ValueError, OSError) as exc:
         raise CommandError('Cannot read installation manifest') from exc
     if (not isinstance(data, dict) or set(data) != {'previous', 'scope', 'hooks_path', 'hashes'}
@@ -188,7 +185,7 @@ def _uninstall(repo):
         if name not in ('pre-commit', 'commit-msg', 'pre-push'):
             raise CommandError('Invalid installed hook name')
         path = expected / name
-        if path.is_symlink() or (path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() != checksum):
+        if path.is_symlink() or (path.exists() and hashlib.sha256(read_regular(path, 64_000)).hexdigest() != checksum):
             raise CommandError('Installed hook changed; preserve and reconcile manually')
     if git_value(repo, 'core.hooksPath', data['scope']) != data['hooks_path']:
         raise CommandError('hooksPath changed since installation; preserve it and reconcile manually')
@@ -226,6 +223,6 @@ def dispatch(repo, event, arguments):
         if config.review_on_commit:
             from .codex_review import review
             return review(repo, config.codex_executable,
-                          Path(arguments[0]).read_text(errors='replace'))
+                          read_regular(Path(arguments[0]), 64_000).decode(errors='replace'))
         return report
     raise CommandError('Invalid Git hook arguments')

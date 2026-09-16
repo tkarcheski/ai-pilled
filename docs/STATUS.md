@@ -49,6 +49,8 @@ metadata cannot substitute content or conceal outgoing ancestry. Both default an
 environment-selected graft bypasses have credential-history regression tests. Hook
 installation configuration reads use the bounded command runner (16 KB per value),
 preserve exact trailing newlines, and distinguish absent keys from command failures.
+Commit-message, installation-manifest, and owned-hook reads require bounded regular
+files (64 KB); rejected special/oversized files leave hooks and Git configuration intact.
 
 **Activation / limits:** Git commit/push scanning is active here. Codex hook files
 are installed, but live trust/activation has not been verified. A manual lifecycle

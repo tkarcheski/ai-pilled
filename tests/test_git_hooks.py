@@ -1,4 +1,6 @@
 import os
+import json
+import sys
 from unittest.mock import patch
 from pathlib import Path
 import subprocess
@@ -28,6 +30,57 @@ class GitHookTests(unittest.TestCase):
         if success and result.returncode:
             self.fail(result.stderr.decode())
         return result
+
+    def test_nonregular_installation_inputs_preserve_hooks_and_configuration(self):
+        install(self.repo)
+        state = self.repo / '.ai-pilled'
+        hooks = state / 'hooks'
+        configured = self.git('config', '--get', 'core.hooksPath').stdout
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),
+                   PYTHONDONTWRITEBYTECODE='1')
+        for path in (state / 'installation.json', hooks / 'pre-commit'):
+            original, mode = path.read_bytes(), path.stat().st_mode & 0o777
+            for kind in ('fifo', 'oversized'):
+                with self.subTest(path=path.name, kind=kind):
+                    path.unlink()
+                    if kind == 'fifo':
+                        os.mkfifo(path)
+                    else:
+                        path.write_bytes(b'x' * 64_001)
+                    try:
+                        for command in ('install-git-hooks', 'uninstall-git-hooks'):
+                            result = subprocess.run([sys.executable, '-m', 'ai_pilled', '--repo',
+                                                     str(self.repo), command], env=env,
+                                                    capture_output=True, timeout=3, check=False)
+                            self.assertEqual(result.returncode, 2)
+                            self.assertEqual(json.loads(result.stdout)['status'], 'error')
+                            self.assertEqual(self.git('config', '--get', 'core.hooksPath').stdout, configured)
+                            self.assertTrue((hooks / 'commit-msg').is_file())
+                        if kind == 'fifo':
+                            self.assertTrue(path.is_fifo())
+                        else:
+                            self.assertEqual(path.stat().st_size, 64_001)
+                    finally:
+                        path.unlink()
+                        path.write_bytes(original)
+                        path.chmod(mode)
+
+    def test_commit_message_special_and_oversized_files_fail_promptly(self):
+        path = self.repo / 'message'
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),
+                   PYTHONDONTWRITEBYTECODE='1')
+        for kind in ('fifo', 'oversized'):
+            with self.subTest(kind=kind):
+                if kind == 'fifo':
+                    os.mkfifo(path)
+                else:
+                    path.write_bytes(b'x' * 64_001)
+                result = subprocess.run([sys.executable, '-m', 'ai_pilled', '--repo', str(self.repo),
+                                         'hook', 'commit-msg', str(path)], env=env,
+                                        capture_output=True, timeout=3, check=False)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(json.loads(result.stdout)['status'], 'error')
+                path.unlink()
 
     def test_configuration_values_preserve_empty_and_trailing_newlines(self):
         from ai_pilled.git_hooks import git_value
