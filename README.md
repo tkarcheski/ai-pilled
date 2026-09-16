@@ -207,13 +207,17 @@ The failure/recovery paths and real Git revert commits are tested in disposable 
 
 ## Full audit and bug finding
 
-Run `python -m ai_pilled full-audit` for the configured quality profile. Adding
+Run `python -m ai_pilled full-audit` for comprehensive quality gates, even under a lazy
+profile: security, tests, lint, types, dead code, coverage, and configured dependency audits.
+Missing required commands are incomplete. Adding
 --model-reviews explicitly starts three subscription-backed Codex reviews focused on
 correctness, security, and maintenance. Use --workers 1 to run those perspectives
 sequentially, or up to three workers for concurrent reviews. --codex selects an installed
 CLI binary. The default command makes no model calls.
 
-Model audits require passing quality gates and a clean committed checkout. Each reviewer
+Model audits require passing quality gates and a clean committed checkout, with no
+assume-unchanged or skip-worktree index flags. HEAD and actual source must stay fixed
+across deterministic checks and model review. Each reviewer
 gets its own regular-file snapshot (20 MB maximum), the read-only Codex sandbox, disabled
 hooks, and an allowlisted environment. Missing reviewers and malformed output are
 incomplete; defects retain their file/line evidence. Source or index changes invalidate

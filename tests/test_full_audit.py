@@ -27,7 +27,8 @@ class FullAuditTests(unittest.TestCase):
         (self.repo / '.gitignore').write_text('.ai-pilled/\n')
         (self.repo / 'code.py').write_text('value = 1\n')
         (self.repo / '.ai-pilled.json').write_text(json.dumps({'aggressiveness': 'lazy',
-            'commands': {'test': [sys.executable, '-c', 'pass']}}))
+            'commands': {name: [sys.executable, '-c', 'pass']
+                         for name in ('test', 'lint', 'typecheck', 'deadcode', 'coverage')}}))
         self.git('add', '.gitignore', 'code.py', '.ai-pilled.json')
         self.git('commit', '-qm', 'test: audit fixture')
 
@@ -40,6 +41,59 @@ class FullAuditTests(unittest.TestCase):
         self.assertEqual(result.status, 'pass', result.to_dict())
         self.assertEqual(result.metrics['model_reviews_run'], 0)
         model.assert_not_called()
+
+    def test_lazy_profile_cannot_skip_comprehensive_gates(self):
+        config = self.repo / '.ai-pilled.json'
+        data = json.loads(config.read_text())
+        data['commands'].pop('lint')
+        config.write_text(json.dumps(data))
+        with patch('ai_pilled.full_audit.invoke_review') as model:
+            result = full_audit(self.repo, model_reviews=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertTrue(any(f.rule.endswith('not-configured') for f in result.findings))
+        model.assert_not_called()
+
+    def test_commit_between_quality_and_review_invalidates_prior_checks(self):
+        from ai_pilled.pipeline import quality
+        for empty in (False, True):
+            with self.subTest(empty=empty):
+                def changed(repo, empty_commit=empty, **kwargs):
+                    result = quality(repo, **kwargs)
+                    if not empty_commit:
+                        (self.repo / 'code.py').write_text('value = 2\n')
+                        self.git('add', 'code.py')
+                    self.git('commit', '--allow-empty', '-qm', 'fix: replacement after checks')
+                    return result
+                with patch('ai_pilled.full_audit.quality', side_effect=changed), \
+                        patch('ai_pilled.full_audit.invoke_review') as model:
+                    result = full_audit(self.repo, model_reviews=True)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertIn('HEAD changed', result.findings[-1].message)
+                model.assert_not_called()
+
+    def test_hidden_worktree_changes_cannot_use_different_reviewed_source(self):
+        for flag, clear in (('--assume-unchanged', '--no-assume-unchanged'),
+                            ('--skip-worktree', '--no-skip-worktree')):
+            with self.subTest(flag=flag):
+                self.git('update-index', flag, 'code.py')
+                (self.repo / 'code.py').write_text('value = 2\n')
+                self.assertEqual(self.git('status', '--porcelain'), b'')
+                with patch('ai_pilled.full_audit.invoke_review') as model:
+                    result = full_audit(self.repo, model_reviews=True)
+                self.assertEqual(result.status, 'incomplete')
+                model.assert_not_called()
+                self.git('update-index', clear, 'code.py')
+                (self.repo / 'code.py').write_text('value = 1\n')
+
+    def test_hidden_change_during_review_invalidates_completed_result(self):
+        def model(*_):
+            self.git('update-index', '--assume-unchanged', 'code.py')
+            (self.repo / 'code.py').write_text('value = 3\n')
+            return []
+        with patch('ai_pilled.full_audit.invoke_review', side_effect=model):
+            result = full_audit(self.repo, model_reviews=True, workers=1)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.findings[-1].rule, 'snapshot-changed')
 
     def test_three_perspectives_run_concurrently_in_distinct_snapshots(self):
         barrier = threading.Barrier(3)

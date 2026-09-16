@@ -43,13 +43,21 @@ def full_audit(repo, model_reviews=False, executable=None, workers=3):
         if type(workers) is not int or workers not in (1, 2, 3):
             raise CommandError('Use between one and three audit workers')
         config = load(root)
-        checked = quality(root)
+        head = run(['git', 'rev-parse', '--verify', 'HEAD'], root) if model_reviews else None
+        checked = quality(root, comprehensive=True)
         combine(report, checked)
         report.snapshot = checked.snapshot
         if checked.status == 'pass' and model_reviews:
             if run(['git', 'status', '--porcelain', '--untracked-files=normal'], root):
                 raise CommandError('Model audits require a clean committed checkout')
-            head = run(['git', 'rev-parse', '--verify', 'HEAD'], root)
+            if run(['git', 'rev-parse', '--verify', 'HEAD'], root) != head:
+                raise CommandError('HEAD changed after quality checks; rerun before model audit')
+            flags = run(['git', 'ls-files', '-v', '-z'], root).split(b'\0')
+            if any(item[:1] == b'S' or item[:1].islower() for item in flags if item):
+                raise CommandError('Model audit requires no assume-unchanged or skip-worktree index flags')
+            current = scan(root, 'worktree', patterns=True)
+            if current.status != 'pass' or current.snapshot != checked.snapshot:
+                raise CommandError('Source changed after quality checks; rerun before model audit')
             before = scan(root)
             if before.status != 'pass':
                 raise CommandError('Resolve index credential findings before model audit')
@@ -68,8 +76,11 @@ def full_audit(repo, model_reviews=False, executable=None, workers=3):
                                for snapshot, name in snapshots]
                     for future in futures:
                         combine(report, future.result())
-            if run(['git', 'rev-parse', 'HEAD'], root) != head or scan(root).snapshot != before.snapshot or run(
-                    ['git', 'status', '--porcelain', '--untracked-files=normal'], root):
+            after = scan(root, 'worktree', patterns=True)
+            if (after.status != 'pass' or after.snapshot != checked.snapshot
+                    or run(['git', 'rev-parse', 'HEAD'], root) != head
+                    or scan(root).snapshot != before.snapshot
+                    or run(['git', 'status', '--porcelain', '--untracked-files=normal'], root)):
                 report.add('snapshot-changed', 'Repository changed during model audit; rerun on the new snapshot.',
                            severity='warning')
         report.metrics = {'model_reviews_run': max(0, len(report.checks) - 1),

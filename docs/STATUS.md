@@ -96,6 +96,9 @@ to the same index.
 and the partial-staging E2E case. The new reviewer passed its own staged implementation.
 A real installed Codex CLI caught a seeded defect in an earlier smoke test. Current
 multi-reviewer behavior has fixture coverage only; no new model workers were started.
+Full audits pin HEAD across quality and review, reject assume-unchanged/skip-worktree
+flags before model use, and recheck actual source afterward; hidden or committed
+replacements cannot combine old quality evidence with a different reviewed snapshot.
 
 **Limits:** configured commands and interpreters are trusted code. A disposable copy
 is not an operating-system sandbox. Model review is disabled by default and is not
@@ -187,7 +190,7 @@ older child results; priority, bounds, redaction, and no-execution tests are in
 | 8 | Bundle size — opt-in | Existing artifact byte budgets; path/link/bounds tests in `test_metrics.py` | Does not build artifacts or infer a product-specific budget. |
 | 9 | Changelog — implemented | `release-plan`, bounded explicit conventional-commit range with raw ancestry verification (truncated shallow history is incomplete); `test_releases.py` | Inspect generated notes; no automatic publication. |
 | 10 | README updater — used here | Generated CLI block with drift check; `test_documentation.py` | Handwritten prose is preserved; documentation correctness is not inferred. |
-| 11 | Full audit / parallel review — opt-in | Quality first, optional one-to-three isolated perspectives; `test_full_audit.py` | Concurrency tested with fake reviewers; no live parallel run claimed. |
+| 11 | Full audit / parallel review — opt-in | Comprehensive quality first regardless of profile, optional one-to-three isolated perspectives; `test_full_audit.py` | Concurrency tested with fake reviewers; no live parallel run claimed. |
 | 12 | PR-ready checker — implemented | `ready`: clean committed non-protected proposal plus passing quality; `test_pipeline.py` | Does not create a PR or assert hosted checks passed. |
 | 13 | Release flow — opt-in | `prepare-release`, `publish-release`, exact local/remote tags and bounded regular-file metadata reads; release/publishing tests | Preview default. Actual GitHub publication tested with provider fixtures only. |
 | 14 | Simplify → fix → test — implemented | `refactor`, trusted commands in disposable clone, verified patch export; `test_refactor.py` | Candidate scans/checks isolate inherited Git routing; generated credentials are blocked. No automatic patch application; clone is not an OS sandbox. |
