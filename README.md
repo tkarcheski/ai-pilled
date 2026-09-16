@@ -51,6 +51,38 @@ The benchmark command uses a separate commands.benchmark argument array.
 These commands report the configured tool's result; they do not invent coverage numbers
 or dependency vulnerability data.
 
+## Explicit notifications
+
+The notify command previews a minimal digest of recorded results. Findings, source,
+file paths, and command output are omitted. Preview requires no credentials or network.
+Select the destination explicitly, inspect the preview, then add --send to deliver:
+
+~~~sh
+python -m ai_pilled notify slack
+python -m ai_pilled notify github --github-repo OWNER/REPO --issue 123
+python -m ai_pilled notify linear --team TEAM-UUID
+python -m ai_pilled notify email --sender you@example.com --recipient team@example.com
+~~~
+
+Delivery uses environment variables, never credentials in project configuration:
+
+| Provider | Environment variables | Action with --send |
+| --- | --- | --- |
+| Slack | AI_PILLED_SLACK_WEBHOOK | Post to its configured channel |
+| GitHub | AI_PILLED_GITHUB_TOKEN | Create an issue or PR comment |
+| Linear | AI_PILLED_LINEAR_KEY (personal API key) | Create an issue in the selected team |
+| Email | AI_PILLED_SMTP_HOST, AI_PILLED_SMTP_USER, AI_PILLED_SMTP_PASSWORD; optional AI_PILLED_SMTP_PORT (465) | Submit a plain-text digest using authenticated SMTP over TLS |
+
+Adapters follow the official [Slack incoming webhook](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/),
+[GitHub issue comment](https://docs.github.com/en/rest/issues/comments#create-an-issue-comment),
+and [Linear GraphQL](https://linear.app/developers/graphql) APIs. HTTP delivery does not
+follow redirects. Responses are bounded and raw provider diagnostics are not displayed.
+An accepted result confirms provider acceptance, not human receipt. There are no automatic
+retries or duplicate suppression: repeated sends can create duplicate messages or issues.
+After an unconfirmed result, inspect the destination before retrying. No notifications are
+sent by hooks, and no schedule is installed. Transport behavior is tested with fakes;
+credentials and delivery to a real recipient must be verified separately.
+
 ## Refactor in a disposable checkout
 
 Configure commands.simplify and commands.repair as trusted argument arrays, plus
@@ -304,10 +336,10 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
@@ -324,6 +356,7 @@ positional arguments:
                         patch
     quality             Run the configured quality profile
     ready               Validate a clean proposal branch and its quality checks
+    notify              Preview or explicitly send a historical check digest
     summary             Summarize recorded checks and next steps
     dashboard           Build an offline check-history dashboard
 

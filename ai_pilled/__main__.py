@@ -21,6 +21,7 @@ from .pipeline import quality
 from .releases import prepare_release, release_plan
 from .documentation import update_readme
 from .refactor import refactor
+from .notifications import notify
 
 
 def build_parser():
@@ -62,6 +63,14 @@ def build_parser():
     commands.add_parser('refactor', help='Run configured refactor steps in a disposable clone and export a patch')
     commands.add_parser('quality', help='Run the configured quality profile')
     commands.add_parser('ready', help='Validate a clean proposal branch and its quality checks')
+    notification = commands.add_parser('notify', help='Preview or explicitly send a historical check digest')
+    notification.add_argument('provider', choices=['slack', 'linear', 'github', 'email'])
+    notification.add_argument('--send', action='store_true')
+    notification.add_argument('--github-repo')
+    notification.add_argument('--issue', type=int)
+    notification.add_argument('--team')
+    notification.add_argument('--sender')
+    notification.add_argument('--recipient')
     commands.add_parser('summary', help='Summarize recorded checks and next steps')
     commands.add_parser('dashboard', help='Build an offline check-history dashboard')
     commands.add_parser('lifecycle')
@@ -91,6 +100,9 @@ def main(argv=None):
             report = review(args.repo, args.codex)
         elif args.command == 'update-readme':
             report = update_readme(args.repo, args.path, args.check)
+        elif args.command == 'notify':
+            report = notify(args.repo, args.provider, send=args.send, github_repo=args.github_repo,
+                            issue=args.issue, team=args.team, sender=args.sender, recipient=args.recipient)
         elif args.command == 'refactor':
             report = refactor(args.repo)
         elif args.command == 'prepare-release':
