@@ -54,7 +54,7 @@ def suggest(repo, limit=5):
     def add(identifier, priority, kind, reason, next_step, arguments=None):
         suggestions.append({'id': identifier, 'priority': priority, 'kind': kind,
                             'reason': reason, 'next': next_step,
-                            'command': ['python', '-m', 'ai_pilled', *arguments] if arguments else None})
+                            'command': ['python', '-m', 'ai_pilled', '--repo', str(repo.resolve()), *arguments] if arguments else None})
 
     for name, report in latest.items():
         if report['status'] == 'pass':

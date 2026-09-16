@@ -38,7 +38,7 @@ class SuggestionTests(unittest.TestCase):
         record(self.repo, failed, 'test')
         result = suggest(self.repo)
         self.assertEqual(result['suggestions'][0]['id'], 'recheck-test')
-        self.assertEqual(result['suggestions'][0]['command'], ['python', '-m', 'ai_pilled', 'check', 'test'])
+        self.assertEqual(result['suggestions'][0]['command'], ['python', '-m', 'ai_pilled', '--repo', str(self.repo.resolve()), 'check', 'test'])
         self.assertEqual(result['suggestions'][1]['id'], 'configure-typecheck')
         self.assertIn('may be stale', result['suggestions'][0]['reason'])
 
@@ -76,7 +76,7 @@ class SuggestionTests(unittest.TestCase):
     def test_unknown_failed_checks_do_not_suggest_replaying_external_actions(self):
         record(self.repo, Report('release-publication', status='fail'), 'release')
         item = suggest(self.repo)['suggestions'][0]
-        self.assertEqual(item['command'], ['python', '-m', 'ai_pilled', 'summary'])
+        self.assertEqual(item['command'], ['python', '-m', 'ai_pilled', '--repo', str(self.repo.resolve()), 'summary'])
         self.assertIn('do not replay external actions', item['next'])
 
     def test_invalid_limits_and_nested_evidence_are_rejected(self):
@@ -95,3 +95,11 @@ class SuggestionTests(unittest.TestCase):
         self.configure()
         record(self.repo, Report('python-dependency-vulnerabilities', status='fail'), 'audit')
         self.assertFalse(token in json.dumps(suggest(self.repo)))
+
+    def test_commands_bind_selected_repository_even_from_another_directory(self):
+        selected = self.repo / 'project with spaces'
+        selected.mkdir()
+        (selected / '.ai-pilled.json').write_text(json.dumps(self.config))
+        item = suggest(selected)['suggestions'][0]
+        self.assertEqual(item['command'][3:5], ['--repo', str(selected.resolve())])
+        self.assertEqual(item['command'][5:], ['review-checks'])

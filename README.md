@@ -514,7 +514,7 @@ raw tool output, and they do not invent a successful check when evidence is abse
 
 `python -m ai_pilled suggest --limit 5` prioritizes recorded failures, incomplete
 checks, and missing feature configuration. Each item gives a reason, a next step,
-and an argument list when a supported check can be rerun. It identifies missing
+and an argument list bound to the selected repository when a check can be rerun. It identifies missing
 quality gates, optional staged review, Python audit scope, performance baselines,
 and disposable refactor setup. Configure commands before enabling their automation.
 
