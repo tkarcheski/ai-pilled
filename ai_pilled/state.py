@@ -86,7 +86,7 @@ def atomic_text(path, text, mode=0o600, *, before_publish=None, exclusive=False)
     fd, name = tempfile.mkstemp(dir=path.parent)
     temporary = Path(name)
     try:
-        with os.fdopen(fd, 'w') as stream:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
             stream.write(text)
             os.fchmod(stream.fileno(), mode)
             metadata = os.fstat(stream.fileno())

@@ -375,6 +375,15 @@ selected root and empty directories, in addition to the existing 100 MB read lim
 Partial traversal never publishes byte metrics. Filesystem filename bytes are retained
 in the fingerprint, including non-UTF-8 names; measurements do not rename input files.
 
+README and release generation use bounded descriptor snapshots and reject changes
+during a read. Release preparation checks HEAD and all expected metadata immediately before
+each publication. Rollback restores only files whose identity and contents still match
+this attempt's output, preserving detected concurrent edits. Uncertain publication or
+failed restoration reports incomplete evidence and requires file inspection; these
+two-file updates are not claimed to be fully atomic. Tests exercise second-write
+failure, edits before publication/during rollback, and lost completion after a write.
+No live release was prepared or published during this hardening work.
+
 ## Known gaps and prioritized follow-ups
 
 | Priority | Follow-up | Why / completion evidence |

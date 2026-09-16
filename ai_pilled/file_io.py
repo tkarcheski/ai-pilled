@@ -21,3 +21,23 @@ def read_regular(path, maximum):
     if len(content) > maximum:
         raise CommandError('Input exceeds the configured size limit')
     return content
+
+
+def read_snapshot(path, maximum):
+    """Read bounded bytes plus descriptor identity, distinguishing an absent file."""
+    def identity(metadata):
+        return (metadata.st_dev, metadata.st_ino, metadata.st_size,
+                metadata.st_mtime_ns, metadata.st_ctime_ns, metadata.st_mode)
+
+    try:
+        with open_regular(path) as stream:
+            before = identity(os.fstat(stream.fileno()))
+            content = stream.read(maximum + 1)
+            after = identity(os.fstat(stream.fileno()))
+    except FileNotFoundError:
+        return None, None
+    if len(content) > maximum:
+        raise CommandError('Input exceeds the configured size limit')
+    if before != after:
+        raise CommandError('Input changed while reading; rerun after reviewing edits')
+    return content, after

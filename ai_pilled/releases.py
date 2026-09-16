@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import html
 import re
 
-from .file_io import read_regular
+from .file_io import read_snapshot
 from .runtime import CommandError, Report, run, git_path
 from .security import scan_text
 
@@ -122,17 +122,23 @@ def prepare_release(repo, current, since=None):
         report.add('no-release-change', 'The selected commits do not require a version bump.', severity='warning')
         return report
     try:
-        def metadata(path):
-            try:
-                return read_regular(path, 2_000_000).decode('utf-8')
-            except FileNotFoundError:
-                return None
         paths = [local_path(repo, 'VERSION'), local_path(repo, 'CHANGELOG.md')]
-        originals = {}
-        modes = {}
-        for path in paths:
-            originals[path] = metadata(path)
-            modes[path] = path.stat().st_mode & 0o777 if path.exists() else 0o644
+        expected = {path: read_snapshot(path, 2_000_000) for path in paths}
+        originals = {path: content.decode('utf-8') if content is not None else None
+                     for path, (content, _) in expected.items()}
+        modes = {path: identity[-1] & 0o777 if identity is not None else 0o644
+                 for path, (_, identity) in expected.items()}
+
+        def require_snapshot(path, snapshot):
+            if read_snapshot(path, 2_000_000) != snapshot:
+                raise CommandError('Release metadata changed concurrently; inspect files before retrying')
+
+        def guard_all():
+            if run(['git', 'rev-parse', 'HEAD'], repo).decode().strip() != report.snapshot:
+                raise CommandError('HEAD changed after release planning; rerun the preparation')
+            for path, snapshot in expected.items():
+                require_snapshot(path, snapshot)
+
         original_version = originals[paths[0]]
         if original_version is not None and original_version.strip() != current:
             raise CommandError('VERSION does not match the supplied current version')
@@ -145,26 +151,60 @@ def prepare_release(repo, current, since=None):
                 report.add('readiness:' + finding.rule, finding.message, path=finding.path,
                            line=finding.line, severity=finding.severity)
             return report
-        if run(['git', 'rev-parse', 'HEAD'], repo).decode().strip() != report.snapshot:
-            raise CommandError('HEAD changed after release planning; rerun the preparation')
-        for path, original in originals.items():
-            if metadata(path) != original:
-                raise CommandError('Release metadata changed during checks; rerun the preparation')
+        guard_all()
         if old_changelog.startswith('# Changelog\n'):
             old_changelog = old_changelog[len('# Changelog\n'):].lstrip('\n')
         contents = [report.next_version + '\n',
                     '# Changelog\n\n' + report.changelog.rstrip() + '\n\n' + old_changelog]
         written = []
+        uncertain = False
+        publication_started = False
+
+        def publication_guard():
+            nonlocal publication_started
+            guard_all()
+            publication_started = True
+
         try:
             for path, content in zip(paths, contents, strict=True):
-                atomic_text(path, content, modes[path])
-                written.append(path)
-        except OSError:
-            for path in reversed(written):
-                if originals[path] is None:
-                    path.unlink()
-                else:
-                    atomic_text(path, originals[path], modes[path])
+                publication_started = False
+                try:
+                    identity = atomic_text(path, content, modes[path], before_publish=publication_guard)
+                except (OSError, CommandError, UnicodeError):
+                    if publication_started:
+                        try:
+                            uncertain = read_snapshot(path, 2_000_000) != expected[path]
+                        except (OSError, CommandError):
+                            uncertain = True
+                    raise
+                uncertain = True  # Publication succeeded; ownership still needs verification.
+                observed = read_snapshot(path, 2_000_000)
+                if (observed[1] is None or observed[1][:2] != identity
+                        or observed[0] != content.encode('utf-8')):
+                    raise CommandError('Published release metadata changed; inspect files before retrying')
+                expected[path] = observed
+                written.append((path, observed))
+                uncertain = False
+            guard_all()
+        except (OSError, CommandError, UnicodeError):
+            if uncertain:
+                report.add('release-publication-uncertain',
+                           'A write outcome is uncertain; inspect VERSION and CHANGELOG.md before retrying.',
+                           severity='warning')
+            else:
+                for path, snapshot in reversed(written):
+                    try:
+                        def guard(path=path, snapshot=snapshot):
+                            require_snapshot(path, snapshot)
+                        guard()
+                        if originals[path] is None:
+                            path.unlink()
+                        else:
+                            atomic_text(path, originals[path], modes[path], before_publish=guard)
+                    except (OSError, CommandError, UnicodeError):
+                        report.add('release-rollback-incomplete',
+                                   'A release file changed or could not be restored; inspect it before retrying.',
+                                   path=path.name, severity='warning')
             raise
         report.files = [path.name for path in paths]
     except (CommandError, OSError, UnicodeError) as exc:

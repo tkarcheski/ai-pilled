@@ -142,3 +142,31 @@ class DocumentationTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual(self.path.read_text(), '# Original\n')
         self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
+
+    def test_file_changed_during_snapshot_read_is_preserved(self):
+        from contextlib import contextmanager
+        from ai_pilled.file_io import open_regular
+        self.path.write_text('# Original\n')
+
+        class ChangingReader:
+            def __init__(self, stream, path):
+                self.stream, self.path = stream, path
+
+            def fileno(self):
+                return self.stream.fileno()
+
+            def read(self, maximum):
+                content = self.stream.read(maximum)
+                self.path.write_text('# Edited during read\n')
+                return content
+
+        @contextmanager
+        def changing(path):
+            with open_regular(path) as stream:
+                yield ChangingReader(stream, path)
+
+        with patch('ai_pilled.file_io.open_regular', side_effect=changing):
+            result = update_readme(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('changed while reading', result.findings[0].message)
+        self.assertEqual(self.path.read_text(), '# Edited during read\n')

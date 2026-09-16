@@ -175,13 +175,112 @@ class ReleaseTests(unittest.TestCase):
         from ai_pilled.state import atomic_text
         self.prepare_fixture()
         calls = []
-        def write(path, text, mode):
+        def write(path, text, mode, **options):
             calls.append(path.name)
             if len(calls) == 2:
                 raise OSError('simulated write failure')
-            return atomic_text(path, text, mode)
+            return atomic_text(path, text, mode, **options)
         with patch('ai_pilled.state.atomic_text', side_effect=write):
             result = prepare_release(self.repo, '1.2.3', 'v1.2.3')
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual((self.repo / 'VERSION').read_text(), '1.2.3\n')
         self.assertEqual(self.git('status', '--porcelain'), b'')
+
+    def test_release_rollback_preserves_concurrent_first_file_edit(self):
+        from ai_pilled.releases import prepare_release
+        from ai_pilled.state import atomic_text
+        self.prepare_fixture()
+        version = self.repo / 'VERSION'
+        before_notes = (self.repo / 'CHANGELOG.md').read_bytes()
+        calls = []
+
+        def write(path, text, mode, **options):
+            calls.append(path.name)
+            if len(calls) == 2:
+                version.write_text('concurrent user edit\n')
+                raise OSError('second write failed')
+            return atomic_text(path, text, mode, **options)
+
+        with patch('ai_pilled.state.atomic_text', side_effect=write):
+            result = prepare_release(self.repo, '1.2.3', 'v1.2.3')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(version.read_text(), 'concurrent user edit\n')
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_bytes(), before_notes)
+        self.assertIn('release-rollback-incomplete', [f.rule for f in result.findings])
+
+    def test_release_last_moment_edit_prevents_publication(self):
+        from ai_pilled.releases import prepare_release
+        from ai_pilled.state import atomic_text
+        self.prepare_fixture()
+        version = self.repo / 'VERSION'
+        before_notes = (self.repo / 'CHANGELOG.md').read_bytes()
+
+        def write(path, text, mode, **options):
+            version.write_text('concurrent user edit\n')
+            return atomic_text(path, text, mode, **options)
+
+        with patch('ai_pilled.state.atomic_text', side_effect=write):
+            result = prepare_release(self.repo, '1.2.3', 'v1.2.3')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(version.read_text(), 'concurrent user edit\n')
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_bytes(), before_notes)
+
+    def test_uncertain_second_publication_retains_files_for_inspection(self):
+        from ai_pilled.releases import prepare_release
+        from ai_pilled.state import atomic_text
+        self.prepare_fixture()
+
+        def write(path, text, mode, **options):
+            identity = atomic_text(path, text, mode, **options)
+            if path.name == 'CHANGELOG.md':
+                raise OSError('completion lost')
+            return identity
+
+        with patch('ai_pilled.state.atomic_text', side_effect=write):
+            result = prepare_release(self.repo, '1.2.3', 'v1.2.3')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual((self.repo / 'VERSION').read_text(), '1.3.0\n')
+        self.assertIn('## 1.3.0', (self.repo / 'CHANGELOG.md').read_text())
+        self.assertIn('release-publication-uncertain', [f.rule for f in result.findings])
+        self.assertEqual(result.files, [])
+
+    def test_edit_during_rollback_is_preserved(self):
+        from ai_pilled.releases import prepare_release
+        from ai_pilled.state import atomic_text
+        self.prepare_fixture()
+        calls = []
+
+        def write(path, text, mode, **options):
+            calls.append(path.name)
+            if len(calls) == 2:
+                raise OSError('second write failed')
+            if len(calls) == 3:
+                path.write_text('edit during rollback\n')
+            return atomic_text(path, text, mode, **options)
+
+        with patch('ai_pilled.state.atomic_text', side_effect=write):
+            result = prepare_release(self.repo, '1.2.3', 'v1.2.3')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual((self.repo / 'VERSION').read_text(), 'edit during rollback\n')
+        self.assertIn('release-rollback-incomplete', [f.rule for f in result.findings])
+
+    def test_head_change_during_publication_preserves_commit_and_restores_metadata(self):
+        from ai_pilled.releases import prepare_release
+        from ai_pilled.state import atomic_text
+        self.prepare_fixture()
+        original_notes = (self.repo / 'CHANGELOG.md').read_bytes()
+        changed_head = []
+
+        def write(path, text, mode, **options):
+            if path.name == 'CHANGELOG.md':
+                self.commit('fix: concurrent commit')
+                changed_head.append(self.git('rev-parse', 'HEAD'))
+            return atomic_text(path, text, mode, **options)
+
+        with patch('ai_pilled.state.atomic_text', side_effect=write):
+            result = prepare_release(self.repo, '1.2.3', 'v1.2.3')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(self.git('rev-parse', 'HEAD'), changed_head[0])
+        self.assertEqual((self.repo / 'VERSION').read_text(), '1.2.3\n')
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_bytes(), original_notes)
+        self.assertIn('HEAD changed', result.findings[0].message)
