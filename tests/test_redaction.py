@@ -50,6 +50,33 @@ class RedactionTests(unittest.TestCase):
         self.assert_redacted(summarize(self.repo))
         self.assertNotIn(self.token, dashboard(self.repo).read_text())
 
+
+    def test_json_unicode_and_slash_escapes_are_redacted_without_breaking_json(self):
+        values = [('ghp_' + 'A' * 36, 'g', r'\u0067'),
+                  ('pypi-' + 'A' * 85, 'p', r'\u0070'),
+                  ('https://hooks.slack.com/services/' + 'A' * 8 + '/' + 'B' * 8 + '/' + 'C' * 16,
+                   '/', r'\/')]
+        encoded = [json.dumps(value).replace(old, new) for value, old, new in values]
+        document = '[' + ','.join(encoded) + ']'
+        cleaned = redact(document)
+        self.assertEqual(json.loads(cleaned), ['[REDACTED]'] * 3)
+        result = Report('security')
+        result.add('fixture', document)
+        record(self.repo, result, 'fixture')
+        stored = (self.repo / '.ai-pilled/events.jsonl').read_text()
+        for value, _, _ in values:
+            self.assertNotIn(value, stored)
+        self.assertEqual(json.loads(result.to_dict()['findings'][0]['message']), ['[REDACTED]'] * 3)
+
+    def test_encoded_private_key_body_is_fully_redacted(self):
+        value = '-----BEGIN ' + 'PRIVATE KEY-----\nprivate-body\n-----END ' + 'PRIVATE KEY-----'
+        encoded = json.dumps(value).replace('-', r'\u002d')
+        self.assertEqual(json.loads(redact(encoded)), '[REDACTED PRIVATE KEY]')
+
+    def test_ordinary_and_malformed_quoted_text_is_preserved(self):
+        for value in ('"\\u0068ello"', '"bad\\q"', 'unquoted ordinary text'):
+            self.assertEqual(redact(value), value)
+
     def test_cli_missing_executable_error_redacts_its_name(self):
         (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {'test': [str(self.repo / self.token)]}}))
         with contextlib.redirect_stdout(io.StringIO()) as output:

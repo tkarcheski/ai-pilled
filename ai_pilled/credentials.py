@@ -1,4 +1,5 @@
 """Shared recognizable-credential patterns and output redaction."""
+import json
 import re
 
 
@@ -21,11 +22,55 @@ PRIVATE_KEY_BLOCK = re.compile(
     r'[\s\S]*?(?:-----END (?P=kind)-----|\Z)')
 
 
-def redact(text):
+def redact_plain(text):
     text = PRIVATE_KEY_BLOCK.sub('[REDACTED PRIVATE KEY]', text)
     for _, pattern in PATTERNS:
         text = pattern.sub('[REDACTED]', text)
     return text
+
+
+def json_string_literals(text):
+    """Yield quoted JSON strings in one linear pass, including source locations."""
+    if '"' not in text:
+        return
+    start = None
+    start_line = line = 1
+    escaped = False
+    for index, character in enumerate(text):
+        if character == '\n':
+            line += 1
+        if start is None:
+            if character == '"':
+                start, start_line, escaped = index, line, False
+        elif character in '\r\n':
+            start = None  # Literal newlines are invalid in JSON strings.
+        elif escaped:
+            escaped = False
+        elif character == '\\':
+            escaped = True
+        elif character == '"':
+            try:
+                value = json.loads(text[start:index + 1])
+            except ValueError:
+                pass
+            else:
+                yield start, index + 1, start_line, value
+            start = None
+
+
+def redact(text):
+    text = redact_plain(text)
+    pieces: list[str] = []
+    position = 0
+    for start, end, _, value in json_string_literals(text):
+        cleaned = redact_plain(value)
+        if cleaned != value:
+            pieces.extend((text[position:start], json.dumps(cleaned)))
+            position = end
+    if not pieces:
+        return text
+    pieces.append(text[position:])
+    return ''.join(pieces)
 
 
 def redact_data(value):

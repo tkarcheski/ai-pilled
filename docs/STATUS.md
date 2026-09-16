@@ -4,8 +4,8 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `9d0f309`: 437 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `9d95058`
+The verification baseline is `70ceac4`: 451 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `8b73f44`
 passed the same quality profile and all four E2E scenarios on Python 3.10. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -35,7 +35,11 @@ also exit 2. Historical summaries describe recorded evidence, not the current fi
 [lifecycle.py](../ai_pilled/lifecycle.py).
 
 Credential scanning covers file contents, names, UTF-16/32 BOM encodings, and staged
-Git blobs. PyPI publishing tokens follow the provider’s documented prefix and minimum
+Git blobs. Quoted JSON strings are decoded once for Unicode/slash escapes, including
+values hidden by duplicate keys; malformed literals do not suppress raw scanning.
+The shared redactor sanitizes those decoded secrets while preserving JSON quoting.
+This is direct string-escape handling, not arbitrary encoding or runtime data-flow analysis.
+PyPI publishing tokens follow the provider’s documented prefix and minimum
 payload length; the shared pattern also redacts reports/history and blocks credential-like
 package identities before registry queries. Strict Python AST checks flag environment dumps, unsafe parsing, shell
 execution (including implicit shell APIs and literal truthy shell flags), unsafe YAML
@@ -258,7 +262,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `9d95058`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.12% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `8b73f44`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.37% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags

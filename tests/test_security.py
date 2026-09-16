@@ -7,8 +7,8 @@ import sys
 import tempfile
 import unittest
 
-from ai_pilled.runtime import CommandError, run
-from ai_pilled.security import scan
+from ai_pilled.runtime import CommandError, Report, run
+from ai_pilled.security import scan, scan_text
 
 
 class SecurityTests(unittest.TestCase):
@@ -59,6 +59,27 @@ class SecurityTests(unittest.TestCase):
     def test_short_pypi_examples_are_not_treated_as_tokens(self):
         self.write('notes.txt', 'pypi-example\npypi-' + 'A' * 84)
         self.assertEqual(scan(self.repo).status, 'pass')
+
+
+    def test_json_escaped_credentials_are_detected_without_losing_duplicate_keys(self):
+        token = 'ghp_' + 'A' * 36
+        escaped = json.dumps(token).replace('g', r'\u0067', 1)
+        self.write('encoded.json', '{\n "value": ' + escaped + ', "value": "ordinary"\n}')
+        result = scan(self.repo)
+        self.assertEqual([(f.rule, f.line) for f in result.findings], [('github-token', 2)])
+        self.assertNotIn(token, json.dumps(result.to_dict()))
+        self.assertNotIn(escaped, json.dumps(result.to_dict()))
+
+    def test_json_literal_scanning_does_not_duplicate_raw_findings(self):
+        self.write('plain.json', json.dumps('ghp_' + 'A' * 36))
+        self.assertEqual(len(scan(self.repo).findings), 1)
+
+    def test_unterminated_escaped_quotes_do_not_hide_the_next_line(self):
+        encoded = json.dumps('pypi-' + 'A' * 85).replace('p', r'\u0070', 1)
+        text = '"' + r'\"' * 20000 + '\n' + encoded
+        report = Report('security')
+        scan_text(report, 'fixture', text)
+        self.assertEqual([(f.rule, f.line) for f in report.findings], [('pypi-token', 2)])
 
     def test_clean_snapshot_changes_with_content(self):
         self.write('file.txt', 'first')
@@ -170,7 +191,7 @@ class SecurityTests(unittest.TestCase):
         (self.repo / 'pipe.txt').unlink()
         os.mkfifo(self.repo / 'pipe.txt')
         # A separate bounded process makes a blocking-read regression fail promptly.
-        code = ('import json,sys; from ai_pilled.security import scan; '
+        code = ('import json,sys; from ai_pilled.security import scan, scan_text; '
                 'print(json.dumps(scan(sys.argv[1], "worktree").to_dict()))')
         output = run([sys.executable, '-c', code, str(self.repo)],
                      Path(__file__).resolve().parents[1], timeout=5)

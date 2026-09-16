@@ -414,6 +414,8 @@ the distinction between replacement refs and legacy grafts.
 
 Credential matching recognizes AWS access-key IDs and same-line, 40-character secret-key
 assignments named AWS_SECRET_ACCESS_KEY, aws_secret_access_key, or SecretAccessKey.
+Quoted JSON strings are also inspected for Unicode/slash-escaped credentials; the
+shared report redactor handles the same escapes.
 It also recognizes GitHub, OpenAI, Slack, PyPI publishing tokens, and private-key patterns.
 PyPI matching follows its [published secret format](https://docs.pypi.org/api/secrets/),
 including the `pypi-` prefix and at least 85 URL-safe payload characters. AWS field names

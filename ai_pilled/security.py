@@ -6,7 +6,7 @@ import stat
 from .git_blobs import read_blobs
 from .runtime import CommandError, Report, run, git_path
 from .python_security import inspect_python
-from .credentials import PATTERNS
+from .credentials import PATTERNS, json_string_literals
 
 
 MAX_FILE_BYTES = 2_000_000
@@ -18,6 +18,14 @@ def scan_text(report, path, text):
             if pattern.search(line):
                 report.add(rule, 'Potential credential detected; remove and rotate if genuine.',
                            path=path, line=number)
+
+    seen = {(finding.rule, finding.path, finding.line) for finding in report.findings}
+    for _, _, number, decoded in json_string_literals(text):
+        for rule, pattern in PATTERNS:
+            if (rule, path, number) not in seen and pattern.search(decoded):
+                report.add(rule, 'Potential credential detected in an encoded string; remove and rotate if genuine.',
+                           path=path, line=number)
+                seen.add((rule, path, number))
 
 
 def scan_path(report, path):
