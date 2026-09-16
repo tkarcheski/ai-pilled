@@ -41,7 +41,7 @@ implemented commands from active automation and live-provider verification. See
 | 21 | Trunk auto-merge | Explicit PR, base, and head selection; approved/mergeable/required-check gates; preview default, --enable may merge immediately. Fake GitHub CLI tests only. |
 | 22 | AI bug bounty | Full audit provides local correctness/security findings with source locations. No external bounty submission, rewards system, or live multi-reviewer run. |
 | 23 | Nightly refactoring | nightly-refactor provides timezone-aware daily checks, persisted attempt deduplication, serialized execution, and optional foreground --watch. DST/restart/failure behavior is tested with controlled clocks. No recurring process is installed or active. |
-| 24 | Self-healing | heal verifies current test failure and a passing single-commit reversal in a disposable clone. Preview default; explicit --apply makes a normal local revert commit. Real Git mutation tests use disposable repositories only. |
+| 24 | Self-healing | heal verifies a passing single-commit reversal in a disposable clone and requires the original test failure to reproduce afterward. Preview default; explicit --apply makes a normal local revert commit. Real Git mutation tests use disposable repositories only. |
 
 ## Verification and operation
 

@@ -42,7 +42,7 @@ class HealingTests(unittest.TestCase):
         result = heal(self.repo, self.bad)
         self.assertEqual(result.status, 'pass', result.to_dict())
         self.assertEqual(result.action, 'preview')
-        self.assertEqual([c['status'] for c in result.checks], ['fail', 'pass'])
+        self.assertEqual([c['status'] for c in result.checks], ['fail', 'pass', 'fail'])
         self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.bad)
         self.assertEqual(self.git('status', '--porcelain'), b'')
         self.git('apply', '--check', result.patch)
@@ -112,3 +112,31 @@ class HealingTests(unittest.TestCase):
         self.assertEqual(result.checks[0]['status'], 'incomplete')
         self.assertFalse(result.patch)
         self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), head)
+
+
+    def test_failure_that_no_longer_reproduces_never_creates_revert(self):
+        from ai_pilled.runtime import Report
+        failed = Report('test')
+        failed.add('command-failed', 'Test failed')
+        with patch('ai_pilled.healing.command_check', side_effect=[failed, Report('test')]):
+            result = heal(self.repo, self.bad, apply=True)
+        self.assertEqual(result.status, 'pass')
+        self.assertEqual(result.action, 'unnecessary')
+        self.assertFalse(result.patch)
+        self.assertFalse(result.commit)
+        self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.bad)
+        self.assertEqual(self.git('status', '--porcelain'), b'')
+        self.assertEqual(result.findings[0].rule, 'failure-not-reproduced')
+
+    def test_unavailable_confirmation_never_creates_revert(self):
+        from ai_pilled.runtime import Report
+        failed = Report('test')
+        failed.add('command-failed', 'Test failed')
+        unavailable = Report('test')
+        unavailable.add('command-unavailable', 'Test timed out', severity='warning')
+        with patch('ai_pilled.healing.command_check', side_effect=[failed, unavailable]):
+            result = heal(self.repo, self.bad, apply=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertFalse(result.patch)
+        self.assertFalse(result.commit)
+        self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.bad)

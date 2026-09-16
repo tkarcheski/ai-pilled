@@ -74,6 +74,16 @@ def heal(repo, expected_head, apply=False):
                 report.status, report.findings = candidate.status, candidate.findings
                 return report
             unchanged(root, head, branch)
+            confirmation = command_check(root, 'test')
+            report.checks.append(confirmation.to_dict())
+            unchanged(root, head, branch)
+            if confirmation.status == 'pass':
+                report.action = 'unnecessary'
+                report.add('failure-not-reproduced',
+                           'Current tests passed on recheck; no revert is proposed.', severity='info')
+                return report
+            if confirmation.status != 'fail':
+                raise CommandError('Current test failure could not be confirmed again; no revert is permitted')
             patch = run(['git', 'diff', '--binary', '--no-ext-diff', '--no-textconv', head, '--'], clone, env=env)
             if not patch:
                 raise CommandError('The tested reversal has no changes')

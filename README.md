@@ -106,7 +106,10 @@ Run `python -m ai_pilled heal --expected-head FULL-COMMIT-SHA` to investigate a 
 latest commit. The command requires a clean branch, one parent, a configured test,
 and a passing credential/security scan. It first establishes that current tests fail,
 then reverses that commit in a disposable clone and runs the entire quality profile.
-A passing candidate produces a private patch; the original checkout is unchanged.
+After the candidate passes, the original tests run again to confirm the failure still
+reproduces. Passing or unavailable confirmation produces no patch or revert. A verified
+candidate with a repeated original failure produces a private patch; the original
+checkout is unchanged.
 Passing current tests need no action. Merge commits, changed quality policies, and
 still-failing candidates require manual review.
 
