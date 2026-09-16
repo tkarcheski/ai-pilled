@@ -12,6 +12,7 @@ from .python_security import inspect_python
 OID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
 MAX_COMMITS = 2000
 MAX_CACHE_ENTRIES = 10000
+MAX_REMOTE_REFS = 2000
 
 
 def blob_findings(repo, oid, path, patterns, cache):
@@ -89,12 +90,39 @@ def scan_tags(repo, oid):
     return report
 
 
-def pre_push(repo, updates):
+def published_commits(repo, destination):
+    """Trust only refs advertised by this destination, never local tracking refs."""
+    output = run(['git', 'ls-remote', '--refs', '--heads', '--tags', '--', destination], repo,
+                 timeout=load(repo).timeout, limit=1_000_000)
+    rows = output.splitlines()
+    if len(rows) > MAX_REMOTE_REFS:
+        raise CommandError('Remote advertisement exceeds the 2000-ref limit')
+    objects = set()
+    for row in rows:
+        fields = row.split(b'\t')
+        if (len(fields) != 2 or not OID.fullmatch(fields[0].decode('ascii', errors='replace'))
+                or not fields[1].startswith((b'refs/heads/', b'refs/tags/'))):
+            raise CommandError('Remote returned invalid ref evidence')
+        objects.add(fields[0].decode('ascii'))
+    commits = set()
+    for oid in objects:
+        # Missing local objects or non-commit tags cannot establish local ancestry.
+        commit = run(['git', 'rev-parse', '--verify', '--quiet', oid + '^{commit}'], repo,
+                     acceptable_codes=(0, 1, 128)).decode().strip()
+        if commit:
+            if not OID.fullmatch(commit):
+                raise CommandError('Cannot resolve a published commit identity')
+            commits.add(commit)
+    return commits
+
+
+def pre_push(repo, updates, destination=None):
     report = Report('pre-push')
     config = load(repo)
     head = run(['git', 'rev-parse', '--verify', 'HEAD'], repo).decode().strip()
     commits = set()
     tips = set()
+    published = None
     for line in updates.splitlines():
         fields = line.split()
         if len(fields) != 4:
@@ -112,6 +140,8 @@ def pre_push(repo, updates):
         if set(local_oid) == {'0'}:  # Deletion has no code to validate.
             continue
         scan_text(report, '(destination ref)', remote_ref)
+        if report.status != 'pass':
+            continue
         try:
             metadata = scan_tags(repo, local_oid)
             for finding in metadata.findings:
@@ -127,6 +157,10 @@ def pre_push(repo, updates):
                     old = None  # Missing remote history: conservatively scan all local history.
                 if old:
                     args += ['^' + old]
+            if set(remote_oid) == {'0'} and destination is not None:
+                if published is None:
+                    published = published_commits(repo, destination)
+                args += ['^' + oid for oid in sorted(published)]
             outgoing = run(args, repo).decode().splitlines()
             if len(outgoing) > MAX_COMMITS:
                 report.add('history-limit', 'Push exceeds the 2000-commit audit limit; audit a smaller range.')
@@ -139,9 +173,9 @@ def pre_push(repo, updates):
     if report.status != 'pass':
         return report
     blob_cache: dict = {}
-    for commit in sorted(commits):
+    for commit in sorted(commits | tips):
         result = scan_revision(repo, commit, patterns=config.aggressiveness == 'strict' and commit in tips,
-                               cache=blob_cache, conventions=True)
+                               cache=blob_cache, conventions=commit in commits)
         for finding in result.findings:
             report.add(finding.rule, f'{commit[:12]}: {finding.message}', path=finding.path,
                        line=finding.line, severity=finding.severity)

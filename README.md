@@ -369,13 +369,19 @@ Local reports live in .ai-pilled/; add that directory to the target's .gitignore
 | Git commit-msg | Validate subject format, message credentials, and optional Codex review |
 | Git pre-push | Protect destination branches, scan outgoing commit snapshots, run required tests |
 | Codex session start | Load branch and working-tree status |
-| Codex post-tool | Scan credentials, summarize tool/check status, optionally audit changed npm inputs |
+| Codex post-tool | Scan credentials, summarize tool/check status, optionally audit changed npm/Python inputs |
 | Codex stop | Run configured tests; request one repair pass if they fail |
 | Explicit review | Ask Codex to review the staged diff with a strict result schema |
 
 Pre-push enforces the same conventional subject format and 72-character limit on every
 outgoing commit, including commits created without local hooks. Already-published history
-reachable from the known remote tip is excluded. Pre-push tests require a clean working
+reachable from the known remote tip is excluded. For new refs, the hook queries the
+actual destination's advertised heads/tags and excludes their locally available ancestry.
+Local remote-tracking refs are never used as proof of publication. An unavailable or
+malformed advertisement blocks the check, and advertisements are capped at 2,000 refs.
+The pushed tips still receive security checks even when already published. Standalone
+calls without a destination conservatively scan all history for a new ref.
+Pre-push tests require a clean working
 tree and the pushed commit checked out at HEAD.
 A secret removed in a later outgoing commit is still caught. More than 2,000 outgoing
 commits requires a smaller audited range. Files larger than 2 MB produce an incomplete

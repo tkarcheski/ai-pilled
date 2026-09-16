@@ -93,6 +93,8 @@ currently enabled on every local commit. Model output requires engineering judgm
 protected branch patterns, all selected outgoing commit subjects and credential
 history, tip security patterns, configured tests, and a stable clean snapshot.
 Raw commit headers, author identities, tag chains, and destination names are scanned.
+New refs exclude ancestry only after verifying advertisements from the actual destination;
+forged local tracking refs cannot hide unpublished commits. Tips retain security scans.
 History traversal, object caching, and tag depth have explicit bounds.
 
 **Evidence:** `test_pre_push.py` plus actual local bare-remote E2E pushes. Protected

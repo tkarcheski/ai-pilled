@@ -271,3 +271,53 @@ class PrePushTests(unittest.TestCase):
         old = self.git('rev-parse', 'HEAD').stdout.decode().strip()
         self.git('commit', '--allow-empty', '-qm', 'fix: follow current conventions')
         self.assertEqual(pre_push(self.repo, self.update(old=old)).status, 'pass')
+
+    def test_new_branch_excludes_verified_published_legacy_ancestry(self):
+        self.git('commit', '--allow-empty', '-qm', 'legacy published subject')
+        self.git('push', 'origin', 'HEAD:existing')
+        self.git('commit', '--allow-empty', '-qm', 'feat: reviewed new branch')
+        install(self.repo)
+        result = self.git('push', 'origin', 'HEAD:new-branch', success=False)
+        self.assertEqual(result.returncode, 0, (result.stdout + result.stderr).decode())
+
+    def test_forged_remote_tracking_ref_does_not_hide_unpublished_commit(self):
+        self.git('push', 'origin', 'HEAD:existing')
+        self.git('commit', '--allow-empty', '-qm', 'unpublished bad subject')
+        head = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        self.git('update-ref', 'refs/remotes/origin/forged', head)
+        self.git('commit', '--allow-empty', '-qm', 'feat: reviewed tip')
+        install(self.repo)
+        result = self.git('push', 'origin', 'HEAD:new-branch', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'conventional-commit', result.stdout + result.stderr)
+
+    def test_new_branch_remote_evidence_is_bounded_and_failure_blocks(self):
+        from ai_pilled.pre_push import published_commits
+        from ai_pilled.runtime import CommandError
+        with self.assertRaises(CommandError):
+            published_commits(self.repo, str(self.remote / 'missing'))
+        for output in (b'not-a-ref\n', b'0' * 40 + b'\trefs/other/invalid\n'):
+            with patch('ai_pilled.pre_push.run', return_value=output), self.assertRaises(CommandError):
+                published_commits(self.repo, 'origin')
+        self.git('push', 'origin', 'HEAD:existing')
+        with patch('ai_pilled.pre_push.MAX_REMOTE_REFS', 0), self.assertRaises(CommandError):
+            published_commits(self.repo, str(self.remote))
+        result = pre_push(self.repo, self.update(), destination=str(self.remote / 'missing'))
+        self.assertNotEqual(result.status, 'pass')
+
+    def test_published_tip_still_receives_security_scan(self):
+        token = 'ghp_' + 'Z' * 36
+        (self.repo / 'secret').write_text(token)
+        self.commit()
+        self.git('push', 'origin', 'HEAD:existing')
+        result = pre_push(self.repo, self.update(), destination=str(self.remote))
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.rule == 'github-token' for f in result.findings))
+
+    def test_remote_tag_ancestry_is_verified_without_local_tracking_refs(self):
+        self.git('commit', '--allow-empty', '-qm', 'legacy tagged subject')
+        self.git('tag', '-a', 'v0', '-m', 'old published release')
+        self.git('push', 'origin', 'refs/tags/v0')
+        self.git('commit', '--allow-empty', '-qm', 'feat: next proposal')
+        install(self.repo)
+        self.git('push', 'origin', 'HEAD:proposal')
