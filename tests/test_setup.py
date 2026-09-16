@@ -21,25 +21,25 @@ class SetupTests(unittest.TestCase):
         subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
 
     def test_setup_works_from_arbitrary_directory(self):
-        result = subprocess.run(['bash', str(SOURCE / 'scripts/setup.sh'), str(self.repo)],
+        result = subprocess.run(['bash', '--', str(SOURCE / 'scripts/setup.sh'), str(self.repo)],
                                 cwd=self.repo, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.repo / '.ai-pilled/hooks/pre-push').is_file())
         hooks = json.loads((self.repo / '.codex/hooks.json').read_text())
         self.assertIn('PostToolUse', hooks['hooks'])
-        again = subprocess.run(['bash', str(SOURCE / 'scripts/setup.sh'), str(self.repo)],
+        again = subprocess.run(['bash', '--', str(SOURCE / 'scripts/setup.sh'), str(self.repo)],
                                cwd=self.repo, capture_output=True, text=True)
         self.assertEqual(again.returncode, 0, again.stderr)
 
     def test_unsupported_provider_does_not_mutate_target(self):
         for provider in ['claude', 'generic']:
-            result = subprocess.run(['bash', str(SOURCE / f'scripts/configure-{provider}.sh')],
+            result = subprocess.run(['bash', '--', str(SOURCE / f'scripts/configure-{provider}.sh')],
                                     cwd=self.repo, capture_output=True)
             self.assertEqual(result.returncode, 2)
             self.assertFalse((self.repo / '.ai-pilled').exists())
 
     def test_help_does_not_install(self):
-        result = subprocess.run(['bash', str(SOURCE / 'scripts/setup.sh'), '--help'],
+        result = subprocess.run(['bash', '--', str(SOURCE / 'scripts/setup.sh'), '--help'],
                                 cwd=self.repo, capture_output=True)
         self.assertEqual(result.returncode, 0)
         self.assertFalse((self.repo / '.ai-pilled').exists())

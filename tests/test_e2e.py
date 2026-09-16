@@ -211,6 +211,8 @@ class EndToEndTests(unittest.TestCase):
              header + 'import subprocess\nsubprocess.run(["echo", "safe"], check=True)', b'shell-option-unresolved'),
             ('transport.py', 'import httpx\nhttpx.Client(verify=context)',
              'import httpx\nhttpx.Client(verify=True)', b'tls-option-unresolved'),
+            ('shell-vector.py', 'import subprocess\nsubprocess.run(["sh", "-c", command])',
+             'import subprocess\nsubprocess.run(["echo", value], check=True)', b'shell-execution'),
             ('runtime.py', '__import__("pickle").loads(data)',
              'import json\njson.loads(data)', b'unsafe-deserialization'),
             ('window.pyw', 'import pickle\npickle.loads(data)',

@@ -148,7 +148,13 @@ produce incomplete evidence; literal dictionary overrides retain last-key semant
 These checks do not trace separately stored decoder instances or certify claim policy.
 References: [Python temporary-file warning](https://docs.python.org/3/library/tempfile.html#tempfile.mktemp)
 and [PyJWT signature options](https://pyjwt.readthedocs.io/en/latest/usage.html).
-Argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Other referenced conflicting imports
+Literal POSIX shell command vectors (`sh`, `bash`, `dash`, `ksh`, `zsh` with `-c`,
+including combined flags) are reviewed in subprocess and asyncio exec APIs even
+without `shell=True`. Literal executable overrides and argument expansions are included.
+Unknown options on a known shell are incomplete; `--` separates script arguments.
+Wrapper programs, runtime program names, and shell script bodies are not inferred.
+See [Bash invocation](https://www.gnu.org/s/bash/manual/html_node/Invoking-Bash.html).
+Ordinary argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Other referenced conflicting imports
 in one scope are incomplete. Verified defaults and literal custom CA paths remain allowed. Explicit dynamic shell
 flags and TLS verification flags/contexts produce incomplete evidence; the reviewer
 does not infer their runtime values or certify separately constructed SSL contexts.

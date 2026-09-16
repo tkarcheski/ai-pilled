@@ -436,7 +436,9 @@ Requests/HTTPX calls, and use of the unverified SSL context factory. Strict qual
 include these patterns automatically. Requests literal zero/empty `verify` values are also
 flagged; `verify=None` retains its defaults. At push time, AST checks inspect pushed tips;
 credential checks still inspect every outgoing commit. Implicit shell rules cover `os.popen`,
-`subprocess.getoutput/getstatusoutput`, and `asyncio.create_subprocess_shell`. YAML rules
+`subprocess.getoutput/getstatusoutput`, and `asyncio.create_subprocess_shell`. Literal POSIX
+shell `-c` argument vectors and executable overrides are also reviewed in subprocess
+and asyncio exec calls; unknown options on a known shell are incomplete. YAML rules
 cover unsafe single/multiple-document loaders; explicit safe loaders remain allowed.
 Import aliases are resolved by lexical scope; comments and strings
 are not treated as calls. Literal absolute `__import__`/importlib imports are

@@ -837,3 +837,55 @@ class PythonPatternTests(unittest.TestCase):
         for source, function, expected in cases:
             with self.subTest(source=source):
                 self.assertEqual(literal_import(ast.parse(source, mode='eval').body, function), expected)
+
+    def test_explicit_shell_command_vectors_require_review(self):
+        for expression in ('subprocess.run(["sh", "-c", command])',
+                           'subprocess.Popen(["/bin/bash", "-lc", command])',
+                           'subprocess.check_output(args=("dash", "-c", command))',
+                           'subprocess.call(["zsh", "-c", command], shell=False)',
+                           'subprocess.run([b"/bin/sh", b"-c", command])',
+                           'subprocess.run(["bash", "--norc", "-O", "extglob", "-c", command])',
+                           'subprocess.run(["bash", "--rcfile", config, "-c", command])',
+                           'subprocess.run(["sh", *["-c", command]])',
+                           '__import__("subprocess").run(["sh", "-c", command])'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import subprocess\n' + expression)
+                self.assertEqual([f.rule for f in result.findings], ['shell-execution'])
+        result = self.inspect('from subprocess import run as execute\nexecute(["sh", "-c", command])')
+        self.assertEqual(result.status, 'fail')
+
+    def test_async_shell_commands_and_executable_overrides_are_reviewed(self):
+        for source in ('import asyncio\nasyncio.create_subprocess_exec("sh", "-c", command)',
+                       'from asyncio.subprocess import create_subprocess_exec as execute\nexecute("bash", "-lc", command)',
+                       'import subprocess\nsubprocess.run(["display", "-c", command], executable="/bin/sh")',
+                       'import subprocess\nsubprocess.Popen(["display", "-c", command], -1, "/bin/bash")',
+                       'import asyncio\nasyncio.create_subprocess_exec("display", "-c", command, executable="sh")'):
+            result = self.inspect(source)
+            self.assertEqual([f.rule for f in result.findings], ['shell-execution'])
+
+    def test_shell_script_separator_and_non_shell_vectors_are_allowed(self):
+        for expression in ('subprocess.run(["sh", "--", script, "-c", command])',
+                           'subprocess.run(["bash", "script.sh", "-c", command])',
+                           'subprocess.run(["bash", "--version"])',
+                           'subprocess.run(["bash", "-o", "errexit", "script.sh", "-c", command])',
+                           'subprocess.run(["python", "-c", code])',
+                           'subprocess.run(["echo", "sh", "-c", command])',
+                           'subprocess.run(["display", "-c", command], executable="python")',
+                           'subprocess.run(command)',
+                           'custom.run(["sh", "-c", command])'):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.inspect('import subprocess\n' + expression).status, 'pass')
+
+    def test_known_shell_with_unknown_options_produces_incomplete_evidence(self):
+        for expression in ('subprocess.run(["sh", flags, command])',
+                           'subprocess.run(["sh", *arguments])',
+                           'subprocess.run(["bash", "--unknown-option", command])',
+                           'subprocess.run(["bash", "-O", *arguments])',
+                           'subprocess.run(["bash", "-o"])',
+                           'subprocess.run(["sh", "-c", command], executable=selected)'):
+            result = self.inspect('import subprocess\n' + expression)
+            self.assertEqual(result.status, 'incomplete')
+            self.assertEqual([f.rule for f in result.findings], ['shell-command-unresolved'])
+        result = self.inspect('import asyncio\nasyncio.create_subprocess_exec(*arguments)')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual([f.rule for f in result.findings], ['python-arguments-unresolved'])

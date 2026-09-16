@@ -34,7 +34,9 @@ PICKLE_OPTION_CALLS: dict[str, tuple[str, int | None, bool]] = {
     'torch.load': ('weights_only', None, False),
     'torch.serialization.load': ('weights_only', None, False),
 }
-POSITIONAL_SECURITY_CALLS = SHELL_KEYWORD_CALLS | JWT_DECODE_CALLS | {'numpy.load'}
+ASYNC_EXEC_CALLS = {'asyncio.create_subprocess_exec', 'asyncio.subprocess.create_subprocess_exec'}
+SHELL_PROGRAMS = {'sh', 'bash', 'dash', 'ksh', 'zsh'}
+POSITIONAL_SECURITY_CALLS = SHELL_KEYWORD_CALLS | ASYNC_EXEC_CALLS | JWT_DECODE_CALLS | {'numpy.load'}
 KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | POSITIONAL_SECURITY_CALLS | set(PICKLE_OPTION_CALLS) | {
     'yaml.load', 'yaml.load_all', 'hashlib.new', 'hashlib.md5', 'hashlib.sha1'}
 
@@ -133,12 +135,12 @@ def import_scopes(tree):
     return scopes, bindings, parents
 
 
-def call_arguments(node):
+def expand_arguments(arguments):
     """Expand only literal starred lists/tuples; never evaluate argument expressions."""
-    if not any(isinstance(argument, ast.Starred) for argument in node.args):
-        return node.args
+    if not any(isinstance(argument, ast.Starred) for argument in arguments):
+        return arguments
     result = []
-    pending = list(reversed(node.args))
+    pending = list(reversed(arguments))
     while pending:
         argument = pending.pop()
         if isinstance(argument, ast.Starred) and isinstance(argument.value, (ast.List, ast.Tuple)):
@@ -146,6 +148,68 @@ def call_arguments(node):
         else:
             result.append(argument)
     return result
+
+
+def call_arguments(node):
+    return expand_arguments(node.args)
+
+
+def literal_text(node):
+    if not isinstance(node, ast.Constant):
+        return None
+    if isinstance(node.value, bytes):
+        return node.value.decode('latin-1')
+    return node.value if isinstance(node.value, str) else None
+
+
+def direct_shell_command(name, arguments, keywords):
+    """Inspect literal POSIX shell argument vectors, keeping unknown flags incomplete."""
+    options = {keyword.arg: keyword.value for keyword in keywords}
+    if name in SHELL_KEYWORD_CALLS:
+        selected = options.get('args', arguments[0] if arguments else None)
+        if not isinstance(selected, (ast.List, ast.Tuple)):
+            return False
+        values = expand_arguments(selected.elts)
+        executable = options.get('executable', arguments[2] if len(arguments) > 2 else None)
+    elif name in ASYNC_EXEC_CALLS:
+        values = arguments
+        executable = options.get('executable')
+    else:
+        return False
+    if not values:
+        return False
+    program = literal_text(values[0])
+    if executable is not None and not (isinstance(executable, ast.Constant) and executable.value is None):
+        replacement = literal_text(executable)
+        if replacement is None:
+            return None if program and program.rsplit('/', 1)[-1] in SHELL_PROGRAMS else False
+        program = replacement
+    if program is None or program.rsplit('/', 1)[-1] not in SHELL_PROGRAMS:
+        return False
+    index = 1
+    while index < len(values):
+        flag = literal_text(values[index])
+        if flag is None:
+            return None
+        if flag in ('-', '--', '--help', '--version') or not flag.startswith('-'):
+            return False
+        if flag in ('--rcfile', '--init-file', '-o', '-O'):
+            if index + 1 >= len(values) or isinstance(values[index + 1], ast.Starred):
+                return None
+            index += 2
+            continue
+        if flag.startswith('--'):
+            if flag not in ('--noprofile', '--norc', '--posix', '--login', '--restricted', '--verbose', '--debugger'):
+                return None
+        elif 'c' in flag[1:]:
+            return True
+        elif flag.endswith(('o', 'O')):
+            if index + 1 >= len(values) or isinstance(values[index + 1], ast.Starred):
+                return None
+            index += 2
+            continue
+        index += 1
+    return False
 
 
 def mapping_keywords(value):
@@ -380,6 +444,11 @@ def inspect_python(report, path, content, *, tree=None):
             report.add('tls-option-unresolved',
                        'TLS verification settings cannot be inspected; review the supplied flag or context.',
                        path=path, line=node.lineno, severity='warning')
+        direct_shell = direct_shell_command(name, arguments, keywords)
+        if direct_shell is None:
+            report.add('shell-command-unresolved',
+                       'Shell invocation cannot be inspected; make program/options explicit and separate script arguments with --.',
+                       path=path, line=node.lineno, severity='warning')
         if name == 'hashlib.new':
             algorithm = arguments[0] if arguments else next(
                 (keyword.value for keyword in keywords if keyword.arg == 'name'), None)
@@ -443,12 +512,12 @@ def inspect_python(report, path, content, *, tree=None):
                 loader = arguments[1]
             if qualified(loader, SAFE_YAML_LOADERS) not in SAFE_YAML_LOADERS:
                 rule, message = 'unsafe-yaml', 'Use safe_load or an explicit SafeLoader for untrusted YAML.'
-        elif name in IMPLICIT_SHELL_CALLS or (name in SHELL_KEYWORD_CALLS and (
+        elif direct_shell or name in IMPLICIT_SHELL_CALLS or (name in SHELL_KEYWORD_CALLS and (
                 any(k.arg == 'shell' and isinstance(k.value, ast.Constant)
                     and bool(k.value.value) for k in keywords)
                 or not unknown_arguments and len(arguments) > 8 and isinstance(arguments[8], ast.Constant)
                 and bool(arguments[8].value))):
-            rule, message = 'shell-execution', 'Shell execution requires review; prefer argument arrays without shell=True.'
+            rule, message = 'shell-execution', 'Shell command execution requires review; call the target program directly with an argument array.'
         elif (name in ('print', 'builtins.print') or name in STANDARD_OUTPUT_CALLS or log_method in
               ('debug', 'info', 'warning', 'warn', 'error', 'critical', 'fatal', 'exception', 'log')):
             if name in STANDARD_OUTPUT_CALLS and name.endswith('.writelines'):
