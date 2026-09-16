@@ -127,3 +127,41 @@ class ReviewTests(unittest.TestCase):
         result = review(self.repo, str(self.fake)).to_dict()
         self.assertFalse(body in json.dumps(result))
         self.assertIn('[REDACTED PRIVATE KEY]', json.dumps(result))
+
+
+    def test_deleted_historical_credential_is_redacted_from_prompt(self):
+        token = 'ghp_' + 'Z' * 36
+        (self.repo / 'code.py').write_text('key = ' + repr(token) + '\n')
+        subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+        subprocess.run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                        'commit', '-qm', 'test: historical fixture'], cwd=self.repo, check=True)
+        (self.repo / 'code.py').write_text('value = 1\n')
+        subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+        self.fake.write_text(self.fake.read_text().replace(
+            'assert b"STAGED DIFF:" in sys.stdin.buffer.read()',
+            f'prompt = sys.stdin.buffer.read(); assert {token.encode()!r} not in prompt; '
+            'assert b"REDACTED" in prompt'))
+        self.assertEqual(review(self.repo, str(self.fake)).status, 'pass')
+
+    def test_changed_index_is_rejected_before_model_call(self):
+        from ai_pilled.codex_review import materialize_index
+        def change_index(repo, destination):
+            materialize_index(repo, destination)
+            (repo / 'code.py').write_text('value = 2\n')
+            subprocess.run(['git', 'add', 'code.py'], cwd=repo, check=True)
+        with patch('ai_pilled.codex_review.materialize_index', side_effect=change_index), patch(
+                'ai_pilled.codex_review.invoke_review') as invoke:
+            result = review(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        invoke.assert_not_called()
+
+    def test_materialization_rechecks_captured_blob_credentials(self):
+        from ai_pilled.codex_review import materialize_index
+        from ai_pilled.runtime import CommandError
+        destination = self.repo / 'snapshot'
+        destination.mkdir()
+        (self.repo / 'code.py').write_text('ghp_' + 'Z' * 36)
+        subprocess.run(['git', 'add', 'code.py'], cwd=self.repo, check=True)
+        with self.assertRaises(CommandError):
+            materialize_index(self.repo, destination)
+        self.assertFalse((destination / 'code.py').exists())

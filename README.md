@@ -27,6 +27,8 @@ Use `review --codex /absolute/path/to/codex` to select an installed binary expli
 This avoids PATH wrappers that install or update the CLI before each invocation. The
 reviewer uses the existing Codex login, disables hooks, and receives a copy of staged
 regular files plus the diff; missing results and timeouts are incomplete.
+Recognizable credentials in historical diff lines are redacted before model invocation.
+Prepared blobs are rescanned, and an index change before invocation cancels the review.
 
 Commands emit JSON. Exit codes: **0** passed, **1** found blockers, **2** incomplete or
 unable to run. Missing tools and missing configuration do not count as passing.
