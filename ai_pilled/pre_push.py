@@ -5,7 +5,7 @@ import re
 from .checks import command_check
 from .config import load
 from .runtime import CommandError, Report, run
-from .security import MAX_FILE_BYTES, scan_text, scan_bytes
+from .security import MAX_FILE_BYTES, scan_text, scan_bytes, scan_path
 from .python_security import inspect_python
 
 OID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
@@ -37,19 +37,44 @@ def blob_findings(repo, oid, path, patterns, cache):
 def scan_revision(repo, revision, patterns=False, cache=None):
     report = Report('history-security', snapshot=revision)
     cache = {} if cache is None else cache
-    message = run(['git', 'log', '-1', '--format=%B', revision], repo, limit=64_000)
+    metadata = run(['git', 'log', '-1', '--format=%B%x00%an <%ae>%n%cn <%ce>', revision], repo, limit=64_000)
+    message, _, identity = metadata.partition(b'\0')
     scan_text(report, '(commit message)', message.decode('latin-1'))
+    scan_text(report, '(commit identity)', identity.decode('latin-1'))
     records = run(['git', 'ls-tree', '-rz', '--full-tree', revision], repo).split(b'\0')
     for record in filter(None, records):
         metadata, raw_path = record.split(b'\t', 1)
         mode, kind, oid = metadata.split()
         path = raw_path.decode('utf-8', errors='surrogateescape')
+        scan_path(report, path)
         if kind != b'blob':
             report.add('submodule-unscanned', 'Submodule content requires its own audit.',
                        path=path, severity='warning')
             continue
         for rule, message, line, severity in blob_findings(repo, oid.decode(), path, patterns, cache):
             report.add(rule, message, path=path, line=line, severity=severity)
+    return report
+
+
+def scan_tags(repo, oid):
+    report = Report('tag-security')
+    try:
+        for depth in range(17):
+            kind = run(['git', 'cat-file', '-t', oid], repo).strip()
+            if kind != b'tag':
+                return report
+            if depth == 16:
+                raise CommandError('Annotated tag chain exceeds the 16-tag limit')
+            content = run(['git', 'cat-file', 'tag', oid], repo, limit=64_000)
+            scan_text(report, '(tag metadata)', content.decode('latin-1'))
+            headers = content.split(b'\n\n', 1)[0].splitlines()
+            objects = [line[7:].decode('ascii') for line in headers if line.startswith(b'object ')]
+            if len(objects) != 1 or not OID.fullmatch(objects[0]):
+                raise CommandError('Cannot resolve annotated tag target')
+            oid = objects[0]
+    except (CommandError, UnicodeError) as exc:
+        report.add('tag-unavailable', str(exc) if isinstance(exc, CommandError)
+                   else 'Cannot read annotated tag metadata', severity='warning')
     return report
 
 
@@ -75,7 +100,12 @@ def pre_push(repo, updates):
             continue
         if set(local_oid) == {'0'}:  # Deletion has no code to validate.
             continue
+        scan_text(report, '(destination ref)', remote_ref)
         try:
+            metadata = scan_tags(repo, local_oid)
+            for finding in metadata.findings:
+                report.add(finding.rule, finding.message, path=finding.path, line=finding.line,
+                           severity=finding.severity)
             tip = run(['git', 'rev-parse', '--verify', local_oid + '^{commit}'], repo).decode().strip()
             tips.add(tip)
             args = ['git', 'rev-list', f'--max-count={MAX_COMMITS + 1}', tip]
@@ -91,6 +121,8 @@ def pre_push(repo, updates):
                 report.add('history-limit', 'Push exceeds the 2000-commit audit limit; audit a smaller range.')
             else:
                 commits.update(outgoing)
+                if len(commits) > MAX_COMMITS:
+                    report.add('history-limit', 'Combined ref updates exceed the 2000-commit audit limit.')
         except CommandError as exc:
             report.add('history-unavailable', str(exc))
     if report.status != 'pass':

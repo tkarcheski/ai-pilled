@@ -18,6 +18,13 @@ def scan_text(report, path, text):
                            path=path, line=number)
 
 
+def scan_path(report, path):
+    for rule, pattern in PATTERNS:
+        if pattern.search(path):
+            report.add(rule, 'Potential credential detected in a file name; rename and rotate if genuine.',
+                       path=path)
+
+
 def scan_bytes(report, path, content):
     # A BOM identifies UTF-16/32 where ASCII tokens contain interleaved NULs.
     # Replacement decoding retains scannable prefixes even in malformed text.
@@ -57,6 +64,7 @@ def scan(repo, scope='staged', patterns=False):
         sources = [(p.decode('utf-8', errors='surrogateescape'), None)
                    for p in sorted(set(filter(None, paths.split(b'\0'))))]
     for path, oid in sources:
+        scan_path(report, path)
         try:
             if oid:
                 size = int(run(['git', 'cat-file', '-s', oid], root))

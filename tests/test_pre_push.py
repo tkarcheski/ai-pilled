@@ -175,3 +175,44 @@ class PrePushTests(unittest.TestCase):
             result = scan_revision(self.repo, 'HEAD', cache=cache)
         self.assertEqual(result.status, 'fail')
         self.assertEqual(len(cache), 1)
+
+    def test_destination_ref_credentials_block_updates_but_allow_deletion(self):
+        token = 'ghp_' + 'Z' * 36
+        result = pre_push(self.repo, self.update(branch=token))
+        self.assertEqual(result.status, 'fail')
+        self.assertFalse(token in json.dumps(result.to_dict()))
+        head = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        deletion = f'(delete) {"0" * 40} refs/heads/{token} {head}\n'
+        self.assertEqual(pre_push(self.repo, deletion).status, 'pass')
+
+    def test_commit_author_credentials_block_push(self):
+        token = 'ghp_' + 'Z' * 36
+        self.git('commit', '--allow-empty', '--author', token + ' <test@example.invalid>',
+                 '-qm', 'test: author metadata')
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.path == '(commit identity)' for f in result.findings))
+        self.assertFalse(token in json.dumps(result.to_dict()))
+
+    def test_committed_file_name_credentials_block_push(self):
+        token = 'ghp_' + 'Z' * 36
+        (self.repo / (token + '.txt')).write_text('ordinary')
+        self.commit()
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertFalse(token in json.dumps(result.to_dict()))
+
+    def test_nested_annotated_tag_credentials_block_push(self):
+        token = 'ghp_' + 'Z' * 36
+        self.git('tag', '-a', 'inner', '-m', token)
+        self.git('tag', '-a', 'outer', 'inner', '-m', 'clean outer annotation')
+        oid = self.git('rev-parse', 'refs/tags/outer').stdout.decode().strip()
+        result = pre_push(self.repo, f'refs/tags/outer {oid} refs/tags/outer {"0" * 40}\n')
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.path == '(tag metadata)' for f in result.findings))
+        self.assertFalse(token in json.dumps(result.to_dict()))
+
+    def test_clean_annotated_tag_can_be_pushed(self):
+        self.git('tag', '-a', 'v1.0.0', '-m', 'Release annotation')
+        oid = self.git('rev-parse', 'refs/tags/v1.0.0').stdout.decode().strip()
+        self.assertEqual(pre_push(self.repo, f'tag {oid} refs/tags/v1.0.0 {"0" * 40}\n').status, 'pass')

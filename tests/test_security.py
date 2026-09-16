@@ -130,3 +130,12 @@ class SecurityTests(unittest.TestCase):
         result = scan(self.repo)
         self.assertEqual(result.findings[0].rule, 'slack-webhook')
         self.assertNotIn(webhook, json.dumps(result.to_dict()))
+
+    def test_credential_in_file_name_is_blocked_without_echoing_it(self):
+        token = 'ghp_' + 'Z' * 36
+        self.write(token + '.txt', 'ordinary content')
+        for scope in ('staged', 'worktree'):
+            result = scan(self.repo, scope)
+            self.assertEqual(result.status, 'fail')
+            self.assertFalse(token in json.dumps(result.to_dict()))
+            self.assertIn('file name', result.findings[0].message)
