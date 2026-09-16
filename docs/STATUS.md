@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `0e2e5a1`: 588 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `475aed7`
-passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `0e2e5a1` also passed all seven gates with zero
+The verification baseline is `df75e48`: 598 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `46df976`
+passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `df75e48` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -49,7 +49,11 @@ also exit 2. Historical summaries describe recorded evidence, not the current fi
 [lifecycle.py](../ai_pilled/lifecycle.py).
 
 Credential scanning covers file contents, names, UTF-16/32 BOM encodings, and staged
-Git blobs. Worktree reads compare descriptor identities before/after reading and
+Git blobs. Python literal and pattern checks cover `.py`, `.pyw`, `.pyi`, and
+files with a Python-identifying shebang, including extensionless entrypoints.
+This detects common Python/PyPy interpreter names and env wrappers without executing
+them; arbitrary launcher aliases and Python code without a suffix/shebang remain outside
+detection. Worktree reads compare descriptor identities before/after reading and
 verify the path still names that file, rejecting observed edits, replacements, deletions,
 permission changes, and symlink swaps. This prevents stale-descriptor false passes;
 it does not claim an atomic repository-wide snapshot. ASCII token boundaries prevent non-ASCII neighboring bytes or text from
@@ -377,7 +381,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `475aed7`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.46% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `46df976`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.50% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags

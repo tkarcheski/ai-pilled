@@ -1,5 +1,6 @@
 """Conservative Python AST patterns; these are review signals, not exploit proofs."""
 import ast
+import re
 import warnings
 
 
@@ -36,6 +37,19 @@ KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | POSITIONAL_SECURITY_CALLS | set(PICK
 
 SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
                      'yaml.loader.SafeLoader', 'yaml.cyaml.CSafeLoader'}
+
+
+PYTHON_SHEBANG = re.compile(
+    rb"(?:^|[ \t/\"'])(?:python|pypy)(?:[23](?:\.[0-9]+)?)?(?=[ \t\r\"']|$)")
+
+
+def is_python_source(path, content):
+    """Recognize source extensions and Python-identifying interpreter lines."""
+    if path.endswith(('.py', '.pyw', '.pyi')):
+        return True
+    if not content.startswith(b'#!'):
+        return False
+    return PYTHON_SHEBANG.search(content.split(b'\n', 1)[0][2:]) is not None
 
 
 def parse_python(content, path):
@@ -161,7 +175,7 @@ def call_keywords(node):
 
 
 def inspect_python(report, path, content, *, tree=None):
-    if not path.endswith('.py'):
+    if not is_python_source(path, content):
         return
     try:
         if tree is None:

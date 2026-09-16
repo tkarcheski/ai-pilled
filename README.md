@@ -426,6 +426,10 @@ including the `pypi-` prefix and at least 85 URL-safe payload characters. AWS fi
 follow the [credential settings reference](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html);
 the secret-key length follows the [AWS access-key description](https://docs.aws.amazon.com/AmazonS3/latest/developerguide/MakingRequests.html).
 Credential matching is a limited deterministic check, not a complete security audit.
+Python literal and AST checks cover `.py`, `.pyw`, `.pyi`, and Python-identifying
+shebang scripts, including extensionless entrypoints. See the
+[Python executable-script conventions](https://docs.python.org/3/tutorial/appendix.html#executable-python-scripts).
+Custom launcher aliases or suffixless code without a Python shebang are not inferred.
 Use scan --patterns to also inspect Python ASTs for dynamic execution, unsafe object/YAML
 parsing, explicit or implicit shell execution, complete environment dumps, and TLS `verify=False` in
 Requests/HTTPX calls, and use of the unverified SSL context factory. Strict quality/Git/lifecycle checks

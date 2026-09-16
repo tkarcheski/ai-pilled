@@ -511,3 +511,23 @@ class SecurityTests(unittest.TestCase):
         scan_text(report, 'message', 'aws_secret_access_key=' + repr(secret) +
                   '; SecretAccessKey=' + repr(secret))
         self.assertEqual(len(report.findings), 1)
+
+    def test_python_entrypoints_and_alternate_extensions_scan_decoded_literals(self):
+        from ai_pilled.security import scan_bytes
+        literal = repr('ghp_') + ' ' + repr('A' * 36)
+        for path, header in (('entrypoint', '#!/usr/bin/env python3\n'), ('app.pyw', ''), ('types.pyi', '')):
+            with self.subTest(path=path):
+                result = Report('security')
+                scan_bytes(result, path, (header + 'token = ' + literal).encode())
+                self.assertEqual([f.rule for f in result.findings], ['github-token'])
+                self.assertNotIn('ghp_' + 'A' * 36, json.dumps(result.to_dict()))
+                result = Report('security')
+                scan_bytes(result, path, (header + 'def broken(').encode())
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.findings[0].rule, 'python-literals-unparsed')
+
+    def test_unstaged_fix_cannot_hide_unsafe_python_entrypoint(self):
+        self.write('entrypoint', '#!/usr/bin/env python3\nimport subprocess\nsubprocess.run(cmd, shell=True)')
+        self.write('entrypoint', '#!/usr/bin/env python3\nprint("safe")', stage=False)
+        self.assertEqual([f.rule for f in scan(self.repo, patterns=True).findings], ['shell-execution'])
+        self.assertEqual(scan(self.repo, scope='worktree', patterns=True).status, 'pass')

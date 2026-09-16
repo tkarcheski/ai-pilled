@@ -738,3 +738,26 @@ class PythonPatternTests(unittest.TestCase):
         result = self.inspect('import requests\nrequests.get(url, **settings, verify=False)')
         self.assertEqual(result.status, 'fail')
         self.assertEqual({f.rule for f in result.findings}, {'python-keywords-unresolved', 'tls-verification-disabled'})
+
+    def test_python_shebang_scripts_receive_pattern_review(self):
+        for header in ('#!/usr/bin/python', '#! /usr/bin/python3.14 -I',
+                       '#!/usr/bin/env python3', '#!/usr/bin/env -S python3 -I',
+                       "#!/usr/bin/env -S 'python3 -I'", '#!/opt/venv/bin/pypy3.10'):
+            with self.subTest(header=header):
+                report = Report('patterns')
+                inspect_python(report, 'bin/entrypoint', (header + '\nimport subprocess\nsubprocess.run(cmd, shell=True)').encode())
+                self.assertEqual([(f.rule, f.line) for f in report.findings], [('shell-execution', 3)])
+
+    def test_python_windows_and_stub_extensions_receive_review(self):
+        for path in ('app.pyw', 'types.pyi'):
+            report = Report('patterns')
+            inspect_python(report, path, b'import pickle\npickle.loads(data)')
+            self.assertEqual(report.findings[0].rule, 'unsafe-deserialization')
+
+    def test_other_interpreters_and_shebang_mentions_are_not_python(self):
+        for source in ('#!/bin/sh\necho python3', '#!/usr/bin/env notpython3\neval(data)',
+                       '#!/usr/bin/python3-config\neval(data)',
+                       '# docs\n#!/usr/bin/env python3\neval(data)', 'eval(data)'):
+            report = Report('patterns')
+            inspect_python(report, 'notes', source.encode())
+            self.assertEqual(report.status, 'pass')

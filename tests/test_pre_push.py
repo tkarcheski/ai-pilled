@@ -483,3 +483,17 @@ class PrePushTests(unittest.TestCase):
         self.assertIn(b'aws-secret-key', result.stdout + result.stderr)
         self.assertNotIn(secret.encode(), result.stdout + result.stderr)
         self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote), 'for-each-ref']), b'')
+
+    def test_historical_python_entrypoint_credential_blocks_actual_push(self):
+        secret = 'ghp_' + 'A' * 36
+        entrypoint = self.repo / 'entrypoint'
+        entrypoint.write_text('#!/usr/bin/env python3\ntoken = ' + repr('ghp_') + ' ' + repr('A' * 36))
+        self.commit()
+        entrypoint.write_text('#!/usr/bin/env python3\nprint("clean tip")')
+        self.commit()
+        install(self.repo)
+        result = self.git('push', 'origin', 'HEAD:feature', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'github-token', result.stdout + result.stderr)
+        self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote), 'for-each-ref']), b'')

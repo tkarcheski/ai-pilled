@@ -7,7 +7,7 @@ import stat
 from .file_io import file_identity
 from .git_blobs import read_blobs
 from .runtime import CommandError, Report, run, git_path
-from .python_security import inspect_python, parse_python
+from .python_security import inspect_python, is_python_source, parse_python
 from .credentials import AWS_SECRET_ASSIGNMENT, PATTERNS, aws_secret_field, json_secret_literals
 
 
@@ -88,7 +88,7 @@ def scan_bytes(report, path, content):
     else:
         text = content.decode('latin-1')
     scan_text(report, path, text)
-    if path.endswith('.py'):
+    if is_python_source(path, content):
         try:
             tree = parse_python(content, path)
         except (SyntaxError, ValueError, RecursionError):
