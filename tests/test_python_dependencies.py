@@ -1,12 +1,13 @@
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from ai_pilled.python_dependencies import audit_python
-from ai_pilled.runtime import CommandUnavailable
+from ai_pilled.runtime import CommandUnavailable, CompletedCommand
 
 
 class PythonDependencyTests(unittest.TestCase):
@@ -19,7 +20,9 @@ class PythonDependencyTests(unittest.TestCase):
         self.row = {'name': 'example-package', 'version': '1.2.3', 'vulns': []}
 
     def response(self, rows=None):
-        return json.dumps({'dependencies': [self.row] if rows is None else rows, 'fixes': []}).encode()
+        dependencies = [self.row] if rows is None else rows
+        code = 1 if any(row.get('vulns') for row in dependencies) else 0
+        return CompletedCommand(json.dumps({'dependencies': dependencies, 'fixes': []}).encode(), code)
 
     def test_complete_report_passes_without_resolution_or_installation(self):
         def provider(argv, repo, **kwargs):
@@ -33,7 +36,7 @@ class PythonDependencyTests(unittest.TestCase):
             self.assertNotIn('GIT_DIR', kwargs['env'])
             return self.response()
         with patch.dict(os.environ, {'GIT_DIR': '/not-this-project', 'PIP_AUDIT_OUTPUT': 'unwanted'}):
-            with patch('ai_pilled.python_dependencies.run', side_effect=provider):
+            with patch('ai_pilled.python_dependencies.run_completed', side_effect=provider):
                 result = audit_python(self.repo)
         self.assertEqual(result.status, 'pass')
         self.assertEqual(result.metrics['packages_audited'], 1)
@@ -46,7 +49,7 @@ class PythonDependencyTests(unittest.TestCase):
             selected = Path(argv[argv.index('--requirement') + 1])
             self.assertEqual(selected.read_text(), 'example-package==1.2.3\n')
             return self.response()
-        with patch('ai_pilled.python_dependencies.run', side_effect=provider):
+        with patch('ai_pilled.python_dependencies.run_completed', side_effect=provider):
             result = audit_python(self.repo)
         self.assertEqual(result.status, 'pass')
         self.assertEqual(result.metrics['packages_audited'], 1)
@@ -61,14 +64,14 @@ class PythonDependencyTests(unittest.TestCase):
                        'Example_Package==1.2.3 \\\\\n--hash=sha256:' + 'a' * 64,
                        '# ' + 'x' * 64_000):
             self.path.write_text(source)
-            with self.subTest(source=source[:80]), patch('ai_pilled.python_dependencies.run') as provider:
+            with self.subTest(source=source[:80]), patch('ai_pilled.python_dependencies.run_completed') as provider:
                 self.assertEqual(audit_python(self.repo).status, 'incomplete')
                 provider.assert_not_called()
 
     def test_joined_credential_is_blocked_before_provider(self):
         token = 'ghp_' + 'A' * 36
         self.path.write_text(token[:20] + '\\\n' + token[20:] + '==1.0\n')
-        with patch('ai_pilled.python_dependencies.run') as provider:
+        with patch('ai_pilled.python_dependencies.run_completed') as provider:
             result = audit_python(self.repo)
         self.assertEqual(result.status, 'incomplete')
         self.assertNotIn(token, json.dumps(result.to_dict()))
@@ -87,14 +90,43 @@ class PythonDependencyTests(unittest.TestCase):
         def provider(*args, **kwargs):
             self.path.write_text('Example_Package==1.2.3 --hash=sha256:' + 'b' * 64)
             return self.response()
-        with patch('ai_pilled.python_dependencies.run', side_effect=provider):
+        with patch('ai_pilled.python_dependencies.run_completed', side_effect=provider):
             result = audit_python(self.repo)
         self.assertEqual(result.status, 'incomplete')
         self.assertIn('changed', result.findings[0].message)
 
+    def test_real_provider_exit_status_must_match_its_evidence(self):
+        tool = self.repo / 'provider'
+        for code, vulnerabilities in ((1, []), (0, [{'id': 'PYSEC-2026-1', 'fix_versions': []}])):
+            with self.subTest(code=code):
+                row = dict(self.row, vulns=vulnerabilities)
+                data = json.dumps({'dependencies': [row]})
+                tool.write_text(f'#!{sys.executable}\nprint({data!r})\nraise SystemExit({code})\n')
+                tool.chmod(0o755)
+                result = audit_python(self.repo, executable=str(tool))
+                self.assertEqual(result.status, 'incomplete')
+                self.assertIn('contradicts', result.findings[0].message)
+
+    def test_legacy_cached_evidence_is_refreshed(self):
+        from ai_pilled.python_dependencies import audit_python_changed
+        self.configure_automation()
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()):
+            audit_python(self.repo)
+        path = self.repo / '.ai-pilled/events.jsonl'
+        entry = json.loads(path.read_text())
+        for metrics in ({}, [], {'evidence_version': True}):
+            with self.subTest(metrics=metrics):
+                entry['report']['metrics'] = metrics
+                path.write_text(json.dumps(entry) + '\n')
+                with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()) as provider:
+                    result, reused = audit_python_changed(self.repo)
+                self.assertFalse(reused)
+                self.assertEqual(result.status, 'pass')
+                provider.assert_called_once()
+
     def test_vulnerability_blocks_and_reports_fixed_versions(self):
         self.row['vulns'] = [{'id': 'PYSEC-2026-1', 'fix_versions': ['1.2.4']}]
-        with patch('ai_pilled.python_dependencies.run', return_value=self.response()):
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()):
             result = audit_python(self.repo)
         self.assertEqual(result.status, 'fail')
         self.assertIn('1.2.4', result.findings[0].message)
@@ -106,7 +138,7 @@ class PythonDependencyTests(unittest.TestCase):
                [dict(self.row, skip_reason='not on index')],
                [dict(self.row, vulns=[{'id': 'CVE-2026-1', 'fix_versions': None}])]]
         for rows in bad:
-            with self.subTest(rows=rows), patch('ai_pilled.python_dependencies.run', return_value=self.response(rows)):
+            with self.subTest(rows=rows), patch('ai_pilled.python_dependencies.run_completed', return_value=self.response(rows)):
                 self.assertEqual(audit_python(self.repo).status, 'incomplete')
 
     def test_unsupported_input_never_invokes_provider(self):
@@ -114,13 +146,13 @@ class PythonDependencyTests(unittest.TestCase):
                        'package @ https://example.invalid/a.whl', 'example==1; python_version>"3"',
                        'example[extra]==1', 'example==1.*'):
             self.path.write_text(source)
-            with self.subTest(source=source), patch('ai_pilled.python_dependencies.run') as provider:
+            with self.subTest(source=source), patch('ai_pilled.python_dependencies.run_completed') as provider:
                 self.assertEqual(audit_python(self.repo).status, 'incomplete')
                 provider.assert_not_called()
 
     def test_conflicting_pins_across_files_are_rejected(self):
         (self.repo / 'dev.txt').write_text('example-package==2.0\n')
-        with patch('ai_pilled.python_dependencies.run') as provider:
+        with patch('ai_pilled.python_dependencies.run_completed') as provider:
             result = audit_python(self.repo, ['requirements.txt', 'dev.txt'])
         self.assertEqual(result.status, 'incomplete')
         provider.assert_not_called()
@@ -129,21 +161,21 @@ class PythonDependencyTests(unittest.TestCase):
         def provider(*args, **kwargs):
             self.path.write_text('other==1.0\n')
             return self.response()
-        with patch('ai_pilled.python_dependencies.run', side_effect=provider):
+        with patch('ai_pilled.python_dependencies.run_completed', side_effect=provider):
             result = audit_python(self.repo)
         self.assertEqual(result.status, 'incomplete')
         self.assertIn('changed', result.findings[0].message)
 
     def test_unavailable_tool_and_malformed_json_are_incomplete(self):
-        with patch('ai_pilled.python_dependencies.run', side_effect=CommandUnavailable('Tool unavailable')):
+        with patch('ai_pilled.python_dependencies.run_completed', side_effect=CommandUnavailable('Tool unavailable')):
             self.assertEqual(audit_python(self.repo).status, 'incomplete')
         for value in (b'not json', b'{}', b'null'):
-            with patch('ai_pilled.python_dependencies.run', return_value=value):
+            with patch('ai_pilled.python_dependencies.run_completed', return_value=CompletedCommand(value, 0)):
                 self.assertEqual(audit_python(self.repo).status, 'incomplete')
 
     def test_empty_file_is_explicit_zero_package_audit(self):
         self.path.write_text('# No runtime dependencies\n')
-        with patch('ai_pilled.python_dependencies.run') as provider:
+        with patch('ai_pilled.python_dependencies.run_completed') as provider:
             result = audit_python(self.repo)
         self.assertEqual(result.status, 'pass')
         self.assertEqual(result.metrics['packages_audited'], 0)
@@ -159,13 +191,13 @@ class PythonDependencyTests(unittest.TestCase):
         self.assertEqual(audit_python(self.repo, ['../outside']).status, 'incomplete')
 
     def test_legacy_list_report_is_supported(self):
-        with patch('ai_pilled.python_dependencies.run', return_value=json.dumps([self.row]).encode()):
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=CompletedCommand(json.dumps([self.row]).encode(), 0)):
             self.assertEqual(audit_python(self.repo).status, 'pass')
 
     def test_credentials_are_blocked_before_provider_invocation(self):
         token = 'ghp_' + 'A' * 36
         self.path.write_text(token + '==1.0')
-        with patch('ai_pilled.python_dependencies.run') as provider:
+        with patch('ai_pilled.python_dependencies.run_completed') as provider:
             result = audit_python(self.repo)
         self.assertEqual(result.status, 'incomplete')
         self.assertNotIn(token, json.dumps(result.to_dict()))
@@ -178,7 +210,7 @@ class PythonDependencyTests(unittest.TestCase):
     def test_automation_reuses_complete_result_but_not_changed_inputs(self):
         from ai_pilled.python_dependencies import audit_python_changed
         self.configure_automation()
-        with patch('ai_pilled.python_dependencies.run', return_value=self.response()):
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()):
             audit_python(self.repo)
         with patch('ai_pilled.python_dependencies.audit_python') as provider:
             result, reused = audit_python_changed(self.repo)
@@ -194,15 +226,15 @@ class PythonDependencyTests(unittest.TestCase):
         from ai_pilled.python_dependencies import audit_python_changed
         self.configure_automation()
         self.row['vulns'] = [{'id': 'PYSEC-2026-1', 'fix_versions': []}]
-        with patch('ai_pilled.python_dependencies.run', return_value=self.response()):
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()):
             audit_python(self.repo)
         self.assertEqual(audit_python_changed(self.repo)[0].status, 'fail')
-        with patch('ai_pilled.python_dependencies.run', side_effect=CommandUnavailable('offline')):
+        with patch('ai_pilled.python_dependencies.run_completed', side_effect=CommandUnavailable('offline')):
             audit_python(self.repo)
         with patch('ai_pilled.python_dependencies.audit_python') as provider:
             self.assertFalse(audit_python_changed(self.repo)[1])
             provider.assert_called_once()
-        with patch('ai_pilled.python_dependencies.run', return_value=self.response()):
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()):
             audit_python(self.repo)
         path = self.repo / '.ai-pilled/events.jsonl'
         entries = [json.loads(line) for line in path.read_text().splitlines()]

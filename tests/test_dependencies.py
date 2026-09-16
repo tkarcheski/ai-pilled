@@ -48,6 +48,37 @@ class DependencyTests(unittest.TestCase):
         self.assertEqual(result.findings[0].path, 'example')
         self.assertIn('high', result.findings[0].message)
 
+    def test_exit_status_must_match_audit_level_evidence(self):
+        for payload, code in ((response(), 1), (response(True), 0)):
+            with self.subTest(code=code):
+                self.provider(payload, code)
+                result = audit(self.repo, str(self.fake))
+                self.assertEqual(result.status, 'incomplete')
+                self.assertIn('contradicts', result.findings[0].message)
+
+    def test_info_only_vulnerability_can_exit_zero_at_low_threshold(self):
+        payload = response(True)
+        payload['metadata']['vulnerabilities'].update(high=0, info=1)
+        payload['vulnerabilities']['example']['severity'] = 'info'
+        self.provider(payload, 0)
+        result = audit(self.repo, str(self.fake))
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual(result.findings[0].rule, 'dependency-vulnerability')
+        self.assertIn('info vulnerability', result.findings[0].message)
+
+    def test_legacy_audit_cache_is_refreshed(self):
+        from ai_pilled.dependencies import audit_changed
+        original = audit(self.repo, str(self.fake))
+        path = self.repo / '.ai-pilled/events.jsonl'
+        entry = json.loads(path.read_text())
+        entry['report']['metrics'].pop('evidence_version')
+        path.write_text(json.dumps(entry) + '\n')
+        with patch('ai_pilled.dependencies.audit', return_value=original) as provider:
+            result, reused = audit_changed(self.repo)
+        self.assertFalse(reused)
+        self.assertEqual(result.status, 'pass')
+        provider.assert_called_once_with(self.repo, timeout=30)
+
     def test_registry_error_does_not_leak_response(self):
         self.provider({'error': {'summary': 'private registry credential'}}, 1)
         result = audit(self.repo, str(self.fake))

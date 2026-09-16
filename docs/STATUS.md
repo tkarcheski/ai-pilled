@@ -118,13 +118,13 @@ required hosted checks are separate controls and have not been configured or cla
 
 | Capability | Available behavior | Evidence and remaining limits |
 | --- | --- | --- |
-| npm vulnerability audit | Lockfile-only audit, scripts disabled, validated package/count evidence | `test_dependencies.py`; npm fixtures and malformed/offline responses. No package install or automatic fix. Requires supported npm audit JSON. |
+| npm vulnerability audit | Lockfile-only audit, scripts disabled, validated package/count evidence and matching exit status at the requested low threshold | `test_dependencies.py`; npm fixtures and malformed/offline responses. No package install or automatic fix. Requires supported npm audit JSON. |
 | npm health and licenses | Installed-tree consistency, available updates, explicit license allowlist | `test_dependency_health.py`; missing/unknown evidence remains blocking. No legal compliance conclusion. |
-| Python vulnerabilities | `python-audit`, exact listed pins, `pip-audit --no-deps --disable-pip --strict` | `test_python_dependencies.py`; all selected packages must appear exactly once with the expected version. No install, build, resolver, or fix execution. |
+| Python vulnerabilities | `python-audit`, exact listed pins, `pip-audit --no-deps --disable-pip --strict` | `test_python_dependencies.py`; all selected packages must appear exactly once with the expected version; process exit status must agree with vulnerability evidence. No install, build, resolver, or fix execution. |
 | Python environment health | `python-health --python PATH`; `pip inspect` plus `pip check` | `test_python_health.py`; isolated interpreter prevents repository `pip.py` shadowing. Environment fingerprint must remain stable. Interpreter/startup environment must be trusted. |
 | Python updates | Optional `python-health --outdated`, confirmed per-package PyPI queries | Failed/unknown lookups remain incomplete. A reproduced `pip list --outdated` empty-success case motivated explicit index queries. Private/unpublished versions require manual comparison. |
 | Python licenses | `python-licenses --python PATH --allow EXPRESSION` | Exact declared expression matching. Missing, unknown, or prose-only metadata remains incomplete. No inferred SPDX evaluation or legal analysis. |
-| Automatic auditing | `python_requirements` and `python_audit_executable` in quality; `audit_dependencies_on_change` in PostToolUse | Enabled here for `requirements-dev.txt` and `requirements-audit.txt` (36 distinct pins). Quality obtains fresh results; lifecycle may reuse complete matching evidence for at most one hour. Failures stay blocking; incomplete checks are retried with a 30-second provider limit. |
+| Automatic auditing | `python_requirements` and `python_audit_executable` in quality; `audit_dependencies_on_change` in PostToolUse | Enabled here for `requirements-dev.txt` and `requirements-audit.txt` (36 distinct pins). Quality obtains fresh results; lifecycle may reuse complete matching evidence for at most one hour. Failures stay blocking; incomplete checks are retried with a 30-second provider limit. Older cache entries without validated status evidence are refreshed. |
 
 **Live dogfood evidence:** both development (ten packages) and audit-tool (28 packages)
 locks install from hash-verified wheels in fresh Python 3.10 and 3.14 environments,

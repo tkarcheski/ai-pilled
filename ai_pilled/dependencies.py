@@ -7,10 +7,11 @@ import re
 import stat
 
 from .config import load
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run_completed
 from .state import record
 
 SEVERITIES = ('info', 'low', 'moderate', 'high', 'critical')
+EVIDENCE_VERSION = 1
 
 
 def read_input(path):
@@ -84,16 +85,21 @@ def audit(repo, executable='npm', timeout=None):
         before = snapshot(repo)
         report.snapshot = before
         env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
-        output = run([executable, 'audit', '--json', '--package-lock-only',
+        completed = run_completed([executable, 'audit', '--json', '--package-lock-only',
                       '--ignore-scripts', '--include=dev', '--include=optional',
                       '--include=peer', '--audit-level=low'],
                      repo, env=env, timeout=min(load(repo).timeout, timeout) if timeout else load(repo).timeout,
                      acceptable_codes=(0, 1))
-        findings = parse_npm(loads(output))
+        data = loads(completed.stdout)
+        findings = parse_npm(data)
+        expected_code = int(any(data['metadata']['vulnerabilities'][level] for level in SEVERITIES[1:]))
+        if completed.returncode != expected_code:
+            raise CommandError('npm exit status contradicts its audit-level vulnerability evidence')
         if snapshot(repo) != before:
             raise CommandError('Dependency inputs changed during audit; rerun it')
         for name, message in findings:
             report.add('dependency-vulnerability', message, path=name)
+        report.metrics = {'vulnerabilities': len(findings), 'evidence_version': EVIDENCE_VERSION}
     except (CommandError, ValueError, OSError) as exc:
         report.add('dependency-audit-unavailable',
                    str(exc) if isinstance(exc, CommandError) else 'Cannot read a valid dependency audit',
@@ -119,6 +125,10 @@ def audit_changed(repo):
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(entry['at'])).total_seconds()
             if not 0 <= age < 3600 or data.get('status') not in ('pass', 'fail'):
                 break
+            metrics = data.get('metrics')
+            if (not isinstance(metrics, dict) or type(metrics.get('evidence_version')) is not int
+                    or metrics['evidence_version'] != EVIDENCE_VERSION):
+                break
             findings = [Finding(**finding) for finding in data['findings']]
             if any(f.severity not in ('error', 'warning', 'info') or not isinstance(f.message, str)
                    for f in findings):
@@ -127,7 +137,7 @@ def audit_changed(repo):
                     or (data['status'] == 'fail' and not any(f.severity == 'error' for f in findings))):
                 break
             cached = Report('dependency-vulnerabilities', status=data['status'],
-                            findings=findings, snapshot=fingerprint)
+                            findings=findings, snapshot=fingerprint, metrics=metrics)
             if snapshot(repo) == fingerprint:
                 return cached, True
             break

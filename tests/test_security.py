@@ -76,6 +76,15 @@ class SecurityTests(unittest.TestCase):
         self.write('ignored.txt', 'ghp_' + 'A' * 36, stage=False)
         self.assertEqual(scan(self.repo, 'worktree').status, 'pass')
 
+    def test_completed_command_preserves_exit_status_without_echoing_output(self):
+        from ai_pilled.runtime import run_completed
+        result = run_completed([sys.executable, '-c',
+                                'print("private command output"); raise SystemExit(1)'],
+                               self.repo, acceptable_codes=(0, 1))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, b'private command output\n')
+        self.assertNotIn('private command output', repr(result))
+
     def test_subprocess_timeout_is_error(self):
         with self.assertRaises(CommandError):
             run([sys.executable, '-c', 'import time; time.sleep(5)'], self.repo, timeout=.05)

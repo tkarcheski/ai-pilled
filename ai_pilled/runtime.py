@@ -87,7 +87,18 @@ class CommandUnavailable(CommandError):
     """No completed command result exists (missing executable or resource limit)."""
 
 
-def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, acceptable_codes=(0,)):
+@dataclass(frozen=True)
+class CompletedCommand:
+    stdout: bytes = field(repr=False)
+    returncode: int
+
+
+def run(argv, cwd, **options):
+    """Return bounded stdout; callers needing exit evidence use run_completed."""
+    return run_completed(argv, cwd, **options).stdout
+
+
+def run_completed(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, acceptable_codes=(0,)):
     """Bound stdout + stderr while running and kill descendants on failure."""
     if timeout <= 0 or limit < 0:
         raise ValueError('timeout must be positive and limit nonnegative')
@@ -143,7 +154,7 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
                     raise CommandUnavailable(f'{Path(argv[0]).name} terminated by signal {-code}')
                 if code not in acceptable_codes:
                     raise CommandFailed(argv[0], code)
-                return bytes(captured)
+                return CompletedCommand(bytes(captured), code)
         except BaseException:
             try:
                 os.killpg(child.pid, signal.SIGKILL)

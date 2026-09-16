@@ -101,7 +101,8 @@ The adapter supplies a sanitized snapshot to pip-audit with --no-deps, --disable
 --strict. It never installs, executes package build code, or applies fixes. Package names
 and versions are queried against PyPI's advisory service. Every selected package must
 appear exactly once in the returned evidence; skipped/missing packages, malformed results,
-timeouts, and changed inputs make the audit incomplete. Known advisories block and report
+timeouts, changed inputs, or an exit status that contradicts vulnerability evidence make
+the audit incomplete. Cached reports from before this status validation are refreshed. Known advisories block and report
 available fixed versions. See the [official pip-audit documentation](https://github.com/pypa/pip-audit).
 
 ## Python environment health and licenses

@@ -9,7 +9,7 @@ import tempfile
 from .config import load
 from .json_data import loads
 from .metrics import local_path
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run_completed
 from .state import record
 from .security import scan_text
 
@@ -18,6 +18,7 @@ VERSION = r'[0-9][A-Za-z0-9.!+_-]{0,99}'
 PIN = re.compile(r'(' + NAME + r')==(' + VERSION + r')')
 HASH = re.compile(r'--hash=sha256:[a-fA-F0-9]{64}')
 COMMENT = re.compile(r'(^|\s+)#.*$')
+EVIDENCE_VERSION = 1
 
 
 def canonical(name):
@@ -132,19 +133,22 @@ def audit_python(repo, files=None, executable='pip-audit', timeout=None):
                 env = {k: v for k, v in os.environ.items()
                        if not k.startswith(('GIT_', 'PIP_', 'PYTHON'))}
                 env.update(PIP_CONFIG_FILE=os.devnull, PIP_NO_INPUT='1', PYTHONDONTWRITEBYTECODE='1')
-                output = run([executable, '--requirement', str(pins), '--no-deps', '--disable-pip',
+                completed = run_completed([executable, '--requirement', str(pins), '--no-deps', '--disable-pip',
                               '--strict', '--format', 'json', '--progress-spinner', 'off',
                               '--desc', 'off', '--aliases', 'off', '--vulnerability-service', 'pypi'],
                              repo, env=env, timeout=min(load(repo).timeout, timeout) if timeout else load(repo).timeout,
                              acceptable_codes=(0, 1))
-                findings = parse_audit(loads(output), packages)
+                findings = parse_audit(loads(completed.stdout), packages)
+                if completed.returncode != (1 if findings else 0):
+                    raise CommandError('pip-audit exit status contradicts its vulnerability evidence')
         else:
             findings = []
         if requirements(repo, files)[0] != before:
             raise CommandError('Python dependency inputs changed during audit; rerun it')
         for name, message in findings:
             report.add('python-dependency-vulnerability', message, path=name)
-        report.metrics = {'packages_audited': len(packages), 'vulnerabilities': len(findings)}
+        report.metrics = {'packages_audited': len(packages), 'vulnerabilities': len(findings),
+                          'evidence_version': EVIDENCE_VERSION}
     except (CommandError, ValueError, OSError) as exc:
         report.add('python-dependency-audit-unavailable', str(exc) if isinstance(exc, CommandError)
                    else 'Cannot read a valid Python dependency audit', severity='warning')
@@ -170,6 +174,10 @@ def audit_python_changed(repo):
                 continue
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(entry['at'])).total_seconds()
             if not 0 <= age < 3600 or data.get('status') not in ('pass', 'fail'):
+                break
+            metrics = data.get('metrics')
+            if (not isinstance(metrics, dict) or type(metrics.get('evidence_version')) is not int
+                    or metrics['evidence_version'] != EVIDENCE_VERSION):
                 break
             findings = [Finding(**finding) for finding in data['findings']]
             if any(f.severity not in ('error', 'warning', 'info') or not isinstance(f.message, str)
