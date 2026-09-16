@@ -3,11 +3,15 @@ import hashlib
 from .json_data import loads
 import math
 import os
+import stat
 from pathlib import Path
 
 from .file_io import open_regular, read_regular
 from .runtime import CommandError, Report
 from .state import record
+
+
+MAX_ARTIFACT_ENTRIES = 10_000
 
 
 def local_path(repo, name):
@@ -51,6 +55,27 @@ def coverage(repo, source, minimum):
     return report
 
 
+def artifact_files(path):
+    """Bound traversal and propagate every directory-read failure."""
+    pending, files = [path], []
+    count = 1  # Include the selected root, even when it is an empty directory.
+    while pending:
+        item = pending.pop()
+        mode = item.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            raise CommandError('Build artifact contains a symlink')
+        if stat.S_ISDIR(mode):
+            with os.scandir(item) as children:
+                for child in children:
+                    count += 1
+                    if count > MAX_ARTIFACT_ENTRIES:
+                        raise CommandError('Build artifacts exceed the 10000-entry traversal limit')
+                    pending.append(item / child.name)
+        else:
+            files.append(item)
+    return sorted(files)
+
+
 def bundle(repo, source, maximum):
     report = Report('bundle-budget')
     try:
@@ -59,16 +84,14 @@ def bundle(repo, source, maximum):
         path = local_path(repo, source)
         if not path.exists():
             raise CommandError('Build artifact is missing; build before measuring')
-        paths = sorted(path.rglob('*')) if path.is_dir() else [path]
+        paths = artifact_files(path)
         digest = hashlib.sha256()
         total = files = 0
         for item in paths:
             if item.is_symlink():
                 raise CommandError('Build artifact contains a symlink')
-            if item.is_dir():
-                continue
             files += 1
-            digest.update(str(item.relative_to(Path(repo).resolve())).encode() + b'\0')
+            digest.update(str(item.relative_to(Path(repo).resolve())).encode(errors='surrogateescape') + b'\0')
             with open_regular(item) as stream:
                 digest.update(str(os.fstat(stream.fileno()).st_size).encode() + b'\0')
                 while chunk := stream.read(65536):

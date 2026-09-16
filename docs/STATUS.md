@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `109ad81`: 494 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `c771fc7`
-passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `21d7d26` also passed all seven gates with zero
+The verification baseline is `1ce2ee3`: 510 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `86ba489`
+passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `1ce2ee3` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -326,7 +326,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `c771fc7`; publication blocked | Current 3.10 seven-gate/E2E evidence, 91.81% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `86ba489`; publication blocked | Current 3.10 seven-gate/E2E evidence, 91.90% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
@@ -368,6 +368,12 @@ Pre-push input is capped before Git or network work: at most 1,000,000 text char
 and 2,000 ref updates. Oversized input is rejected without echoing it; the CLI reads
 only enough to detect the limit. Invalid stream encodings become structured protocol
 errors for both pre-push and lifecycle input. Existing commit/history bounds still apply.
+
+Bundle measurement rejects unreadable or interrupted directory listings instead of
+silently omitting their files. Traversal is capped at 10,000 entries including the
+selected root and empty directories, in addition to the existing 100 MB read limit.
+Partial traversal never publishes byte metrics. Filesystem filename bytes are retained
+in the fingerprint, including non-UTF-8 names; measurements do not rename input files.
 
 ## Known gaps and prioritized follow-ups
 

@@ -88,3 +88,68 @@ class MetricsTests(unittest.TestCase):
         path.unlink()
         path.write_bytes(b' ' * 2_000_001)
         self.assertEqual(coverage(self.repo, path.name, 90).status, 'incomplete')
+
+    def test_unreadable_subdirectory_cannot_be_omitted_from_budget(self):
+        dist = self.repo / 'dist'
+        hidden = dist / 'private'
+        hidden.mkdir(parents=True)
+        (dist / 'visible.txt').write_bytes(b'x')
+        (hidden / 'large.bin').write_bytes(b'x' * 100)
+        original = os.scandir
+
+        def denied(path):
+            if Path(path) == hidden:
+                raise PermissionError('private directory')
+            return original(path)
+
+        with patch('ai_pilled.metrics.os.scandir', side_effect=denied):
+            result = bundle(self.repo, 'dist', 10)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.metrics, {})
+        self.assertEqual((hidden / 'large.bin').read_bytes(), b'x' * 100)
+
+    def test_directory_iteration_failure_cannot_publish_partial_metrics(self):
+        from contextlib import contextmanager
+        dist = self.repo / 'dist'
+        dist.mkdir()
+        (dist / 'a.txt').write_bytes(b'a')
+        (dist / 'b.txt').write_bytes(b'b')
+        original = os.scandir
+
+        def interrupted(children):
+            yield next(children)
+            raise OSError('interrupted directory read')
+
+        @contextmanager
+        def partial(path):
+            with original(path) as children:
+                yield interrupted(children)
+
+        with patch('ai_pilled.metrics.os.scandir', side_effect=partial):
+            result = bundle(self.repo, 'dist', 100)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.metrics, {})
+
+    def test_bundle_entry_limit_counts_files_and_empty_directories(self):
+        dist = self.repo / 'dist'
+        dist.mkdir()
+        (dist / 'a').write_bytes(b'a')
+        (dist / 'b').write_bytes(b'b')
+        with patch('ai_pilled.metrics.MAX_ARTIFACT_ENTRIES', 3):
+            self.assertEqual(bundle(self.repo, 'dist', 2).status, 'pass')
+            (dist / 'empty').mkdir()
+            result = bundle(self.repo, 'dist', 2)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('traversal limit', result.findings[0].message)
+        self.assertEqual(result.metrics, {})
+
+    def test_bundle_preserves_non_utf8_filename_bytes(self):
+        dist = self.repo / 'dist'
+        dist.mkdir()
+        artifact = dist / os.fsdecode(b'asset-\xff.bin')
+        artifact.write_bytes(b'abc')
+        result = bundle(self.repo, 'dist', 3)
+        self.assertEqual(result.status, 'pass')
+        self.assertEqual(result.metrics, {'bytes': 3, 'files': 1, 'maximum_bytes': 3})
+        artifact.rename(dist / os.fsdecode(b'asset-\xfe.bin'))
+        self.assertNotEqual(bundle(self.repo, 'dist', 3).snapshot, result.snapshot)
