@@ -56,6 +56,7 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
                 start_new_session=True, env=env)
         except OSError as exc:
             raise CommandError(f'Cannot start {Path(argv[0]).name}: {exc.strerror}') from exc
+        assert child.stdout is not None and child.stderr is not None
         deadline = time.monotonic() + timeout
         captured = bytearray()
         total = 0
@@ -68,7 +69,7 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
                     if remaining <= 0:
                         raise CommandError(f'{Path(argv[0]).name} exceeded {timeout}s')
                     for key, _ in selector.select(min(remaining, 0.1)):
-                        chunk = os.read(key.fileobj.fileno(), 65536)
+                        chunk = os.read(key.fd, 65536)
                         if not chunk:
                             selector.unregister(key.fileobj)
                             continue

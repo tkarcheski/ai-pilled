@@ -3,7 +3,6 @@ from collections import Counter
 import html
 import json
 import os
-from pathlib import Path
 
 from .runtime import CommandError
 from .state import directory, history
@@ -52,7 +51,8 @@ def summarize(repo):
 def dashboard(repo):
     summary = summarize(repo)
     recent = entries(repo)[-100:]
-    escape = lambda value: html.escape(str(value), quote=True)
+    def escape(value):
+        return html.escape(str(value), quote=True)
     cards = ''.join(f'<div class="card {status}"><strong>{summary["counts"].get(status, 0)}</strong>'
                     f'<span>{status}</span></div>' for status in STATUSES)
     rows = []

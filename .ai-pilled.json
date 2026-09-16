@@ -15,6 +15,34 @@
       "-m",
       "ai_pilled",
       "scan"
+    ],
+    "lint": [
+      ".ai-pilled/tools/bin/ruff",
+      "check",
+      "--isolated",
+      "--no-cache",
+      "--select",
+      "E4,E7,E9,F",
+      "ai_pilled",
+      "tests",
+      "scripts"
+    ],
+    "typecheck": [
+      ".ai-pilled/tools/bin/mypy",
+      "--no-incremental",
+      "--cache-dir=/dev/null",
+      "--check-untyped-defs",
+      "ai_pilled"
+    ],
+    "deadcode": [
+      ".ai-pilled/tools/bin/vulture",
+      "ai_pilled",
+      "--min-confidence",
+      "100"
+    ],
+    "coverage": [
+      ".ai-pilled/tools/bin/python",
+      "scripts/check_coverage.py"
     ]
   },
   "protected_branches": [

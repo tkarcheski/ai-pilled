@@ -202,6 +202,19 @@ raw tool output, and they do not invent a successful check when evidence is abse
 
 ## Development
 
+Install the pinned tools into the ignored project-local environment before running
+the full quality profile:
+
+~~~sh
+python -m venv .ai-pilled/tools
+.ai-pilled/tools/bin/python -m pip install -r requirements-dev.txt
+python -m ai_pilled quality
+~~~
+
+The profile runs Ruff, mypy body checks, high-confidence Vulture checks, and a fresh
+coverage run with an 80% line budget. These tools supplement review; they do not
+prove the absence of dead code or type errors. The baseline tests remain dependency-free:
+
 ~~~sh
 PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -v
 python -m ai_pilled check test
