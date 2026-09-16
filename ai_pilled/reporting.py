@@ -25,11 +25,32 @@ def entries(repo):
     return redact_data(records)
 
 
+def latest_entries(records):
+    """Use append order, including nested pipeline checks, with bounded traversal."""
+    latest = {}
+    count = 0
+    for entry in records:
+        pending = [entry['report']]
+        while pending:
+            report = pending.pop()
+            count += 1
+            if count > 10000:
+                raise CommandError('Historical evidence exceeds the 10000-check limit')
+            if (not isinstance(report, dict) or report.get('status') not in STATUSES
+                    or not isinstance(report.get('check'), str)):
+                raise CommandError('Cannot summarize invalid nested check evidence')
+            latest[report['check']] = {**entry, 'report': report}
+            for key in ('checks', 'steps'):
+                children = report.get(key, [])
+                if not isinstance(children, list) or len(children) > 100:
+                    raise CommandError('Cannot summarize invalid nested check evidence')
+                pending.extend(reversed(children))
+    return latest
+
+
 def summarize(repo):
     records = entries(repo)
-    latest = {}
-    for entry in records:
-        latest[entry['report']['check']] = entry
+    latest = latest_entries(records)
     blocked = [e['report']['check'] for e in latest.values() if e['report']['status'] != 'pass']
     counts = dict(Counter(e['report']['status'] for e in latest.values()))
     if not records:

@@ -173,7 +173,9 @@ need pip's JSON index output. Health/license execution requires an explicit inte
 [lifecycle.py](../ai_pilled/lifecycle.py) and [reporting.py](../ai_pilled/reporting.py).
 Summaries include a sentence, blocker state, warnings, and next action. Structured
 exit codes and MCP errors determine tool success; running and unknown outcomes are
-preserved. Raw tool transcripts are not retained in the summary/history.
+preserved. Summaries, dashboard counts, and suggestions share bounded traversal of
+nested check/step results; a newer child result supersedes older evidence for that check.
+A passing parent cannot hide a failed child. Raw tool transcripts are not retained in the summary/history.
 
 **Evidence:** `test_lifecycle.py`, `test_reporting.py`, and real CLI E2E checks.
 The dashboard escapes content, uses a restrictive content policy, and writes private

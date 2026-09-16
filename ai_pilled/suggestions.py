@@ -4,7 +4,7 @@ import re
 
 from .config import load
 from .credentials import redact_data
-from .reporting import entries
+from .reporting import entries, latest_entries
 from .runtime import CommandError
 
 GATES = ('test', 'lint', 'typecheck', 'deadcode', 'coverage')
@@ -20,26 +20,9 @@ RECHECKS = {
 
 
 def latest_checks(records):
-    latest = {}
-    count = 0
-    for entry in records:
-        pending = [entry['report']]
-        while pending:
-            report = pending.pop()
-            count += 1
-            if count > 10000:
-                raise CommandError('Historical suggestions exceed the 10000-check limit')
-            if (not isinstance(report, dict) or report.get('status') not in ('pass', 'fail', 'incomplete')
-                    or not isinstance(report.get('check'), str)):
-                raise CommandError('Cannot suggest from invalid nested check evidence')
-            if not re.fullmatch(r'[a-z][a-z0-9-]{0,79}', report['check']):
-                raise CommandError('Cannot suggest from an invalid check identity')
-            latest[report['check']] = report
-            for key in ('checks', 'steps'):
-                children = report.get(key, [])
-                if not isinstance(children, list) or len(children) > 100:
-                    raise CommandError('Cannot suggest from invalid nested check evidence')
-                pending.extend(reversed(children))
+    latest = {name: entry['report'] for name, entry in latest_entries(records).items()}
+    if any(not re.fullmatch(r'[a-z][a-z0-9-]{0,79}', name) for name in latest):
+        raise CommandError('Cannot suggest from an invalid check identity')
     return latest
 
 

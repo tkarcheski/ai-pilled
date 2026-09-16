@@ -8,7 +8,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ai_pilled.reporting import dashboard, summarize
+from ai_pilled.reporting import dashboard, summarize, latest_entries
+from ai_pilled.pipeline import PipelineReport
 from ai_pilled.runtime import CommandError, Report
 from ai_pilled.state import history, record
 
@@ -35,6 +36,33 @@ class ReportingTests(unittest.TestCase):
         self.assertEqual(result['blocker'], 'proceed')
         self.assertEqual(result['counts'], {'pass': 2})
         self.assertIn('does not validate current files', result['evidence'])
+
+    def test_nested_review_success_supersedes_previous_child_failure(self):
+        record(self.repo, Report('test', status='fail'), 'test')
+        newer = record(self.repo, PipelineReport('staged-review', checks=[
+            PipelineReport('quality', checks=[Report('test').to_dict()]).to_dict()]), 'review')
+        result = summarize(self.repo)
+        self.assertEqual(result['blocker'], 'proceed')
+        self.assertEqual(result['counts'], {'pass': 3})
+        child = next(entry for entry in result['latest'] if entry['report']['check'] == 'test')
+        self.assertEqual(child['at'], newer['at'])
+        record(self.repo, Report('test', status='fail'), 'test')
+        self.assertEqual(summarize(self.repo)['unresolved'], ['test'])
+
+    def test_nested_failure_is_not_hidden_by_passing_parent(self):
+        record(self.repo, PipelineReport('quality', checks=[Report('test', status='fail').to_dict()]), 'quality')
+        self.assertEqual(summarize(self.repo)['blocker'], 'wait')
+        self.assertEqual(summarize(self.repo)['unresolved'], ['test'])
+
+    def test_nested_steps_and_malformed_or_excessive_children(self):
+        latest = latest_entries([{'report': {'check': 'flow', 'status': 'pass',
+            'steps': [Report('test', status='fail').to_dict(), Report('test').to_dict()]}}])
+        self.assertEqual(latest['test']['report']['status'], 'pass')
+        for children in ('invalid', [{}], [Report('test').to_dict()] * 101):
+            with self.assertRaises(CommandError):
+                latest_entries([{'report': {'check': 'flow', 'status': 'pass', 'checks': children}}])
+        with self.assertRaises(CommandError):
+            latest_entries([{'report': Report('test').to_dict()}] * 10001)
 
     def test_incomplete_is_not_success(self):
         missing = Report('coverage')
