@@ -439,7 +439,8 @@ credential checks still inspect every outgoing commit. Implicit shell rules cove
 `subprocess.getoutput/getstatusoutput`, and `asyncio.create_subprocess_shell`. YAML rules
 cover unsafe single/multiple-document loaders; explicit safe loaders remain allowed.
 Import aliases are resolved by lexical scope; comments and strings
-are not treated as calls. MD5/SHA-1 uses are review notices unless explicitly marked
+are not treated as calls. Literal absolute `__import__`/importlib imports are
+resolved without loading modules; unknown targets or import settings are incomplete. MD5/SHA-1 uses are review notices unless explicitly marked
 usedforsecurity=False. These conservative patterns do not model full data flow or runtime alias
 rebinding and are not proof of exploitability. TLS rules recognize direct imported
 APIs and aliases, not arbitrary session-instance methods or runtime-generated options.

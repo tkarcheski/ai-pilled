@@ -4,6 +4,9 @@ import re
 import warnings
 
 
+IMPORT_CALLS = {'__import__', 'builtins.__import__', 'importlib.__import__', 'importlib.import_module'}
+
+
 TLS_VERIFY_CALLS = {
     module + '.' + method
     for module in ('requests', 'requests.api', 'httpx')
@@ -174,6 +177,36 @@ def call_keywords(node):
     return result
 
 
+def literal_import(node, function):
+    """Resolve literal absolute import results without loading any source modules."""
+    arguments, keywords = call_arguments(node), call_keywords(node)
+    if (any(isinstance(argument, ast.Starred) for argument in arguments)
+            or any(keyword.arg is None for keyword in keywords)):
+        return None
+    options = {keyword.arg: keyword.value for keyword in keywords}
+    module = options.get('name', arguments[0] if arguments else None)
+    if (not isinstance(module, ast.Constant) or not isinstance(module.value, str)
+            or not all(part.isidentifier() for part in module.value.split('.'))):
+        return None
+    if function == 'importlib.import_module':
+        return module.value
+    level = options.get('level', arguments[4] if len(arguments) > 4 else None)
+    if level is not None and not (isinstance(level, ast.Constant)
+            and isinstance(level.value, int) and level.value == 0):
+        return None
+    fromlist = options.get('fromlist', arguments[3] if len(arguments) > 3 else None)
+    if fromlist is None:
+        full_name = False
+    elif isinstance(fromlist, ast.Constant):
+        full_name = bool(fromlist.value)
+    elif isinstance(fromlist, (ast.List, ast.Tuple)) and not any(
+            isinstance(item, ast.Starred) for item in fromlist.elts):
+        full_name = bool(fromlist.elts)
+    else:
+        return None
+    return module.value if full_name else module.value.split('.')[0]
+
+
 def inspect_python(report, path, content, *, tree=None):
     if not is_python_source(path, content):
         return
@@ -187,17 +220,23 @@ def inspect_python(report, path, content, *, tree=None):
     scopes, bindings, parents = import_scopes(tree)
     ambiguous = set()
 
-    def qualified(node, accepted=(), *, resolve_getattr=True):
+    def qualified(node, accepted=(), *, resolve_calls=True):
         attributes = []
         while True:
             if isinstance(node, ast.Attribute):
                 attributes.append(node.attr)
                 node = node.value
-            elif (resolve_getattr and isinstance(node, ast.Call) and len(node.args) in (2, 3) and not node.keywords
+            elif (resolve_calls and isinstance(node, ast.Call) and len(node.args) in (2, 3) and not node.keywords
                   and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)
-                  and qualified(node.func, resolve_getattr=False) in ('getattr', 'builtins.getattr')):
+                  and qualified(node.func, resolve_calls=False) in ('getattr', 'builtins.getattr')):
                 attributes.append(node.args[1].value)
                 node = node.args[0]
+            elif resolve_calls and isinstance(node, ast.Call):
+                importer = qualified(node.func, resolve_calls=False)
+                if importer in IMPORT_CALLS:
+                    module = literal_import(node, importer)
+                    return '.'.join([module, *reversed(attributes)]) if module else ''
+                break
             else:
                 break
         if not isinstance(node, ast.Name):
@@ -306,6 +345,10 @@ def inspect_python(report, path, content, *, tree=None):
         if not isinstance(node, ast.Call):
             continue
         name = qualified(node.func)
+        if name in IMPORT_CALLS and literal_import(node, name) is None:
+            report.add('python-import-unresolved',
+                       'Runtime import target cannot be inspected; use an explicit absolute module and import options.',
+                       path=path, line=node.lineno, severity='warning')
         if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Call):
             constructor = qualified(node.func.value.func)
             if constructor in ('requests.Session', 'requests.sessions.Session',

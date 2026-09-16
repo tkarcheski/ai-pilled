@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `df75e48`: 598 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `46df976`
-passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `df75e48` also passed all seven gates with zero
+The verification baseline is `bf4bb48`: 610 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `dbb1788`
+passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `bf4bb48` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -103,7 +103,13 @@ in defaults and enclosing closures. Comprehension bodies skip class imports, the
 iterable uses the containing scope, and loop targets remain local, following the
 [Python scope rules](https://docs.python.org/3/reference/expressions.html#displays-for-lists-sets-and-dictionaries).
 Unrelated nested imports cannot hide outer calls;
-relative imports are not treated as public packages. Direct `Unpickler(...).load()`
+relative imports are not treated as public packages. Literal absolute runtime imports through
+`__import__`, `builtins.__import__`, `importlib.__import__`, and
+`importlib.import_module` also resolve known unsafe calls. The resolver distinguishes top-level `__import__` results from nonempty
+`fromlist` and `import_module` results. Unknown/relative targets, levels, fromlists,
+and expansions produce incomplete evidence. It never loads the inspected modules
+or evaluates source expressions. See [Python import semantics](https://docs.python.org/3/library/functions.html#__import__)
+and [importlib](https://docs.python.org/3/library/importlib.html#importlib.import_module). Direct `Unpickler(...).load()`
 and Requests `Session().get/post/request(...)` calls receive the same checks as their
 module-level forms, including imported aliases. This does not resolve instances stored
 in variables or infer whether a custom unpickler subclass is safe. Scientific package
@@ -392,7 +398,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `46df976`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.50% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `dbb1788`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.56% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags

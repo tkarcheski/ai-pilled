@@ -761,3 +761,79 @@ class PythonPatternTests(unittest.TestCase):
             report = Report('patterns')
             inspect_python(report, 'notes', source.encode())
             self.assertEqual(report.status, 'pass')
+
+    def test_literal_runtime_imports_cannot_hide_known_unsafe_calls(self):
+        for source, rule in (
+                ('__import__("pickle").loads(data)', 'unsafe-deserialization'),
+                ('import builtins\nbuiltins.__import__("subprocess").run(command, shell=True)', 'shell-execution'),
+                ('from builtins import __import__ as load\nload("requests").get(url, verify=False)', 'tls-verification-disabled'),
+                ('import importlib as loader\nloader.import_module("pickle").loads(data)', 'unsafe-deserialization'),
+                ('from importlib import import_module as load\nload(name="subprocess").getoutput(command)', 'shell-execution'),
+                ('import importlib\nimportlib.__import__("pickle").loads(data)', 'unsafe-deserialization'),
+                ('getattr(__import__("pickle"), "loads")(data)', 'unsafe-deserialization'),
+                ('print(__import__("os").getenv("TOKEN"))', 'environment-secret-log')):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual(result.status, 'fail')
+                self.assertEqual([f.rule for f in result.findings], [rule])
+
+    def test_runtime_imports_distinguish_top_level_and_full_module_results(self):
+        for expression in ('__import__("requests.api").get(url, verify=False)',
+                           '__import__("requests.api", fromlist=["get"]).get(url, verify=False)',
+                           '__import__("requests.api", {}, {}, ("get",), 0).get(url, verify=False)',
+                           '__import__("requests.api", fromlist=[]).get(url, verify=False)',
+                           'importlib.import_module("requests.api").get(url, verify=False)'):
+            result = self.inspect('import importlib\n' + expression)
+            self.assertEqual([f.rule for f in result.findings], ['tls-verification-disabled'])
+        for expression in ('__import__("vendor.pickle").loads(data)',
+                           '__import__("vendor.pickle", fromlist=["loads"]).loads(data)',
+                           'importlib.import_module("vendor.pickle").loads(data)'):
+            self.assertEqual(self.inspect('import importlib\n' + expression).status, 'pass')
+
+    def test_literal_runtime_import_argument_expansions_are_inspected(self):
+        for expression in ('__import__(*["pickle"]).loads(data)',
+                           '__import__(**{"name": "pickle"}).loads(data)',
+                           'importlib.import_module(*("pickle",)).loads(data)',
+                           '__import__("requests.api", **{"fromlist": ["get"], "level": 0}).get(url, verify=False)'):
+            result = self.inspect('import importlib\n' + expression)
+            self.assertEqual(result.status, 'fail')
+            self.assertNotIn('python-import-unresolved', [f.rule for f in result.findings])
+
+    def test_dynamic_relative_and_unknown_runtime_import_options_are_incomplete(self):
+        for expression in ('__import__(module).loads(data)', '__import__("pick" + "le").loads(data)',
+                           '__import__("pickle", fromlist=names).loads(data)',
+                           '__import__("pickle", level=1).loads(data)',
+                           '__import__("pickle", level=level).loads(data)',
+                           '__import__("pickle", **options).loads(data)',
+                           '__import__(*arguments).loads(data)',
+                           'importlib.import_module(".pickle", "vendor").loads(data)',
+                           'importlib.import_module(module).loads(data)',
+                           '__import__("pickle", fromlist=[*names]).loads(data)'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import importlib\n' + expression)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual([f.rule for f in result.findings], ['python-import-unresolved'])
+
+    def test_safe_runtime_imports_shadowed_names_and_relative_helpers_are_allowed(self):
+        for source in ('__import__("json").loads(data)',
+                       'import importlib\nimportlib.import_module("json").loads(data)',
+                       'def local(__import__): return __import__("pickle").loads(data)',
+                       'from .vendor import importlib\nimportlib.import_module("pickle").loads(data)',
+                       '__import__("yaml").load(data, Loader=__import__("yaml").SafeLoader)'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_import_result_identity_matches_documented_fromlist_semantics(self):
+        import ast
+        from ai_pilled.python_security import literal_import
+        cases = (
+            ('__import__("urllib.parse")', '__import__', 'urllib'),
+            ('__import__("urllib.parse", fromlist=[])', '__import__', 'urllib'),
+            ('__import__("urllib.parse", fromlist=None)', '__import__', 'urllib'),
+            ('__import__("urllib.parse", fromlist=["urlparse"])', '__import__', 'urllib.parse'),
+            ('__import__("urllib.parse", {}, {}, ("urlparse",), 0)', '__import__', 'urllib.parse'),
+            ('loader("urllib.parse")', 'importlib.import_module', 'urllib.parse'),
+        )
+        for source, function, expected in cases:
+            with self.subTest(source=source):
+                self.assertEqual(literal_import(ast.parse(source, mode='eval').body, function), expected)
