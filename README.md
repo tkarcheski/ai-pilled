@@ -276,7 +276,9 @@ Git installation refuses to replace an existing hook manager or executable hooks
 Linked worktree installation uses worktree-specific Git configuration. Keep this source
 checkout available: generated hook commands reference its Python runtime.
 
-Codex installation merges project-local .codex/hooks.json entries. **Review and trust
+Codex installation merges project-local .codex/hooks.json entries. Configuration and
+installation metadata must be regular files within 1 MB; an update that would exceed
+that limit is rejected before writing either file. **Review and trust
 the hooks with /hooks in Codex before expecting them to run.** Installation does not
 bypass Codex permissions or hook trust. See the
 [official hook documentation](https://learn.chatgpt.com/docs/hooks).

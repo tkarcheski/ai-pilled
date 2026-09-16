@@ -126,3 +126,39 @@ class CodexInstallTests(unittest.TestCase):
         install(self.repo)
         data = json.loads(self.path.read_text())
         self.assertEqual(data['hooks']['PostToolUse'][0]['matcher'], '*')
+
+    def test_named_pipe_configuration_is_rejected_without_waiting(self):
+        import sys
+        self.path.unlink()
+        os.mkfifo(self.path)
+        result = subprocess.run([sys.executable, '-m', 'ai_pilled', '--repo', str(self.repo),
+                                 'install-codex-hooks'], capture_output=True, text=True,
+                                cwd=Path(__file__).resolve().parents[1], timeout=3)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('regular file', result.stdout)
+        self.assertFalse((self.repo / '.ai-pilled' / 'codex-installation.json').exists())
+
+    def test_oversized_configuration_is_preserved_without_installing(self):
+        content = ' ' * 1_000_000 + '{}'
+        self.path.write_text(content)
+        with self.assertRaisesRegex(CommandError, 'size limit'):
+            install(self.repo)
+        self.assertEqual(self.path.read_text(), content)
+        self.assertFalse((self.repo / '.ai-pilled' / 'codex-installation.json').exists())
+
+    def test_nonregular_installation_lock_is_rejected(self):
+        state = self.repo / '.ai-pilled'
+        state.mkdir()
+        os.mkfifo(state / 'codex-install.lock')
+        with self.assertRaisesRegex(CommandError, 'regular file'):
+            install(self.repo)
+        self.assertEqual(json.loads(self.path.read_text()), self.original)
+
+    def test_installation_that_would_exceed_limit_preserves_original_and_manifest(self):
+        data = dict(self.original, description='a' * 999_000)
+        content = json.dumps(data)
+        self.path.write_text(content)
+        with self.assertRaisesRegex(CommandError, 'size limit'):
+            install(self.repo)
+        self.assertEqual(self.path.read_text(), content)
+        self.assertFalse((self.repo / '.ai-pilled' / 'codex-installation.json').exists())
