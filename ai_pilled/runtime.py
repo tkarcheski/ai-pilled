@@ -69,6 +69,9 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
     """Bound stdout + stderr while running and kill descendants on failure."""
     if timeout <= 0 or limit < 0:
         raise ValueError('timeout must be positive and limit nonnegative')
+    # Replacement refs change local reads but not the original objects sent by push.
+    if Path(argv[0]).name == 'git':
+        argv = [argv[0], '--no-replace-objects', *argv[1:]]
     with tempfile.TemporaryFile() as input_stream:
         if input_data is not None:
             input_stream.write(input_data)

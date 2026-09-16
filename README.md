@@ -304,7 +304,9 @@ Local reports live in .ai-pilled/; add that directory to the target's .gitignore
 Pre-push tests require a clean working tree and the pushed commit checked out at HEAD.
 A secret removed in a later outgoing commit is still caught. More than 2,000 outgoing
 commits requires a smaller audited range. Files larger than 2 MB produce an incomplete
-scan, not a clean bill of health.
+scan, not a clean bill of health. Commit messages, identities, extra headers, annotated
+tags, and destination ref names are scanned too. Internal Git operations ignore replacement
+objects so local replacement refs cannot hide the original staged or outgoing content.
 
 Credential matching recognizes AWS access-key IDs and same-line, 40-character secret-key
 assignments named AWS_SECRET_ACCESS_KEY, aws_secret_access_key, or SecretAccessKey.

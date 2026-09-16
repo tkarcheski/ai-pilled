@@ -215,3 +215,15 @@ class SecurityTests(unittest.TestCase):
                    'secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY\n'
                    'unrelated_value=' + 'aB3/+' * 8)
         self.assertEqual(scan(self.repo).status, 'pass')
+
+    def test_replaced_blob_cannot_hide_staged_credentials(self):
+        token = 'ghp_' + 'R' * 36
+        self.write('credential.txt', token)
+        unsafe = self.git('rev-parse', ':credential.txt').decode().strip()
+        self.write('clean.txt', 'ordinary content')
+        clean = self.git('rev-parse', ':clean.txt').decode().strip()
+        self.git('replace', unsafe, clean)
+        result = scan(self.repo)
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.path == 'credential.txt' for f in result.findings))
+        self.assertNotIn(token, json.dumps(result.to_dict()))

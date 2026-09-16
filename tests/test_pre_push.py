@@ -235,3 +235,17 @@ class PrePushTests(unittest.TestCase):
         self.assertEqual(result.status, 'fail')
         self.assertTrue(any(f.path == '(commit headers)' for f in result.findings))
         self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_replaced_commit_cannot_hide_outgoing_credentials(self):
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({'require_tests': False}))
+        self.commit()
+        clean = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        token = 'ghp_' + 'R' * 36
+        (self.repo / 'credential.txt').write_text(token)
+        self.commit()
+        unsafe = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        self.git('replace', unsafe, clean)
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.path == 'credential.txt' for f in result.findings))
+        self.assertNotIn(token, json.dumps(result.to_dict()))
