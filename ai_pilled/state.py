@@ -49,21 +49,42 @@ def record(repo, report, event):
         # This descriptor is a private history file, never a shared inode or symlink.
         os.fchmod(stream.fileno(), 0o600)
         size = metadata.st_size
-        if size + len(encoded) > MAX_HISTORY_BYTES:
+        separator = b''
+        if size:
+            stream.seek(-1, os.SEEK_END)
+            if stream.read(1) != b'\n':
+                offset = max(0, size - MAX_HISTORY_BYTES)
+                stream.seek(offset)
+                tail = stream.read(MAX_HISTORY_BYTES)
+                if offset and b'\n' not in tail and b'\r' not in tail:
+                    raise CommandError('Unterminated history record exceeds the size limit; inspect before appending')
+                lines = tail.splitlines()
+                final = lines[-1] if lines else b''
+                try:
+                    if final.strip():
+                        loads(final)
+                except ValueError as exc:
+                    raise CommandError('Local history ends with incomplete JSON; inspect before appending') from exc
+                separator = b'\n'
+        if size + len(separator) + len(encoded) > MAX_HISTORY_BYTES:
             offset = max(0, size - MAX_HISTORY_BYTES)
             stream.seek(offset)
             content = stream.read(MAX_HISTORY_BYTES)
+            records = content.splitlines(keepends=True)
             if offset:
                 # The bounded tail may begin inside a record; retain whole lines only.
-                content = content.partition(b'\n')[2]
-            records = content.splitlines(keepends=True)[-100:]
+                records = records[1:]
+            records = records[-100:]
+            if separator and records:
+                records[-1] += b'\n'
             retained = sum(map(len, records))
             while records and retained + len(encoded) > MAX_HISTORY_BYTES:
                 retained -= len(records.pop(0))
             stream.seek(0)
             stream.truncate()
             stream.write(b''.join(records))
-        stream.write(encoded)
+            separator = b''
+        stream.write(separator + encoded)
         stream.flush()
     return entry
 

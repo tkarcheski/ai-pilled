@@ -265,3 +265,67 @@ class ReportingTests(unittest.TestCase):
             record(self.repo, report, 'fixture')
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(len(history(self.repo)), 1)
+
+    def test_append_after_complete_record_without_newline_preserves_both_records(self):
+        record(self.repo, Report('first'), 'fixture')
+        path = self.repo / '.ai-pilled/events.jsonl'
+        before = path.read_bytes().rstrip(b'\n')
+        path.write_bytes(before)
+        self.assertEqual(len(history(self.repo)), 1)
+        record(self.repo, Report('second'), 'fixture')
+        self.assertTrue(path.read_bytes().startswith(before + b'\n'))
+        self.assertEqual([entry['report']['check'] for entry in history(self.repo)], ['first', 'second'])
+
+    def test_malformed_partial_history_tail_is_preserved_without_append(self):
+        record(self.repo, Report('valid'), 'fixture')
+        path = self.repo / '.ai-pilled/events.jsonl'
+        before = path.read_bytes() + b'{"private-tail":'
+        path.write_bytes(before)
+        with self.assertRaisesRegex(CommandError, 'incomplete JSON') as raised:
+            record(self.repo, Report('second'), 'fixture')
+        self.assertNotIn('private-tail', str(raised.exception))
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_whitespace_and_carriage_return_tails_keep_record_boundaries(self):
+        record(self.repo, Report('first'), 'fixture')
+        path = self.repo / '.ai-pilled/events.jsonl'
+        initial = path.read_bytes().rstrip(b'\n')
+        for tail in (b' ', b'\r', b'\r   '):
+            with self.subTest(tail=repr(tail)):
+                path.write_bytes(initial + tail)
+                record(self.repo, Report('second'), 'fixture')
+                self.assertEqual([entry['report']['check'] for entry in history(self.repo)], ['first', 'second'])
+
+    def test_unterminated_tail_rotation_keeps_history_within_byte_limit(self):
+        with patch('ai_pilled.state.MAX_HISTORY_BYTES', 500):
+            first = Report('first')
+            first.add('note', 'x' * 100, severity='info')
+            record(self.repo, first, 'fixture')
+            path = self.repo / '.ai-pilled/events.jsonl'
+            path.write_bytes(path.read_bytes().rstrip(b'\n'))
+            record(self.repo, Report('second'), 'fixture')
+            self.assertLessEqual(path.stat().st_size, 500)
+            self.assertEqual([entry['report']['check'] for entry in history(self.repo)], ['second'])
+
+    def test_oversized_unterminated_record_is_not_guessed_or_rewritten(self):
+        state = self.repo / '.ai-pilled'
+        state.mkdir()
+        path = state / 'events.jsonl'
+        before = b'"' + b'x' * 501 + b'"'
+        path.write_bytes(before)
+        with patch('ai_pilled.state.MAX_HISTORY_BYTES', 500):
+            with self.assertRaisesRegex(CommandError, 'size limit'):
+                record(self.repo, Report('new'), 'fixture')
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_rotation_preserves_complete_records_with_carriage_return_separators(self):
+        for name in ('first', 'second', 'third'):
+            record(self.repo, Report(name), 'fixture')
+        path = self.repo / '.ai-pilled/events.jsonl'
+        content = path.read_bytes().replace(b'\n', b'\r').rstrip(b'\r')
+        path.write_bytes(content)
+        maximum = len(content) * 5 // 6
+        with patch('ai_pilled.state.MAX_HISTORY_BYTES', maximum):
+            record(self.repo, Report('fourth'), 'fixture')
+            self.assertLessEqual(path.stat().st_size, maximum)
+            self.assertEqual([entry['report']['check'] for entry in history(self.repo)], ['third', 'fourth'])

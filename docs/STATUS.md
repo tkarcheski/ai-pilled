@@ -401,7 +401,10 @@ report values, and failed measurements do not replace the saved baseline. Histor
 serialization independently rejects nonfinite numbers before opening its file, so
 invalid nested metrics cannot poison otherwise readable history. Serialized records
 also pass the reader's nesting and unique-key validation before append; encoding-time
-key collisions and excessive nesting leave existing history untouched.
+key collisions and excessive nesting leave existing history untouched. A complete
+final record without a newline is validated and separated before append; malformed
+or oversized partial tails are preserved and rejected. Separator bytes participate in
+history rotation's size budget.
 
 ## Known gaps and prioritized follow-ups
 
