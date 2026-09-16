@@ -182,3 +182,8 @@ class LifecycleTests(unittest.TestCase):
         with patch('ai_pilled.lifecycle.audit_python_changed') as audit:
             handle(self.repo, {'hook_event_name': 'PostToolUse'})
             audit.assert_not_called()
+
+    def test_invalid_stream_encoding_is_a_protocol_error(self):
+        with io.TextIOWrapper(io.BytesIO(bytes([255])), encoding='utf-8', errors='strict') as stream:
+            with self.assertRaisesRegex(CommandError, 'valid text'):
+                read_payload(stream)

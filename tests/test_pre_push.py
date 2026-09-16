@@ -417,3 +417,45 @@ class PrePushTests(unittest.TestCase):
         self.commit()
         self.git('merge', '--no-ff', 'side', '-m', 'test: merge fixture')
         self.assertEqual(pre_push(self.repo, self.update()).status, 'pass')
+
+    def test_oversized_update_protocol_is_rejected_before_git_or_registry_work(self):
+        from ai_pilled.pre_push import MAX_UPDATE_CHARACTERS, MAX_UPDATES
+        zero = '0' * 40
+        deletion = f'(delete) {zero} refs/heads/feature {zero}\n'
+        for updates in ('x' * (MAX_UPDATE_CHARACTERS + 1), deletion * (MAX_UPDATES + 1), None):
+            with self.subTest(kind=type(updates).__name__):
+                with patch('ai_pilled.pre_push.run') as command, patch('ai_pilled.pre_push.load') as config:
+                    result = pre_push(self.repo, updates)
+                self.assertEqual(result.status, 'incomplete')
+                command.assert_not_called()
+                config.assert_not_called()
+        self.assertEqual(pre_push(self.repo, deletion * MAX_UPDATES).status, 'pass')
+
+    def test_hook_reader_stops_at_the_input_limit_without_echoing_payload(self):
+        import io
+        from ai_pilled.git_hooks import dispatch
+        from ai_pilled.pre_push import MAX_UPDATE_CHARACTERS
+        from ai_pilled.runtime import CommandError
+        stream = io.StringIO('x' * (MAX_UPDATE_CHARACTERS + 2))
+        with patch('ai_pilled.git_hooks.sys.stdin', stream), patch('ai_pilled.pre_push.pre_push') as validate:
+            with self.assertRaises(CommandError) as failure:
+                dispatch(self.repo, 'pre-push', [])
+        self.assertEqual(stream.tell(), MAX_UPDATE_CHARACTERS + 1)
+        validate.assert_not_called()
+        self.assertNotIn('x' * 20, str(failure.exception))
+
+    def test_invalid_pre_push_cli_input_returns_protocol_error(self):
+        from ai_pilled.pre_push import MAX_UPDATE_CHARACTERS
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),
+                   PYTHONDONTWRITEBYTECODE='1', PYTHONIOENCODING='utf-8:strict')
+        for payload in (b'x' * (MAX_UPDATE_CHARACTERS + 1), bytes([255])):
+            with self.subTest(size=len(payload)):
+                result = subprocess.run([sys.executable, '-m', 'ai_pilled', '--repo', str(self.repo),
+                                         'hook', 'pre-push', 'origin', str(self.remote)],
+                                        cwd=self.repo, env=env, input=payload,
+                                        capture_output=True, timeout=15)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(json.loads(result.stdout)['status'], 'error')
+                self.assertNotIn(b'x' * 20, result.stdout + result.stderr)
+                self.assertNotIn(b'Traceback', result.stderr)
+                self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote), 'for-each-ref']), b'')

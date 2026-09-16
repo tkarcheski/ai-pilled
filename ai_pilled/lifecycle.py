@@ -102,7 +102,10 @@ def _handle(repo, payload):
 
 
 def read_payload(stream):
-    text = stream.read(1_000_001)
+    try:
+        text = stream.read(1_000_001)
+    except UnicodeError as exc:
+        raise CommandError('Hook input must be valid text') from exc
     if len(text) > 1_000_000:
         raise CommandError('Hook input exceeds size limit')
     try:

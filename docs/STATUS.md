@@ -334,6 +334,11 @@ Performance follow-ups now offer a repository-bound benchmark rerun with the rec
 run count and budget, after validating both. They do not save a baseline or run the
 command automatically; missing configuration or malformed measurements require inspection.
 
+Pre-push input is capped before Git or network work: at most 1,000,000 text characters
+and 2,000 ref updates. Oversized input is rejected without echoing it; the CLI reads
+only enough to detect the limit. Invalid stream encodings become structured protocol
+errors for both pre-push and lifecycle input. Existing commit/history bounds still apply.
+
 ## Known gaps and prioritized follow-ups
 
 | Priority | Follow-up | Why / completion evidence |

@@ -239,10 +239,10 @@ def _uninstall(repo):
 
 def dispatch(repo, event, arguments):
     if event == 'pre-push':
-        from .pre_push import pre_push
+        from .pre_push import pre_push, read_updates
         if arguments and len(arguments) != 2:
             raise CommandError('Expected the Git pre-push remote name and destination')
-        return pre_push(repo, sys.stdin.read(), destination=arguments[1] if arguments else None)
+        return pre_push(repo, read_updates(sys.stdin), destination=arguments[1] if arguments else None)
     if event == 'pre-commit':
         if load(repo).review_checks_on_commit:
             from .staged_review import review_checks

@@ -13,6 +13,18 @@ OID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
 MAX_COMMITS = 2000
 MAX_CACHE_ENTRIES = 10000
 MAX_REMOTE_REFS = 2000
+MAX_UPDATES = 2000
+MAX_UPDATE_CHARACTERS = 1_000_000
+
+
+def read_updates(stream):
+    try:
+        updates = stream.read(MAX_UPDATE_CHARACTERS + 1)
+    except UnicodeError as exc:
+        raise CommandError('Pre-push input must be valid text') from exc
+    if len(updates) > MAX_UPDATE_CHARACTERS:
+        raise CommandError('Pre-push input exceeds the 1000000-character limit')
+    return updates
 
 
 def blob_findings(repo, oid, path, patterns, cache):
@@ -124,13 +136,22 @@ def published_commits(repo, destination):
 
 def pre_push(repo, updates, destination=None):
     report = Report('pre-push')
+    if not isinstance(updates, str) or len(updates) > MAX_UPDATE_CHARACTERS:
+        report.add('update-input-limit', 'Pre-push input must be text within the 1000000-character limit.',
+                   severity='warning')
+        return report
+    lines = updates.splitlines()
+    if len(lines) > MAX_UPDATES:
+        report.add('update-count-limit', 'Push exceeds the 2000-ref update limit; split the proposal.',
+                   severity='warning')
+        return report
     config = load(repo)
     head = run(['git', 'rev-parse', '--verify', 'HEAD'], repo).decode().strip()
     commits = set()
     tips = set()
     published = None
     traversed_parents: dict[str, list[str]] = {}
-    for line in updates.splitlines():
+    for line in lines:
         fields = line.split()
         if len(fields) != 4:
             report.add('invalid-ref-update', 'Expected four fields from Git pre-push stdin.')
