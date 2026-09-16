@@ -220,3 +220,39 @@ class PythonPatternTests(unittest.TestCase):
                 self.assertEqual(result.status, status)
                 if status == 'fail':
                     self.assertEqual(result.findings[0].rule, 'environment-dump')
+
+    def test_credential_named_environment_lookups_are_not_loggable(self):
+        expressions = ('os.environ["OPENAI_API_KEY"]', 'os.environ.get("DB_PASSWORD")',
+                       'os.getenv("GITHUB_TOKEN")', 'os.getenv(key="AWS_ACCESS_KEY_ID")',
+                       'os.environb[b"AWS_SECRET_ACCESS_KEY"]', 'os.getenvb(b"SIGNING_PRIVATE_KEY")',
+                       'os.environb.get(b"CLIENT_SECRET")', 'os.getenv("SECRET")',
+                       'json.dumps({"value": os.getenv("API_KEY")})',
+                       "f\"credential: {os.environ.get('API_KEY')}\"")
+        for expression in expressions:
+            with self.subTest(expression=expression):
+                result = self.inspect('import os, json\nlogger.info(' + expression + ')')
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('environment-secret-log', 2)])
+
+    def test_environment_lookup_aliases_and_keyword_log_arguments(self):
+        for source in ('from os import getenv as lookup\nprint(lookup("API_KEY"))',
+                       'from os import environ as env\nlogger.info(extra={"secret": env["TOKEN"]})',
+                       'from os import getenvb as lookup\nprint(lookup(key=b"PASSWORD"))'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).findings[0].rule, 'environment-secret-log')
+
+    def test_starred_and_byte_environment_dumps(self):
+        for expression in ('*os.environ.values()', 'os.environb', 'os.environb.copy()',
+                           '*os.environb.items()', 'dict(os.environb)', '[*os.environ.values()]'):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.inspect('import os\nprint(' + expression + ')').findings[0].rule,
+                                 'environment-dump')
+
+    def test_safe_environment_metadata_and_unrelated_lookups(self):
+        for name in ('HOME', 'PATH', 'PASSWORD_MIN_LENGTH', 'TOKEN_COUNT', 'PRIVATE_KEY_PATH', 'CLIENT_ID'):
+            with self.subTest(name=name):
+                self.assertEqual(self.inspect('import os\nprint(os.getenv(' + repr(name) + '))').status, 'pass')
+        for source in ('from . import os\nprint(os.getenv("API_KEY"))',
+                       'print(custom.getenv("API_KEY"))', 'import os\nuse(os.getenv("API_KEY"))',
+                       'import os\nprint(os.environb.get(b"HOME"))'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')

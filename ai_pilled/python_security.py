@@ -119,13 +119,26 @@ def inspect_python(report, path, content):
             scope = parents[scope]
         return '.'.join([base, *reversed(attributes)]) if base else ''
 
+    def credential_key(node):
+        if not isinstance(node, ast.Constant):
+            return False
+        value = node.value
+        if isinstance(value, bytes):
+            value = value.decode('ascii', errors='replace')
+        if not isinstance(value, str):
+            return False
+        value = value.upper()
+        return value in ('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY') or any(
+            value == suffix or value.endswith('_' + suffix)
+            for suffix in ('TOKEN', 'SECRET', 'PASSWORD', 'API_KEY', 'PRIVATE_KEY'))
+
     def environment_dump(node):
         pending = [node]
         while pending:
             value = pending.pop()
             if isinstance(value, ast.JoinedStr):
                 pending.extend(value.values)
-            elif isinstance(value, ast.FormattedValue):
+            elif isinstance(value, (ast.FormattedValue, ast.Starred)):
                 pending.append(value.value)
             elif isinstance(value, ast.BinOp):
                 pending.extend((value.left, value.right))
@@ -134,12 +147,22 @@ def inspect_python(report, path, content):
             elif isinstance(value, ast.Dict):
                 pending.extend(value.keys)
                 pending.extend(value.values)
-            elif qualified(value) == 'os.environ':
-                return True
+            elif qualified(value) in ('os.environ', 'os.environb'):
+                return 'environment-dump'
+            elif (isinstance(value, ast.Subscript)
+                  and qualified(value.value) in ('os.environ', 'os.environb')
+                  and credential_key(value.slice)):
+                return 'environment-secret-log'
             elif isinstance(value, ast.Call):
                 function = qualified(value.func)
-                if function in ('os.environ.copy', 'os.environ.items', 'os.environ.values'):
-                    return True
+                if function in tuple(prefix + '.' + method for prefix in ('os.environ', 'os.environb')
+                                     for method in ('copy', 'items', 'values')):
+                    return 'environment-dump'
+                if function in ('os.getenv', 'os.getenvb', 'os.environ.get', 'os.environb.get'):
+                    key = value.args[0] if value.args else next(
+                        (keyword.value for keyword in value.keywords if keyword.arg == 'key'), None)
+                    if credential_key(key):
+                        return 'environment-secret-log'
                 literal_format = (isinstance(value.func, ast.Attribute)
                                   and isinstance(value.func.value, ast.Constant)
                                   and isinstance(value.func.value.value, str)
@@ -147,7 +170,7 @@ def inspect_python(report, path, content):
                 if function in ('dict', 'str', 'repr', 'list', 'tuple', 'set', 'json.dumps') or literal_format:
                     pending.extend(value.args)
                     pending.extend(keyword.value for keyword in value.keywords)
-        return False
+        return None
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -184,9 +207,12 @@ def inspect_python(report, path, content):
             rule, message = 'shell-execution', 'Shell execution requires review; prefer argument arrays without shell=True.'
         elif (name == 'print' or name.rsplit('.', 1)[-1] in
               ('debug', 'info', 'warning', 'error', 'critical', 'exception', 'log')):
-            if any(environment_dump(arg) for arg in node.args) or any(
-                    environment_dump(keyword.value) for keyword in node.keywords):
-                rule, message = 'environment-dump', 'Do not log the complete environment; it can contain credentials.'
+            rule = next((found for arg in [*node.args, *(keyword.value for keyword in node.keywords)]
+                         if (found := environment_dump(arg))), None)
+            if rule == 'environment-dump':
+                message = 'Do not log the complete environment; it can contain credentials.'
+            elif rule:
+                message = 'Do not log credential-named environment values; redact them before logging.'
         elif name in ('hashlib.md5', 'hashlib.sha1') or (
                 name == 'hashlib.new' and node.args and isinstance(node.args[0], ast.Constant)
                 and isinstance(node.args[0].value, str) and node.args[0].value.lower() in ('md5', 'sha1')):

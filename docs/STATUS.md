@@ -4,9 +4,10 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `70ceac4`: 451 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `8b73f44`
-passed the same quality profile and all four E2E scenarios on Python 3.10. Comprehensive
+The verification baseline is `5844cd2`: 466 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `f04f5de`
+passed the same quality profile and all four E2E scenarios on Python 3.10. An actual full-audit of `5844cd2` also passed all seven gates with zero
+model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
 scope. GitLab pipelines are **planned and deferred at the user's request**.
@@ -60,7 +61,11 @@ relative imports are not treated as public packages. Shell rules include `os.pop
 `subprocess.getoutput/getstatusoutput`, and `asyncio.create_subprocess_shell`; YAML
 rules include `unsafe_load`, `unsafe_load_all`, and `load_all` without an explicit safe loader.
 Environment-dump checks include literal string formatting, serialization keyword arguments,
-and environment value/item views. Single-variable lookups remain allowed.
+and environment value/item views, including starred arguments and byte environments.
+Credential-named literal lookups through `environ`, `environb`, `getenv`, and `getenvb`
+are blocked at logging calls. Names ending in TOKEN, SECRET, PASSWORD, API_KEY, or
+PRIVATE_KEY, plus AWS access/secret key names, are review signals; ordinary HOME/PATH
+and metadata names remain allowed. This does not trace assignments or arbitrary data flow.
 Argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Referenced conflicting imports
 in one scope are incomplete. Verified defaults/custom CA bundles remain allowed.
 General assignment/rebinding, global/nonlocal mutation, and session-instance data flow
@@ -272,7 +277,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `8b73f44`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.37% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `f04f5de`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.50% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
