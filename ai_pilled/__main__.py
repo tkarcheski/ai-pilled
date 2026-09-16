@@ -12,6 +12,8 @@ from .git_hooks import dispatch, install, uninstall
 from .config import ConfigError
 from .runtime import CommandError
 from .security import scan
+from .reporting import dashboard, summarize
+from .state import record
 
 
 def main(argv=None):
@@ -26,6 +28,8 @@ def main(argv=None):
     review_parser.add_argument('--codex', default='codex', help='Codex executable path or command name')
     dependency = commands.add_parser('dependency-audit', help='Audit npm lockfile vulnerabilities')
     dependency.add_argument('--npm', default='npm', help='npm executable path or command name')
+    commands.add_parser('summary', help='Summarize recorded checks and next steps')
+    commands.add_parser('dashboard', help='Build an offline check-history dashboard')
     commands.add_parser('lifecycle')
     commands.add_parser('install-codex-hooks')
     commands.add_parser('uninstall-codex-hooks')
@@ -36,6 +40,12 @@ def main(argv=None):
     hook.add_argument('arguments', nargs='*')
     args = parser.parse_args(argv)
     try:
+        if args.command == 'summary':
+            print(json.dumps(summarize(args.repo), indent=2))
+            return 0
+        if args.command == 'dashboard':
+            print(json.dumps({'dashboard': str(dashboard(args.repo).resolve())}))
+            return 0
         if args.command == 'lifecycle':
             print(json.dumps(handle(args.repo, read_payload(sys.stdin))))
             return 0
@@ -57,6 +67,8 @@ def main(argv=None):
             report = uninstall(args.repo)
         else:
             report = dispatch(args.repo, args.event, args.arguments)
+        if args.command in ('scan', 'check', 'hook'):
+            record(args.repo, report, args.command)
     except (CommandError, ConfigError, OSError) as exc:
         print(json.dumps({'check': args.command, 'status': 'error', 'message': str(exc)}))
         return 2

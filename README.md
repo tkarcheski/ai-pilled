@@ -112,6 +112,18 @@ workflows, notifications, and other backlog items are still being implemented.
 The aggressiveness setting is validated but does not yet select different pipelines.
 Claude Code, OpenCode, and Pi integrations are not verified.
 
+## Recorded evidence
+
+`summary` returns one sentence, unresolved checks, a proceed/wait indicator, and the
+next step from the latest recorded result for each check. No history means wait.
+`dashboard` writes an offline HTML view to .ai-pilled/dashboard.html, including the
+latest 100 runs. It escapes findings and loads no external scripts or assets.
+
+Explicit scans, configured checks, Git gates, lifecycle hooks, model reviews, and npm
+audits record local results. These are historical observations: a green dashboard
+does not certify files changed since the checks ran. Summaries do not read or store
+raw tool output, and they do not invent a successful check when evidence is absent.
+
 ## Development
 
 ~~~sh
