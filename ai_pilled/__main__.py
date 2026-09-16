@@ -3,35 +3,10 @@ import json
 from pathlib import Path
 import sys
 
-from . import codex_hooks
-from .dependencies import audit
-from .python_dependencies import audit_python
-from .python_health import health_python, licenses_python
-from .dependency_health import health, licenses
-from .codex_review import review
-from .staged_review import review_checks
-from .lifecycle import handle, read_payload
-from .checks import command_check
-from .git_hooks import dispatch, install, uninstall
 from .config import ConfigError
 from .credentials import redact, redact_data
 from .runtime import CommandError
-from .security import scan
-from .reporting import dashboard, summarize
-from .suggestions import suggest
 from .state import record
-from .metrics import bundle, coverage
-from .performance import benchmark
-from .pipeline import quality
-from .releases import prepare_release, release_plan
-from .documentation import update_readme
-from .refactor import refactor
-from .notifications import notify
-from .full_audit import full_audit
-from .healing import heal
-from .merging import auto_merge
-from .publishing import publish_release
-from .scheduling import nightly_refactor, watch
 
 
 def build_parser():
@@ -134,81 +109,117 @@ def build_parser():
 
 
 def main(argv=None):
+    # Load only the selected command; scans do not need provider or automation modules.
     args = build_parser().parse_args(argv)
     try:
         if args.command == 'suggest':
+            from .suggestions import suggest
             print(json.dumps(suggest(args.repo, args.limit), indent=2))
             return 0
         if args.command == 'summary':
+            from .reporting import summarize
             print(json.dumps(summarize(args.repo), indent=2))
             return 0
         if args.command == 'dashboard':
+            from .reporting import dashboard
             print(json.dumps(redact_data({'dashboard': str(dashboard(args.repo).resolve())})))
             return 0
         if args.command == 'lifecycle':
+            from .lifecycle import handle, read_payload
             print(json.dumps(handle(args.repo, read_payload(sys.stdin))))
             return 0
         if args.command == 'nightly-refactor' and args.watch:
+            from .scheduling import watch
             return watch(args.repo, args.at, args.timezone)
         if args.command == 'review':
+            from .codex_review import review
+            from .staged_review import review_checks
             report = review_checks(args.repo, model=True, executable=args.codex) if args.comprehensive else review(args.repo, args.codex)
         elif args.command == 'review-checks':
+            from .staged_review import review_checks
             report = review_checks(args.repo)
         elif args.command == 'update-readme':
+            from .documentation import update_readme
             report = update_readme(args.repo, args.path, args.check)
         elif args.command == 'notify':
+            from .notifications import notify
             report = notify(args.repo, args.provider, send=args.send, github_repo=args.github_repo,
                             issue=args.issue, team=args.team, sender=args.sender, recipient=args.recipient)
         elif args.command == 'nightly-refactor':
+            from .scheduling import nightly_refactor
             report = nightly_refactor(args.repo, args.at, args.timezone, args.retry)
         elif args.command == 'refactor':
+            from .refactor import refactor
             report = refactor(args.repo)
         elif args.command == 'publish-release':
+            from .publishing import publish_release
             report = publish_release(args.repo, args.github_repo, args.tag, args.expected_head, args.publish, args.gh)
         elif args.command == 'prepare-release':
+            from .releases import prepare_release
             report = prepare_release(args.repo, args.current, args.since)
         elif args.command == 'release-plan':
+            from .releases import release_plan
             report = release_plan(args.repo, args.current, args.since)
         elif args.command == 'dependency-health':
+            from .dependency_health import health
             report = health(args.repo, args.npm)
         elif args.command == 'licenses':
+            from .dependency_health import licenses
             report = licenses(args.repo, args.allow)
         elif args.command == 'auto-merge':
+            from .merging import auto_merge
             report = auto_merge(args.repo, args.github_repo, args.pr, args.base,
                                 args.expected_head, args.enable, args.gh)
         elif args.command == 'heal':
+            from .healing import heal
             report = heal(args.repo, args.expected_head, args.apply)
         elif args.command == 'full-audit':
+            from .full_audit import full_audit
             report = full_audit(args.repo, args.model_reviews, args.codex, args.workers)
         elif args.command in ('quality', 'ready'):
+            from .pipeline import quality
             report = quality(args.repo, ready=args.command == 'ready')
         elif args.command == 'benchmark':
+            from .performance import benchmark
             report = benchmark(args.repo, args.runs, args.maximum_regression, args.save_baseline)
         elif args.command == 'coverage':
+            from .metrics import coverage
             report = coverage(args.repo, args.report, args.minimum)
         elif args.command == 'bundle':
+            from .metrics import bundle
             report = bundle(args.repo, args.path, args.maximum)
         elif args.command == 'python-health':
+            from .python_health import health_python
             report = health_python(args.repo, args.python, args.outdated)
         elif args.command == 'python-licenses':
+            from .python_health import licenses_python
             report = licenses_python(args.repo, args.python, args.allow)
         elif args.command == 'python-audit':
+            from .python_dependencies import audit_python
             report = audit_python(args.repo, args.requirements, args.pip_audit)
         elif args.command == 'dependency-audit':
+            from .dependencies import audit
             report = audit(args.repo, args.npm)
         elif args.command == 'install-codex-hooks':
+            from . import codex_hooks
             report = codex_hooks.install(args.repo)
         elif args.command == 'uninstall-codex-hooks':
+            from . import codex_hooks
             report = codex_hooks.uninstall(args.repo)
         elif args.command == 'scan':
+            from .security import scan
             report = scan(args.repo, args.scope, args.patterns)
         elif args.command == 'check':
+            from .checks import command_check
             report = command_check(args.repo, args.name)
         elif args.command == 'install-git-hooks':
+            from .git_hooks import install
             report = install(args.repo)
         elif args.command == 'uninstall-git-hooks':
+            from .git_hooks import uninstall
             report = uninstall(args.repo)
         else:
+            from .git_hooks import dispatch
             report = dispatch(args.repo, args.event, args.arguments)
         if args.command in ('scan', 'check', 'hook'):
             record(args.repo, report, args.command)

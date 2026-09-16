@@ -55,8 +55,15 @@ def scan_bytes(report, path, content):
                        path=path, severity='warning')
             return
         seen = {(finding.rule, finding.path, finding.line) for finding in report.findings}
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Constant) or not isinstance(node.value, (str, bytes)):
+        pending = [tree]
+        while pending:
+            node = pending.pop()
+            if isinstance(node, ast.Name):
+                continue  # Identifier/context fields cannot contain literal child nodes.
+            if not isinstance(node, ast.Constant):
+                pending.extend(ast.iter_child_nodes(node))
+                continue
+            if not isinstance(node.value, (str, bytes)):
                 continue
             value = node.value.decode('latin-1') if isinstance(node.value, bytes) else node.value
             if len(value) < 20:  # Shortest recognizable credential is an AWS access-key ID.

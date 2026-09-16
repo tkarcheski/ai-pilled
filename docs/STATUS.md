@@ -16,7 +16,10 @@ Python-literal credential inspection adds mandatory parsing to secret scans. Dog
 at `1ad8ac4` caught a performance-budget failure: 0.273 seconds median versus the unchanged
 0.166-second baseline (65.1% increase; 20% budget). Profiling attributes the extra
 work to parsing/traversing Python source. Security coverage is retained; performance
-acceptance remains open, and the saved baseline has not been raised.
+acceptance remains open, and the saved baseline has not been raised. Loading only the
+selected CLI command and skipping literal-free AST identifier leaves reduced the
+follow-up median to 0.211 seconds (27.5% over baseline). This remains above budget;
+the measured improvement does not turn it into a passing check.
 
 ## What the statuses mean
 
