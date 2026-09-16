@@ -47,6 +47,7 @@ Configure the target repository in .ai-pilled.json:
 
 Commands are argument arrays, never shell strings. Configure only commands you trust.
 Supported check names are test, lint, typecheck, deadcode, coverage, and dependency.
+The benchmark command uses a separate commands.benchmark argument array.
 These commands report the configured tool's result; they do not invent coverage numbers
 or dependency vulnerability data.
 
@@ -107,7 +108,7 @@ scan, not a clean bill of health.
 
 Credential matching is a limited deterministic check, not a complete security audit.
 Semantic code review is currently explicit; automatic model review on every commit,
-performance baselines, release
+release
 workflows, notifications, and other backlog items are still being implemented.
 The aggressiveness setting is validated but does not yet select different pipelines.
 Claude Code, OpenCode, and Pi integrations are not verified.
@@ -129,6 +130,22 @@ Bundle checks measure the raw bytes of a built file or directory, hash its conte
 and compare the total against the explicit byte budget. Build first. Missing/empty
 artifacts, symlinks, or inputs above the 100 MB measurement limit are incomplete.
 These commands record actual measurements alongside their pass/fail results.
+
+## Performance regression checks
+
+Configure commands.benchmark with an argument array for a representative workload:
+
+~~~sh
+python -m ai_pilled benchmark --save-baseline
+python -m ai_pilled benchmark --maximum-regression 20 --runs 3
+~~~
+
+The first command explicitly records a local median duration; the second measures
+again and fails if the median exceeds that baseline by more than 20%. Comparisons
+never update the baseline. Missing baselines, changed commands or hosts, and failed
+processes are incomplete. Baselines live in .ai-pilled/benchmark.json and do not
+contain command arguments or raw output. Durations include process startup; choose
+a stable workload and account for system load. This repo benchmarks its staged scanner.
 
 ## Recorded evidence
 

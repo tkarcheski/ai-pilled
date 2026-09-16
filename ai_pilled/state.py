@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import uuid
+import tempfile
 
 from .runtime import CommandError
 
@@ -47,3 +48,15 @@ def history(repo):
     with path.open() as stream:
         fcntl.flock(stream, fcntl.LOCK_SH)
         return [json.loads(line) for line in stream if line.strip()]
+
+
+def atomic_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        json.dump(data, stream, indent=2)
+        stream.write('\n')
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)

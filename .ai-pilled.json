@@ -9,6 +9,12 @@
       "-s",
       "tests",
       "-v"
+    ],
+    "benchmark": [
+      "python",
+      "-m",
+      "ai_pilled",
+      "scan"
     ]
   },
   "protected_branches": [

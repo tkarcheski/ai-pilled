@@ -1,0 +1,69 @@
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from ai_pilled.performance import benchmark
+
+
+class PerformanceTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name)
+        self.configure([sys.executable, '-c',
+                        'import os; assert not any(k.startswith("GIT_") for k in os.environ)'])
+
+    def configure(self, command):
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {'benchmark': command}}))
+
+    def measure(self, duration, save=False):
+        with patch('ai_pilled.performance.time.perf_counter', side_effect=[0, duration]):
+            return benchmark(self.repo, runs=1, save_baseline=save)
+
+    def test_baseline_is_explicit_and_missing_one_is_incomplete(self):
+        with patch('ai_pilled.performance.run') as command:
+            self.assertEqual(benchmark(self.repo).status, 'incomplete')
+            command.assert_not_called()
+        with patch.dict(os.environ, {'GIT_DIR': '/not-this-repo'}):
+            self.assertEqual(self.measure(1, save=True).status, 'pass')
+
+    def test_regression_does_not_rewrite_baseline(self):
+        self.measure(1, save=True)
+        path = self.repo / '.ai-pilled' / 'benchmark.json'
+        saved = path.read_bytes()
+        result = self.measure(1.3)
+        self.assertEqual(result.status, 'fail')
+        self.assertAlmostEqual(result.metrics['regression_percent'], 30)
+        self.assertEqual(path.read_bytes(), saved)
+        self.assertEqual(self.measure(.9).status, 'pass')
+
+    def test_median_resists_one_slow_sample(self):
+        with patch('ai_pilled.performance.time.perf_counter', side_effect=[0, 1, 0, 20, 0, 2]):
+            result = benchmark(self.repo, runs=3, save_baseline=True)
+        self.assertEqual(result.metrics['median_seconds'], 2)
+
+    def test_changed_command_requires_explicit_rebaseline(self):
+        self.measure(1, save=True)
+        self.configure([sys.executable, '-c', 'pass'])
+        self.assertEqual(benchmark(self.repo).status, 'incomplete')
+        self.assertEqual(self.measure(1, save=True).status, 'pass')
+
+    def test_failed_command_does_not_replace_baseline(self):
+        self.measure(1, save=True)
+        path = self.repo / '.ai-pilled' / 'benchmark.json'
+        saved = path.read_bytes()
+        self.configure([sys.executable, '-c', 'raise SystemExit(1)'])
+        self.assertEqual(benchmark(self.repo, save_baseline=True).status, 'incomplete')
+        self.assertEqual(path.read_bytes(), saved)
+
+    def test_corrupt_baseline_and_invalid_options_are_incomplete(self):
+        self.measure(1, save=True)
+        path = self.repo / '.ai-pilled' / 'benchmark.json'
+        path.write_text('[]')
+        self.assertEqual(benchmark(self.repo).status, 'incomplete')
+        for kwargs in ({'runs': 0}, {'runs': 11}, {'maximum_regression': float('nan')}):
+            self.assertEqual(benchmark(self.repo, **kwargs).status, 'incomplete')
