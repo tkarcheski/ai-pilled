@@ -35,7 +35,8 @@ also exit 2. Historical summaries describe recorded evidence, not the current fi
 [lifecycle.py](../ai_pilled/lifecycle.py).
 
 Credential scanning covers file contents, names, UTF-16/32 BOM encodings, and staged
-Git blobs. Quoted JSON strings are decoded once for Unicode/slash escapes, including
+Git blobs. ASCII token boundaries prevent non-ASCII neighboring bytes or text from
+hiding recognizable credentials in scans or redacted output. Quoted JSON strings are decoded once for Unicode/slash escapes, including
 values hidden by duplicate keys; malformed literals do not suppress raw scanning.
 The shared redactor sanitizes those decoded secrets while preserving JSON quoting.
 This is direct string-escape handling, not arbitrary encoding or runtime data-flow analysis.

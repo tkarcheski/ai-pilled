@@ -81,6 +81,27 @@ class SecurityTests(unittest.TestCase):
         scan_text(report, 'fixture', text)
         self.assertEqual([(f.rule, f.line) for f in report.findings], [('pypi-token', 2)])
 
+    def test_non_ascii_neighbors_cannot_hide_ascii_credentials(self):
+        tokens = [('AKIA' + 'A' * 16, 'aws-access-key'),
+                  ('ghp_' + 'A' * 36, 'github-token'),
+                  ('github_pat_' + 'A' * 40, 'github-fine-grained-token'),
+                  ('pypi-' + 'A' * 85, 'pypi-token'),
+                  ('sk-' + 'A' * 32, 'openai-token'),
+                  ('xoxb-' + 'A' * 20, 'slack-token'),
+                  ('aws_secret_access_key=' + 'A' * 40, 'aws-secret-key')]
+        for token, rule in tokens:
+            with self.subTest(rule=rule):
+                (self.repo / 'binary.bin').write_bytes(bytes([255]) + token.encode() + bytes([255]))
+                self.git('add', 'binary.bin')
+                for scope in ('staged', 'worktree'):
+                    result = scan(self.repo, scope)
+                    self.assertEqual(result.status, 'fail')
+                    self.assertEqual(result.findings[0].rule, rule)
+
+    def test_ascii_identifier_prefixes_keep_existing_token_boundaries(self):
+        self.write('ordinary.txt', 'prefixghp_' + 'A' * 36)
+        self.assertEqual(scan(self.repo).status, 'pass')
+
     def test_clean_snapshot_changes_with_content(self):
         self.write('file.txt', 'first')
         before = scan(self.repo)

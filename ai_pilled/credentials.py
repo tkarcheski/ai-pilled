@@ -3,18 +3,19 @@ import json
 import re
 
 
+# Token alphabets are ASCII; non-ASCII neighbors must not suppress their boundaries.
 PATTERNS = (
-    ('aws-access-key', re.compile(r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b')),
+    ('aws-access-key', re.compile(r'(?a)\b(?:AKIA|ASIA)[A-Z0-9]{16}\b')),
     ('aws-secret-key', re.compile(
-        r"(?i)\b(?:aws_secret_access_key|secretaccesskey)[\"']?[ \t]*[:=][ \t]*[\"']?"
+        r"(?ai)\b(?:aws_secret_access_key|secretaccesskey)[\"']?[ \t]*[:=][ \t]*[\"']?"
         r"[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])")),
-    ('github-token', re.compile(r'\bgh[pousr]_[A-Za-z0-9]{36,}\b')),
-    ('github-fine-grained-token', re.compile(r'\bgithub_pat_[A-Za-z0-9_]{40,}\b')),
-    ('pypi-token', re.compile(r'\bpypi-[A-Za-z0-9_-]{85,}')),
+    ('github-token', re.compile(r'(?a)\bgh[pousr]_[A-Za-z0-9]{36,}\b')),
+    ('github-fine-grained-token', re.compile(r'(?a)\bgithub_pat_[A-Za-z0-9_]{40,}\b')),
+    ('pypi-token', re.compile(r'(?a)\bpypi-[A-Za-z0-9_-]{85,}')),
     ('private-key', re.compile(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----')),
-    ('openai-token', re.compile(r'\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}\b')),
+    ('openai-token', re.compile(r'(?a)\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}\b')),
     ('slack-webhook', re.compile(r'https://hooks\.slack\.com/services/[A-Za-z0-9_-]{8,}/[A-Za-z0-9_-]{8,}/[A-Za-z0-9_-]{16,}')),
-    ('slack-token', re.compile(r'\bxox[baprs]-[A-Za-z0-9-]{20,}\b')),
+    ('slack-token', re.compile(r'(?a)\bxox[baprs]-[A-Za-z0-9-]{20,}\b')),
 )
 
 PRIVATE_KEY_BLOCK = re.compile(

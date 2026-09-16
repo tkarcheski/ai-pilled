@@ -77,6 +77,11 @@ class RedactionTests(unittest.TestCase):
         for value in ('"\\u0068ello"', '"bad\\q"', 'unquoted ordinary text'):
             self.assertEqual(redact(value), value)
 
+    def test_non_ascii_neighbors_do_not_hide_tokens_from_redaction(self):
+        for token in ('ghp_' + 'A' * 36, 'AKIA' + 'A' * 16, 'pypi-' + 'A' * 85):
+            value = chr(255) + token + chr(255)
+            self.assertEqual(redact(value), chr(255) + '[REDACTED]' + chr(255))
+
     def test_cli_missing_executable_error_redacts_its_name(self):
         (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {'test': [str(self.repo / self.token)]}}))
         with contextlib.redirect_stdout(io.StringIO()) as output:
