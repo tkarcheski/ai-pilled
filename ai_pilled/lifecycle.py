@@ -88,10 +88,13 @@ def _handle(repo, payload):
             output.update(decision='block', reason='Review ai-pilled findings before continuing.')
         return output
     if event == 'Stop':
+        active = payload.get('stop_hook_active', False)
+        if type(active) is not bool:
+            raise CommandError('stop_hook_active must be a boolean')
         report = command_check(root, 'test')
         record(root, report, event)
         message = f'ai-pilled tests: {report.status}.'
-        if report.status != 'pass' and not payload.get('stop_hook_active', False):
+        if report.status != 'pass' and not active:
             return {'decision': 'block', 'reason': message + ' ' +
                     '; '.join(f.message for f in report.findings)}
         return {'systemMessage': message}

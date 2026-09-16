@@ -54,6 +54,25 @@ class LifecycleTests(unittest.TestCase):
         again = handle(self.repo, {'hook_event_name': 'Stop', 'stop_hook_active': True})
         self.assertNotIn('decision', again)
 
+    def test_nonboolean_stop_guard_cannot_suppress_a_blocking_check(self):
+        (self.repo / '.ai-pilled.json').unlink()
+        for value in ('false', 'true', 0, 1, None, [], {}):
+            with self.subTest(value=value), patch('ai_pilled.lifecycle.command_check') as command:
+                with self.assertRaisesRegex(CommandError, 'must be a boolean'):
+                    handle(self.repo, {'hook_event_name': 'Stop', 'stop_hook_active': value})
+                command.assert_not_called()
+        self.assertEqual(handle(self.repo, {'hook_event_name': 'Stop', 'stop_hook_active': False})['decision'], 'block')
+
+    def test_cli_reports_malformed_stop_guard_as_protocol_error(self):
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),
+                   PYTHONDONTWRITEBYTECODE='1')
+        result = subprocess.run([sys.executable, '-m', 'ai_pilled', '--repo', str(self.repo), 'lifecycle'],
+                                input=json.dumps({'hook_event_name': 'Stop', 'stop_hook_active': 'false'}),
+                                text=True, capture_output=True, timeout=5, env=env, check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(json.loads(result.stdout)['status'], 'error')
+        self.assertIn('boolean', json.loads(result.stdout)['message'])
+
     def test_concurrent_records_remain_valid(self):
         with ThreadPoolExecutor(max_workers=8) as pool:
             list(pool.map(lambda i: record(self.repo, Report(str(i)), 'test'), range(30)))
