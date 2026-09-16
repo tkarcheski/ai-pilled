@@ -6,7 +6,7 @@ import re
 
 from .config import load
 from .dependencies import snapshot, read_input
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, run_completed
 from .state import record
 
 PACKAGE = re.compile(r'(?:@[a-z0-9._-]+/)?[a-z0-9._-]{1,214}')
@@ -21,9 +21,10 @@ def health(repo, executable='npm'):
         report.snapshot = before
         config = load(repo)
         env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
-        tree = loads(run([executable, 'ls', '--all', '--json', '--ignore-scripts',
+        tree_result = run_completed([executable, 'ls', '--all', '--json', '--ignore-scripts',
                                '--include=dev', '--include=optional', '--include=peer'],
-                              repo, env=env, timeout=config.timeout, acceptable_codes=(0, 1)))
+                              repo, env=env, timeout=config.timeout, acceptable_codes=(0, 1))
+        tree = loads(tree_result.stdout)
         if not isinstance(tree, dict) or not isinstance(tree.get('dependencies', {}), dict):
             raise CommandError('npm returned an invalid installed dependency tree')
         if 'name' not in tree and 'dependencies' not in tree:
@@ -34,13 +35,18 @@ def health(repo, executable='npm'):
         error = tree.get('error')
         if error is not None and (not isinstance(error, dict) or error.get('code') != 'ELSPROBLEMS' or not problems):
             raise CommandError('npm could not inspect the installed dependency tree')
+        if tree_result.returncode != int(bool(problems)):
+            raise CommandError('npm exit status contradicts its dependency-tree evidence')
         if problems:
             report.add('dependency-tree-problems',
                        f'npm reports {len(problems)} invalid, missing, or extraneous dependency entries; inspect npm ls.')
-        outdated = loads(run([executable, 'outdated', '--all', '--json', '--ignore-scripts'],
-                                  repo, env=env, timeout=config.timeout, acceptable_codes=(0, 1)))
+        outdated_result = run_completed([executable, 'outdated', '--all', '--json', '--ignore-scripts'],
+                                  repo, env=env, timeout=config.timeout, acceptable_codes=(0, 1))
+        outdated = loads(outdated_result.stdout)
         if not isinstance(outdated, dict) or 'error' in outdated:
             raise CommandError('npm could not inspect available dependency versions')
+        if outdated_result.returncode != int(bool(outdated)):
+            raise CommandError('npm exit status contradicts its available-version evidence')
         for name, item in outdated.items():
             if not PACKAGE.fullmatch(name) or not isinstance(item, dict):
                 raise CommandError('npm returned an invalid outdated package')

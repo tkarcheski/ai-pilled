@@ -20,10 +20,12 @@ class DependencyHealthTests(unittest.TestCase):
     def lock(self, packages):
         (self.repo / 'package-lock.json').write_text(json.dumps({'lockfileVersion': 3, 'packages': packages}))
 
-    def provider(self, tree, outdated):
+    def provider(self, tree, outdated, tree_code=None, outdated_code=None):
+        tree_code = int(bool(tree.get("problems"))) if tree_code is None else tree_code
+        outdated_code = int(bool(outdated)) if outdated_code is None else outdated_code
         self.fake.write_text(f'#!{sys.executable}\nimport sys,json\n'
                             f'data = {tree!r} if sys.argv[1] == "ls" else {outdated!r}\n'
-                            'print(json.dumps(data))\nraise SystemExit(1 if data.get("problems") or sys.argv[1] == "outdated" and data else 0)\n')
+                            f'print(json.dumps(data))\nraise SystemExit({tree_code} if sys.argv[1] == "ls" else {outdated_code})\n')
         self.fake.chmod(0o755)
 
     def test_outdated_versions_are_informational_not_claimed_vulnerabilities(self):
@@ -33,6 +35,19 @@ class DependencyHealthTests(unittest.TestCase):
         self.assertEqual(result.status, 'pass')
         self.assertEqual(result.findings[0].severity, 'info')
         self.assertIn('latest tag 2.0.0', result.findings[0].message)
+
+    def test_process_status_must_agree_with_health_evidence(self):
+        clean = {'name': 'fixture', 'dependencies': {}}
+        update = {'example': {'current': '1.0.0', 'wanted': '1.1.0', 'latest': '1.1.0'}}
+        cases = ((clean, {}, 1, 0), (clean, {}, 0, 1),
+                 ({'name': 'fixture', 'problems': ['invalid entry']}, {}, 0, 0),
+                 (clean, update, 0, 0))
+        for tree, outdated, tree_code, outdated_code in cases:
+            with self.subTest(tree_code=tree_code, outdated_code=outdated_code):
+                self.provider(tree, outdated, tree_code, outdated_code)
+                result = health(self.repo, str(self.fake))
+                self.assertEqual(result.status, 'incomplete')
+                self.assertIn('contradicts', result.findings[0].message)
 
     def test_version_conflicts_block_and_raw_diagnostics_are_not_stored(self):
         self.provider({'name': 'fixture', 'problems': ['private diagnostic'],
