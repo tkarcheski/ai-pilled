@@ -20,6 +20,11 @@ python -m ai_pilled check test
 python -m ai_pilled review                  # subscription-backed, read-only staged review
 ~~~
 
+Use `review --codex /absolute/path/to/codex` to select an installed binary explicitly.
+This avoids PATH wrappers that install or update the CLI before each invocation. The
+reviewer uses the existing Codex login, disables hooks, and receives a copy of staged
+regular files plus the diff; missing results and timeouts are incomplete.
+
 Commands emit JSON. Exit codes: **0** passed, **1** found blockers, **2** incomplete or
 unable to run. Missing tools and missing configuration do not count as passing.
 

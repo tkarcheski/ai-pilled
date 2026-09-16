@@ -92,3 +92,12 @@ class ReviewTests(unittest.TestCase):
         result = review(self.repo, str(self.fake))
         self.assertEqual(result.status, 'incomplete')
         self.assertIn('regular files', result.findings[0].message)
+
+    def test_cli_accepts_explicit_installed_executable(self):
+        import contextlib
+        import io
+        from ai_pilled.__main__ import main
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            code = main(['--repo', str(self.repo), 'review', '--codex', str(self.fake)])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output.getvalue())['status'], 'pass')

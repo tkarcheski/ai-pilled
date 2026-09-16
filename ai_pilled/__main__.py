@@ -21,7 +21,8 @@ def main(argv=None):
     security.add_argument('--scope', choices=['staged', 'worktree'], default='staged')
     check = commands.add_parser('check', help='Run a configured quality command')
     check.add_argument('name', choices=['test', 'lint', 'typecheck', 'deadcode', 'coverage', 'dependency'])
-    commands.add_parser('review', help='Review the staged snapshot with Codex')
+    review_parser = commands.add_parser('review', help='Review the staged snapshot with Codex')
+    review_parser.add_argument('--codex', default='codex', help='Codex executable path or command name')
     commands.add_parser('lifecycle')
     commands.add_parser('install-codex-hooks')
     commands.add_parser('uninstall-codex-hooks')
@@ -36,7 +37,7 @@ def main(argv=None):
             print(json.dumps(handle(args.repo, read_payload(sys.stdin))))
             return 0
         if args.command == 'review':
-            report = review(args.repo)
+            report = review(args.repo, args.codex)
         elif args.command == 'install-codex-hooks':
             report = codex_hooks.install(args.repo)
         elif args.command == 'uninstall-codex-hooks':
