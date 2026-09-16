@@ -6,12 +6,13 @@ from .checks import command_check
 from .config import load
 from .runtime import CommandError, Report, run
 from .security import MAX_FILE_BYTES, scan_text
+from .python_security import inspect_python
 
 OID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
 MAX_COMMITS = 2000
 
 
-def scan_revision(repo, revision):
+def scan_revision(repo, revision, patterns=False):
     report = Report('history-security', snapshot=revision)
     message = run(['git', 'log', '-1', '--format=%B', revision], repo, limit=64_000)
     scan_text(report, '(commit message)', message.decode('latin-1'))
@@ -29,6 +30,8 @@ def scan_revision(repo, revision):
                 raise CommandError('File exceeds scan size limit')
             content = run(['git', 'cat-file', 'blob', oid.decode()], repo, limit=MAX_FILE_BYTES)
             scan_text(report, path, content.decode('latin-1'))
+            if patterns:
+                inspect_python(report, path, content)
         except CommandError as exc:
             report.add('scan-incomplete', str(exc), path=path, severity='warning')
     return report
@@ -77,7 +80,7 @@ def pre_push(repo, updates):
     if report.status != 'pass':
         return report
     for commit in sorted(commits):
-        result = scan_revision(repo, commit)
+        result = scan_revision(repo, commit, patterns=config.aggressiveness == 'strict' and commit in tips)
         for finding in result.findings:
             report.add(finding.rule, f'{commit[:12]}: {finding.message}', path=finding.path,
                        line=finding.line, severity=finding.severity)

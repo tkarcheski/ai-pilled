@@ -28,6 +28,7 @@ def build_parser():
     commands = parser.add_subparsers(dest='command', required=True)
     security = commands.add_parser('scan', help='Scan the Git index or working tree for credentials')
     security.add_argument('--scope', choices=['staged', 'worktree'], default='staged')
+    security.add_argument('--patterns', action='store_true', help='Also inspect Python AST security patterns')
     check = commands.add_parser('check', help='Run a configured quality command')
     check.add_argument('name', choices=['test', 'lint', 'typecheck', 'deadcode', 'coverage', 'dependency'])
     review_parser = commands.add_parser('review', help='Review the staged snapshot with Codex')
@@ -111,7 +112,7 @@ def main(argv=None):
         elif args.command == 'uninstall-codex-hooks':
             report = codex_hooks.uninstall(args.repo)
         elif args.command == 'scan':
-            report = scan(args.repo, args.scope)
+            report = scan(args.repo, args.scope, args.patterns)
         elif args.command == 'check':
             report = command_check(args.repo, args.name)
         elif args.command == 'install-git-hooks':

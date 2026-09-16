@@ -103,3 +103,10 @@ class SecurityTests(unittest.TestCase):
                 self.repo, timeout=4, limit=100)
         self.assertIn('output exceeded', str(error.exception))
         self.assertLess(time.monotonic() - started, 2)
+
+    def test_pattern_scan_checks_staged_code_not_fixed_worktree(self):
+        self.write('parse.py', 'eval(data)\n')
+        self.write('parse.py', 'value = 1\n', stage=False)
+        self.assertEqual(scan(self.repo).status, 'pass')
+        self.assertEqual(scan(self.repo, patterns=True).status, 'fail')
+        self.assertEqual(scan(self.repo, 'worktree', patterns=True).status, 'pass')

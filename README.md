@@ -143,6 +143,13 @@ commits requires a smaller audited range. Files larger than 2 MB produce an inco
 scan, not a clean bill of health.
 
 Credential matching is a limited deterministic check, not a complete security audit.
+Use scan --patterns to also inspect Python ASTs for dynamic execution, unsafe object/YAML
+parsing, shell=True, and complete environment dumps. Strict quality/Git/lifecycle checks
+include these patterns automatically. At push time, AST checks inspect pushed tips;
+credential checks still inspect every outgoing commit. Import aliases are recognized; comments and strings
+are not treated as calls. MD5/SHA-1 uses are review notices unless explicitly marked
+usedforsecurity=False. These conservative patterns do not model full data flow or alias
+shadowing and are not proof of exploitability. Unparseable Python is incomplete.
 Semantic review examines staged diffs; release
 workflows, notifications, and other backlog items are still being implemented.
 Claude Code, OpenCode, and Pi integrations are not verified.
@@ -278,7 +285,7 @@ MIT license.
 
 Generated from the installed CLI and project check configuration.
 
-Quality profile: **normal**. Configured commands: benchmark, coverage, deadcode, lint, test, typecheck.
+Quality profile: **strict**. Configured commands: benchmark, coverage, deadcode, lint, test, typecheck.
 Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text

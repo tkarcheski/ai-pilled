@@ -49,7 +49,7 @@ def quality(repo, ready=False):
         if report.status != 'pass':
             record(root, report, 'ready')
             return report
-    before = scan(root, 'worktree')
+    before = scan(root, 'worktree', patterns=config.aggressiveness == 'strict')
     report.snapshot = before.snapshot
     combine(report, before)
     record(root, before, 'quality:security')

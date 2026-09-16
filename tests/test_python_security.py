@@ -1,0 +1,48 @@
+import unittest
+
+from ai_pilled.python_security import inspect_python
+from ai_pilled.runtime import Report
+
+
+class PythonPatternTests(unittest.TestCase):
+    def inspect(self, code):
+        report = Report('patterns')
+        inspect_python(report, 'example.py', code.encode())
+        return report
+
+    def test_import_aliases_and_call_locations(self):
+        report = self.inspect('import pickle as p\nvalue = p.loads(data)\n')
+        self.assertEqual(report.status, 'fail')
+        self.assertEqual((report.findings[0].rule, report.findings[0].line), ('unsafe-deserialization', 2))
+
+    def test_safe_yaml_is_distinguished_from_unsafe_load(self):
+        for source in ('import yaml\nyaml.safe_load(data)',
+                       'from yaml import load, SafeLoader\nload(data, Loader=SafeLoader)',
+                       'import yaml\nyaml.load(data, yaml.CSafeLoader)'):
+            self.assertEqual(self.inspect(source).status, 'pass')
+        self.assertEqual(self.inspect('import yaml\nyaml.load(data)').status, 'fail')
+
+    def test_shell_boolean_and_argument_arrays(self):
+        self.assertEqual(self.inspect('import subprocess as s\ns.run(["echo", value])').status, 'pass')
+        result = self.inspect('import subprocess as s\ns.run(value, shell=True)')
+        self.assertEqual(result.findings[0].rule, 'shell-execution')
+
+    def test_whole_environment_dump_without_flagging_single_nonsecret_lookup(self):
+        self.assertEqual(self.inspect('import os\nprint(os.environ.get("HOME"))').status, 'pass')
+        for expression in ('os.environ', 'dict(os.environ)', 'os.environ.copy()'):
+            result = self.inspect('import os\nlogger.info("%s", ' + expression + ')')
+            self.assertEqual(result.findings[0].rule, 'environment-dump')
+
+    def test_comments_and_strings_are_not_executable_patterns(self):
+        self.assertEqual(self.inspect('# eval(data)\ntext = "pickle.loads(data)"').status, 'pass')
+
+    def test_weak_hashes_are_review_notices_and_explicit_nonsecurity_use_is_allowed(self):
+        result = self.inspect('import hashlib\nhashlib.md5(data)')
+        self.assertEqual(result.status, 'pass')
+        self.assertEqual(result.findings[0].severity, 'info')
+        self.assertFalse(self.inspect('import hashlib\nhashlib.md5(data, usedforsecurity=False)').findings)
+
+    def test_dynamic_code_and_unparseable_files_do_not_pass_strict_inspection(self):
+        self.assertEqual(self.inspect('eval(data)').status, 'fail')
+        self.assertEqual(self.inspect('def broken(').status, 'incomplete')
+        self.assertEqual(self.inspect('# café\nvalue = 1').status, 'pass')

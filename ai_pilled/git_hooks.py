@@ -8,6 +8,7 @@ import shlex
 import sys
 
 from .runtime import CommandError, Report, run
+from .config import load
 from .security import scan, scan_text
 
 
@@ -182,12 +183,11 @@ def dispatch(repo, event, arguments):
         from .pre_push import pre_push
         return pre_push(repo, sys.stdin.read())
     if event == 'pre-commit':
-        return scan(repo)
+        return scan(repo, patterns=load(repo).aggressiveness == 'strict')
     if event == 'commit-msg' and len(arguments) == 1:
         report = commit_message(arguments[0])
         if report.status != 'pass':
             return report
-        from .config import load
         config = load(repo)
         if config.review_on_commit:
             from .codex_review import review

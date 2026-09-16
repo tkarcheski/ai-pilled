@@ -32,7 +32,7 @@ def handle(repo, payload):
                        json.dumps({'branch': branch, 'changed_paths': status.splitlines(),
                                    'next': 'Implement the requested work; run checks before committing.'}))
     if event == 'PostToolUse':
-        report = scan(root, 'worktree')
+        report = scan(root, 'worktree', patterns=load(root).aggressiveness == 'strict')
         record(root, report, event)
         reports = [report]
         dependency_cached = False

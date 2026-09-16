@@ -120,3 +120,14 @@ class PrePushTests(unittest.TestCase):
         result = pre_push(self.repo, self.update())
         self.assertEqual(result.status, 'fail')
         self.assertTrue(any(f.rule == 'github-token' and f.path == '(commit message)' for f in result.findings))
+
+    def test_strict_patterns_check_tip_but_allow_fixed_historical_code(self):
+        config = json.loads((self.repo / '.ai-pilled.json').read_text())
+        config['aggressiveness'] = 'strict'
+        (self.repo / '.ai-pilled.json').write_text(json.dumps(config))
+        (self.repo / 'parse.py').write_text('eval(data)\n')
+        self.commit()
+        self.assertEqual(pre_push(self.repo, self.update()).status, 'fail')
+        (self.repo / 'parse.py').write_text('value = 1\n')
+        self.commit()
+        self.assertEqual(pre_push(self.repo, self.update()).status, 'pass')

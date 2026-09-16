@@ -1,4 +1,5 @@
 import json
+import shlex
 import os
 from pathlib import Path
 import subprocess
@@ -65,7 +66,14 @@ class CodexInstallTests(unittest.TestCase):
         install(self.repo)
         data = json.loads(self.path.read_text())
         command = data['hooks']['SessionStart'][-1]['hooks'][0]['command']
-        result = subprocess.run(command, shell=True, cwd=self.repo,
+        subprocess.run(['sh', '-n'], input=command, text=True, check=True, capture_output=True)
+        argv = shlex.split(command)
+        env = dict(os.environ)
+        for assignment in argv[:2]:
+            name, value = assignment.split('=', 1)
+            self.assertIn(name, ('PYTHONDONTWRITEBYTECODE', 'PYTHONPATH'))
+            env[name] = value
+        result = subprocess.run(argv[2:], env=env, cwd=self.repo,
                                 input=json.dumps({'hook_event_name': 'SessionStart'}),
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)

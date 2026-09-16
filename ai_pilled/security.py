@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 
 from .runtime import CommandError, Report, run
+from .python_security import inspect_python
 
 
 PATTERNS = (
@@ -25,7 +26,7 @@ def scan_text(report, path, text):
                            path=path, line=number)
 
 
-def scan(repo, scope='staged'):
+def scan(repo, scope='staged', patterns=False):
     if scope not in ('staged', 'worktree'):
         raise ValueError('Unknown scan scope')
     root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
@@ -73,6 +74,8 @@ def scan(repo, scope='staged'):
                 digest.update(hashlib.sha256(content).digest())
             # Byte-preserving decode catches ASCII credentials even in non-UTF8 files.
             scan_text(report, path, content.decode('latin-1'))
+            if patterns:
+                inspect_python(report, path, content)
         except (CommandError, OSError) as exc:
             message = str(exc) if isinstance(exc, CommandError) else 'Unable to read file'
             report.add('scan-incomplete', message, path=path, severity='warning')
