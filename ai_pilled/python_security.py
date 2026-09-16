@@ -12,6 +12,21 @@ TLS_VERIFY_CALLS = {
     for module in ('requests', 'requests.api', 'httpx')
     for method in ('request', 'get', 'post', 'put', 'patch', 'delete', 'head', 'options')
 } | {'httpx.Client', 'httpx.AsyncClient', 'httpx.stream'}
+# Positional cert_reqs locations exclude self; None denotes keyword-only forwarding.
+CERT_REQUIREMENT_CALLS = {
+    **{prefix + name: None for prefix in ('urllib3.', 'urllib3.poolmanager.')
+       for name in ('PoolManager', 'ProxyManager', 'proxy_from_url')},
+    'urllib3.HTTPSConnectionPool': 11,
+    'urllib3.connectionpool.HTTPSConnectionPool': 11,
+    'urllib3.connection.HTTPSConnection': None,
+    **{prefix + 'create_urllib3_context': 1 for prefix in ('urllib3.util.', 'urllib3.util.ssl_.')},
+    **{prefix + 'ssl_wrap_socket': 3 for prefix in ('urllib3.util.', 'urllib3.util.ssl_.')},
+}
+CERT_MODES = {'ssl.CERT_NONE': 0, 'ssl.CERT_OPTIONAL': 1, 'ssl.CERT_REQUIRED': 2,
+              'ssl.VerifyMode.CERT_NONE': 0, 'ssl.VerifyMode.CERT_OPTIONAL': 1,
+              'ssl.VerifyMode.CERT_REQUIRED': 2}
+
+
 IMPLICIT_SHELL_CALLS = {'os.system', 'os.popen', 'subprocess.getoutput',
                         'subprocess.getstatusoutput', 'asyncio.create_subprocess_shell',
                         'asyncio.subprocess.create_subprocess_shell'}
@@ -36,8 +51,9 @@ PICKLE_OPTION_CALLS: dict[str, tuple[str, int | None, bool]] = {
 }
 ASYNC_EXEC_CALLS = {'asyncio.create_subprocess_exec', 'asyncio.subprocess.create_subprocess_exec'}
 SHELL_PROGRAMS = {'sh', 'bash', 'dash', 'ksh', 'zsh'}
-POSITIONAL_SECURITY_CALLS = SHELL_KEYWORD_CALLS | ASYNC_EXEC_CALLS | JWT_DECODE_CALLS | {'numpy.load'}
-KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | POSITIONAL_SECURITY_CALLS | set(PICKLE_OPTION_CALLS) | {
+POSITIONAL_SECURITY_CALLS = SHELL_KEYWORD_CALLS | ASYNC_EXEC_CALLS | JWT_DECODE_CALLS | {'numpy.load'} | {
+    name for name, position in CERT_REQUIREMENT_CALLS.items() if position is not None}
+KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | set(CERT_REQUIREMENT_CALLS) | POSITIONAL_SECURITY_CALLS | set(PICKLE_OPTION_CALLS) | {
     'yaml.load', 'yaml.load_all', 'hashlib.new', 'hashlib.md5', 'hashlib.sha1'}
 
 SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
@@ -444,6 +460,30 @@ def inspect_python(report, path, content, *, tree=None):
             report.add('tls-option-unresolved',
                        'TLS verification settings cannot be inspected; review the supplied flag or context.',
                        path=path, line=node.lineno, severity='warning')
+        if name in CERT_REQUIREMENT_CALLS:
+            position = CERT_REQUIREMENT_CALLS[name]
+            setting = next((keyword.value for keyword in keywords if keyword.arg == 'cert_reqs'),
+                           arguments[position] if position is not None and not unknown_arguments
+                           and len(arguments) > position else None)
+            if setting is not None:
+                mode = CERT_MODES.get(qualified(setting, set(CERT_MODES)))
+                if isinstance(setting, ast.Constant):
+                    value = setting.value
+                    if value is None:
+                        mode = 2  # urllib3 resolves an unspecified mode to CERT_REQUIRED.
+                    elif isinstance(value, (int, bool)) and value in (0, 1, 2):
+                        mode = int(value)
+                    elif isinstance(value, str):
+                        mode = {'NONE': 0, 'CERT_NONE': 0, 'OPTIONAL': 1,
+                                'CERT_OPTIONAL': 1, 'REQUIRED': 2, 'CERT_REQUIRED': 2}.get(value)
+                if mode == 0:
+                    report.add('tls-verification-disabled',
+                               'Certificate requirements disable TLS verification; use CERT_REQUIRED.',
+                               path=path, line=node.lineno)
+                elif mode is None:
+                    report.add('tls-option-unresolved',
+                               'Certificate requirements cannot be inspected; make verification explicit.',
+                               path=path, line=node.lineno, severity='warning')
         direct_shell = direct_shell_command(name, arguments, keywords)
         if direct_shell is None:
             report.add('shell-command-unresolved',

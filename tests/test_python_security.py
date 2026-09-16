@@ -10,6 +10,41 @@ class PythonPatternTests(unittest.TestCase):
         inspect_python(report, 'example.py', code.encode())
         return report
 
+    def test_urllib3_disabled_certificate_requirements(self):
+        calls = ('urllib3.PoolManager', 'urllib3.ProxyManager', 'urllib3.proxy_from_url',
+                 'urllib3.poolmanager.PoolManager', 'urllib3.HTTPSConnectionPool',
+                 'urllib3.connectionpool.HTTPSConnectionPool', 'urllib3.connection.HTTPSConnection',
+                 'urllib3.util.create_urllib3_context', 'urllib3.util.ssl_.ssl_wrap_socket')
+        for call in calls:
+            for value in ('0', 'False', '"NONE"', '"CERT_NONE"', 'ssl.CERT_NONE', 'ssl.VerifyMode.CERT_NONE'):
+                with self.subTest(call=call, value=value):
+                    result = self.inspect('import urllib3\nimport ssl\n' + call + '(cert_reqs=' + value + ')')
+                    self.assertEqual([(f.rule, f.line) for f in result.findings], [('tls-verification-disabled', 3)])
+        for code in ('from urllib3 import PoolManager as P\nfrom ssl import CERT_NONE as off\nP(cert_reqs=off)',
+                     'import urllib3\nurllib3.PoolManager(**{"cert_reqs": "CERT_NONE"})',
+                     'import urllib3\nurllib3.HTTPSConnectionPool(*["host",None,None,1,False,None,None,None,None,None,None,0])',
+                     'import urllib3\nurllib3.util.create_urllib3_context(None, 0)',
+                     'import urllib3\nurllib3.util.ssl_wrap_socket(sock, None, None, 0)',
+                     '__import__("urllib3").PoolManager(cert_reqs="NONE")'):
+            self.assertEqual(self.inspect(code).status, 'fail')
+
+    def test_urllib3_defaults_and_verified_modes_remain_allowed(self):
+        for args in ('', 'cert_reqs=None', 'cert_reqs=1', 'cert_reqs=2', 'cert_reqs=True',
+                     'cert_reqs="REQUIRED"', 'cert_reqs="CERT_REQUIRED"', 'cert_reqs="OPTIONAL"',
+                     'cert_reqs=ssl.CERT_REQUIRED', 'cert_reqs=ssl.VerifyMode.CERT_REQUIRED',
+                     '**{"cert_reqs": "NONE", "cert_reqs": "REQUIRED"}'):
+            with self.subTest(args=args):
+                self.assertEqual(self.inspect('import urllib3\nimport ssl\nurllib3.PoolManager(' + args + ')').status, 'pass')
+        self.assertEqual(self.inspect('from . import urllib3\nurllib3.PoolManager(cert_reqs=0)').status, 'pass')
+        self.assertEqual(self.inspect('import urllib3\ndef local(urllib3):\n urllib3.PoolManager(cert_reqs=0)').status, 'pass')
+
+    def test_urllib3_unknown_certificate_settings_are_incomplete(self):
+        for call, args in (('PoolManager', 'cert_reqs=mode'), ('PoolManager', '**settings'),
+                           ('PoolManager', 'cert_reqs="INVALID"'), ('PoolManager', 'cert_reqs=[]'),
+                           ('HTTPSConnectionPool', '*arguments'), ('util.create_urllib3_context', '*arguments')):
+            with self.subTest(call=call, args=args):
+                self.assertEqual(self.inspect('import urllib3\nurllib3.' + call + '(' + args + ')').status, 'incomplete')
+
     def test_import_aliases_and_call_locations(self):
         report = self.inspect('import pickle as p\nvalue = p.loads(data)\n')
         self.assertEqual(report.status, 'fail')

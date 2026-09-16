@@ -96,6 +96,8 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         self.git('add', 'transport.py')
         for source, fixed, rule in (
+                ('import urllib3\nurllib3.PoolManager(cert_reqs="CERT_NONE")\n',
+                 'import urllib3\nurllib3.PoolManager(cert_reqs="CERT_REQUIRED")\n', b'tls-verification-disabled'),
                 ('import subprocess\nsubprocess.getoutput(command)\n',
                  'import subprocess\nsubprocess.run(["echo", value], check=True)\n', b'shell-execution'),
                 ('import pickle\npickle.Unpickler(stream).load()\n',

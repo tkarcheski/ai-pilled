@@ -4,8 +4,8 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `9b63679`: 622 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `0006b1d`
+The verification baseline is `0b7141b`: 629 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `ce5adae`
 passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `9b63679` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
@@ -96,6 +96,13 @@ Python interpretation from identical non-Python blobs. Strict Python AST checks 
 execution (including implicit shell APIs and literal truthy shell flags), unsafe YAML
 single/multiple-document loaders, weak cryptographic patterns, and explicit TLS-verification bypasses in
 Requests/HTTPX APIs or the unverified SSL context factory, including import aliases.
+Explicit urllib3 `cert_reqs` bypasses are checked in pool/proxy constructors,
+HTTPS connections, and TLS helpers, including aliases, literal keyword mappings,
+and supported positional arguments. Zero, `CERT_NONE`, and `NONE` produce review
+errors; unresolved modes/expansions produce incomplete evidence. Defaults and
+recognized verified modes remain allowed. This does not infer stored instance state
+or certify arbitrary custom SSL contexts. Semantics follow the [urllib3 utilities](https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html)
+and [certificate guidance](https://github.com/urllib3/urllib3/blob/main/docs/user-guide.rst).
 Requests also rejects literal zero/empty verification values, which disable certificates;
 `None` retains Requests defaults and remains allowed.
 Import lookup separates module, function, class, lambda, and comprehension bodies, including aliases
