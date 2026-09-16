@@ -104,7 +104,9 @@ class SchedulingTests(unittest.TestCase):
         self.assertEqual(self.refactor.call_count, 1)
 
     def test_foreground_watch_stops_with_interrupt_without_installing_job(self):
-        with patch('ai_pilled.scheduling.datetime') as clock, patch('ai_pilled.scheduling.time.sleep', side_effect=KeyboardInterrupt), contextlib.redirect_stdout(io.StringIO()) as output:
+        # Replace this module's reference; patching time.sleep also interrupts subprocess cleanup.
+        with patch('ai_pilled.scheduling.datetime') as clock, patch('ai_pilled.scheduling.time') as timer, contextlib.redirect_stdout(io.StringIO()) as output:
+            timer.sleep.side_effect = KeyboardInterrupt
             clock.now.return_value = datetime(2026, 9, 16, 2, tzinfo=timezone.utc)
             self.assertEqual(watch(self.repo), 130)
         self.assertEqual(json.loads(output.getvalue())['action'], 'waiting')
