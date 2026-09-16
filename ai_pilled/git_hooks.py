@@ -1,6 +1,7 @@
 """Git gates and reversible hook installation."""
 from contextlib import contextmanager
 import fcntl
+from .locking import acquire_lock
 import hashlib
 import json
 from .json_data import loads
@@ -76,7 +77,7 @@ def locked(repo):
     with os.fdopen(fd, 'r+') as lock:
         if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
             raise CommandError('Git installation lock must be a regular file')
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        acquire_lock(lock, fcntl.LOCK_EX)
         yield root
 
 

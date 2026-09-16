@@ -1,6 +1,7 @@
 """Median process-duration budgets with explicit, local baseline updates."""
 from datetime import datetime, timezone
 import fcntl
+from .locking import acquire_lock
 import hashlib
 import json
 from .json_data import loads
@@ -8,6 +9,7 @@ import math
 import os
 import platform
 import statistics
+import stat
 import time
 
 from .file_io import read_regular
@@ -45,9 +47,11 @@ def benchmark(repo, runs=3, maximum_regression=20, save_baseline=False):
         host_hash = hashlib.sha256(json.dumps((platform.node(), platform.machine(),
                                              platform.processor())).encode()).hexdigest()
         state = directory(repo)
-        fd = os.open(state / 'benchmark.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, 'r+') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        fd = os.open(state / 'benchmark.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        with os.fdopen(fd, 'rb') as lock:
+            if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
+                raise CommandError('Performance lock must be a regular file')
+            acquire_lock(lock, fcntl.LOCK_EX)
             path = state / 'benchmark.json'
             baseline = baseline_data(path)
             if not save_baseline:

@@ -1,3 +1,4 @@
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -83,3 +84,27 @@ class PerformanceTests(unittest.TestCase):
                 with patch('ai_pilled.performance.run') as command:
                     self.assertEqual(benchmark(self.repo).status, 'incomplete')
                 command.assert_not_called()
+
+    def test_contended_benchmark_lock_never_runs_command_or_replaces_baseline(self):
+        self.measure(1, save=True)
+        state = self.repo / '.ai-pilled'
+        before = (state / 'benchmark.json').read_bytes()
+        with (state / 'benchmark.lock').open('rb') as held, patch('ai_pilled.locking.LOCK_TIMEOUT', 0.02):
+            fcntl.flock(held, fcntl.LOCK_EX)
+            with patch('ai_pilled.performance.run') as command:
+                result = benchmark(self.repo, save_baseline=True)
+            self.assertEqual(result.status, 'incomplete')
+            self.assertIn('lock is busy', result.findings[0].message)
+            command.assert_not_called()
+        self.assertEqual((state / 'benchmark.json').read_bytes(), before)
+
+    def test_special_benchmark_lock_is_preserved(self):
+        state = self.repo / '.ai-pilled'
+        state.mkdir()
+        path = state / 'benchmark.lock'
+        os.mkfifo(path)
+        with patch('ai_pilled.performance.run') as command:
+            result = benchmark(self.repo, save_baseline=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertTrue(path.is_fifo())
+        command.assert_not_called()

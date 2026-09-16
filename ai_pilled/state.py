@@ -1,6 +1,7 @@
 """Local reports contain findings and outcomes, never source or tool transcripts."""
 from datetime import datetime, timezone
 import fcntl
+from .locking import acquire_lock
 import json
 from .json_data import loads
 import os
@@ -34,7 +35,7 @@ def record(repo, report, event):
     with os.fdopen(fd, 'r+b') as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise CommandError('Local history must be a regular file')
-        fcntl.flock(stream, fcntl.LOCK_EX)
+        acquire_lock(stream, fcntl.LOCK_EX)
         size = os.fstat(stream.fileno()).st_size
         if size + len(encoded) > MAX_HISTORY_BYTES:
             offset = max(0, size - MAX_HISTORY_BYTES)
@@ -66,7 +67,7 @@ def history(repo):
     with os.fdopen(fd, 'rb') as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise CommandError('Local history must be a regular file')
-        fcntl.flock(stream, fcntl.LOCK_SH)
+        acquire_lock(stream, fcntl.LOCK_SH)
         content = stream.read(MAX_HISTORY_BYTES + 1)
         if len(content) > MAX_HISTORY_BYTES:
             raise CommandError('Local history exceeds the size limit; archive it before reading')

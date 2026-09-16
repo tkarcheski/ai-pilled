@@ -1,6 +1,7 @@
 """Merge command hooks into project-local Codex configuration; preserve unrelated hooks."""
 from contextlib import contextmanager
 import fcntl
+from .locking import acquire_lock
 import json
 from .json_data import loads
 import os
@@ -67,7 +68,7 @@ def locked(repo):
     with os.fdopen(fd, 'rb') as lock:
         if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
             raise CommandError('Codex installation lock must be a regular file')
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        acquire_lock(lock, fcntl.LOCK_EX)
         yield root, state
 
 

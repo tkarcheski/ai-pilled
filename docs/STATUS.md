@@ -4,8 +4,8 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `66de30e`: 381 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `c8661e9`
+The verification baseline is `18e4ddf`: 410 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `f58d764`
 passed the same quality profile and all four E2E scenarios on Python 3.10. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -232,7 +232,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `c8661e9`; publication blocked | Current 3.10 seven-gate/E2E evidence, 91.38% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `f58d764`; publication blocked | Current 3.10 seven-gate/E2E evidence, 91.78% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
@@ -253,6 +253,11 @@ Coverage reports, streamed bundle files, performance baselines, and README input
 also validate the opened descriptor as a regular file. Coverage/README replacement
 symlinks are rejected; no external content is accepted as local evidence or copied
 into generated documentation. These checks retain their explicit read-size limits.
+
+History readers/writers, hook installers, and performance baselines wait at most two
+seconds for cooperative locks. Busy locks return an explicit unavailable result;
+contention never deletes a lock, appends partial history, runs a benchmark, or enters
+an installer mutation section. The scheduler already reports busy without waiting.
 
 ## Known gaps and prioritized follow-ups
 

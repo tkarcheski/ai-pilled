@@ -1,3 +1,7 @@
+import fcntl
+import json
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -138,3 +142,29 @@ class ReportingTests(unittest.TestCase):
                                 cwd=Path(__file__).resolve().parents[1], timeout=3)
         self.assertEqual(result.returncode, 2)
         self.assertIn('regular file', result.stdout)
+
+    def test_contended_history_lock_returns_bounded_cli_error_and_preserves_file(self):
+        record(self.repo, Report('test'), 'test')
+        path = self.repo / '.ai-pilled/events.jsonl'
+        before = path.read_bytes()
+        with path.open('rb') as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            result = subprocess.run([sys.executable, '-m', 'ai_pilled', '--repo', str(self.repo),
+                                     'summary'], capture_output=True, text=True,
+                                    cwd=Path(__file__).resolve().parents[1], timeout=5)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('lock is busy', json.loads(result.stdout)['message'])
+            self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(summarize(self.repo)['blocker'], 'proceed')
+
+    def test_contended_writer_does_not_append_or_truncate_history(self):
+        record(self.repo, Report('test'), 'test')
+        path = self.repo / '.ai-pilled/events.jsonl'
+        before = path.read_bytes()
+        with path.open('rb') as held, patch('ai_pilled.locking.LOCK_TIMEOUT', 0.02):
+            fcntl.flock(held, fcntl.LOCK_EX)
+            with self.assertRaisesRegex(CommandError, 'lock is busy'):
+                record(self.repo, Report('other'), 'blocked')
+        self.assertEqual(path.read_bytes(), before)
+        record(self.repo, Report('other'), 'after-release')
+        self.assertEqual(len(history(self.repo)), 2)
