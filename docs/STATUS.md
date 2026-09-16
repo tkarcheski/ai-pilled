@@ -35,7 +35,9 @@ also exit 2. Historical summaries describe recorded evidence, not the current fi
 
 Credential scanning covers file contents, names, UTF-16/32 BOM encodings, and staged
 Git blobs. Strict Python AST checks flag environment dumps, unsafe parsing, shell
-execution, and weak cryptographic patterns, including supported import aliases.
+execution, weak cryptographic patterns, and explicit TLS-verification bypasses in
+Requests/HTTPX APIs or the unverified SSL context factory, including import aliases.
+Verified defaults/custom CA bundles remain allowed; session-instance data flow is not modeled.
 Deep expression traversal is iterative. Scanning is bounded and reports unreadable,
 oversized, unresolved, and unsupported content as incomplete.
 
@@ -193,7 +195,8 @@ older child results; priority, bounds, redaction, and no-execution tests are in
 
 1. Install hooks, commit, push to a local bare remote, consume lifecycle events,
    summarize results, and generate the offline dashboard.
-2. Reject a bad subject, a staged credential, and a defect hidden by an unstaged fix;
+2. Reject a bad subject, a staged credential, a TLS bypass hidden by an unstaged fix,
+   and a failing test hidden by partial staging;
    confirm HEAD does not move.
 3. Reject a protected destination and a failing-test push; confirm remote refs do not move.
 4. Run Python audit/lifecycle through a fixture provider; preserve vulnerability and

@@ -413,12 +413,15 @@ follow the [credential settings reference](https://docs.aws.amazon.com/cli/lates
 the secret-key length follows the [AWS access-key description](https://docs.aws.amazon.com/AmazonS3/latest/developerguide/MakingRequests.html).
 Credential matching is a limited deterministic check, not a complete security audit.
 Use scan --patterns to also inspect Python ASTs for dynamic execution, unsafe object/YAML
-parsing, shell=True, and complete environment dumps. Strict quality/Git/lifecycle checks
+parsing, shell=True, complete environment dumps, explicit TLS `verify=False` in
+Requests/HTTPX calls, and use of the unverified SSL context factory. Strict quality/Git/lifecycle checks
 include these patterns automatically. At push time, AST checks inspect pushed tips;
 credential checks still inspect every outgoing commit. Import aliases are recognized; comments and strings
 are not treated as calls. MD5/SHA-1 uses are review notices unless explicitly marked
 usedforsecurity=False. These conservative patterns do not model full data flow or alias
-shadowing and are not proof of exploitability. Unparseable Python is incomplete.
+shadowing and are not proof of exploitability. TLS rules recognize direct imported
+APIs and aliases, not arbitrary session-instance methods or runtime-generated options.
+Verified defaults and explicit CA bundles remain allowed. Unparseable Python is incomplete.
 Semantic review examines staged diffs; release
 workflows, notifications, and other backlog items are still being implemented.
 Claude Code, OpenCode, and Pi integrations are not verified.

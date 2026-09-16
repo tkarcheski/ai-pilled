@@ -2,6 +2,13 @@
 import ast
 
 
+TLS_VERIFY_CALLS = {
+    module + '.' + method
+    for module in ('requests', 'requests.api', 'httpx')
+    for method in ('request', 'get', 'post', 'put', 'patch', 'delete', 'head', 'options')
+} | {'httpx.Client', 'httpx.AsyncClient', 'httpx.stream'}
+
+
 def inspect_python(report, path, content):
     if not path.endswith('.py'):
         return
@@ -64,6 +71,14 @@ def inspect_python(report, path, content):
             rule, message = 'dynamic-code', 'Dynamic code execution requires review; use a constrained parser.'
         elif name in ('pickle.load', 'pickle.loads', 'dill.load', 'dill.loads'):
             rule, message = 'unsafe-deserialization', 'Object deserialization can execute code; do not accept untrusted input.'
+        elif name in TLS_VERIFY_CALLS and any(
+                k.arg == 'verify' and isinstance(k.value, ast.Constant) and k.value.value is False
+                for k in node.keywords):
+            rule, message = 'tls-verification-disabled', (
+                'TLS certificate verification is disabled; use verified defaults or a trusted CA bundle.')
+        elif name == 'ssl._create_unverified_context':
+            rule, message = 'unverified-tls-context', (
+                'Unverified SSL context factory requires review; prefer ssl.create_default_context.')
         elif name == 'yaml.load':
             loader = next((k.value for k in node.keywords if k.arg == 'Loader'), None)
             if loader is None and len(node.args) > 1:

@@ -15,6 +15,35 @@ class PythonPatternTests(unittest.TestCase):
         self.assertEqual(report.status, 'fail')
         self.assertEqual((report.findings[0].rule, report.findings[0].line), ('unsafe-deserialization', 2))
 
+    def test_explicit_tls_bypasses_and_import_aliases_are_blocked(self):
+        for source in ('import requests\nrequests.get(url, verify=False)',
+                       'import requests as http\nhttp.post(url, verify=False)',
+                       'from requests.api import request as send\nsend("GET", url, verify=False)',
+                       'from httpx import Client as HTTP\nHTTP(verify=False)',
+                       'import httpx\nhttpx.AsyncClient(verify=False)',
+                       'import httpx\nhttpx.stream("GET", url, verify=False)'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual(result.status, 'fail')
+                self.assertEqual((result.findings[0].rule, result.findings[0].line),
+                                 ('tls-verification-disabled', 2))
+
+    def test_verified_tls_and_unrelated_flags_remain_allowed(self):
+        for source in ('import requests\nrequests.get(url)',
+                       'import requests\nrequests.get(url, verify=True)',
+                       'import requests\nrequests.get(url, verify="trusted-ca.pem")',
+                       'import httpx\nhttpx.Client(verify=context)',
+                       'import ssl\nssl.create_default_context()',
+                       'custom_operation(verify=False)',
+                       '# requests.get(url, verify=False)\nexample = "httpx.Client(verify=False)"'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_unverified_ssl_context_factory_requires_review(self):
+        result = self.inspect('from ssl import _create_unverified_context as context\ncontext()')
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual(result.findings[0].rule, 'unverified-tls-context')
+
     def test_safe_yaml_is_distinguished_from_unsafe_load(self):
         for source in ('import yaml\nyaml.safe_load(data)',
                        'from yaml import load, SafeLoader\nload(data, Loader=SafeLoader)',
