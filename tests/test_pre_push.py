@@ -321,3 +321,30 @@ class PrePushTests(unittest.TestCase):
         self.git('commit', '--allow-empty', '-qm', 'feat: next proposal')
         install(self.repo)
         self.git('push', 'origin', 'HEAD:proposal')
+
+    def test_legacy_grafts_cannot_hide_removed_outgoing_credentials(self):
+        (self.repo / 'credential').write_text('ghp_' + 'Z' * 36)
+        self.commit()
+        (self.repo / 'credential').unlink()
+        self.commit()
+        head = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        graft = self.repo / '.git/info/grafts'
+        graft.write_text(head + '\n')
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.rule == 'github-token' for f in result.findings))
+        self.assertEqual(graft.read_text(), head + '\n')
+
+    def test_inherited_graft_file_cannot_hide_removed_outgoing_credentials(self):
+        (self.repo / 'credential').write_text('ghp_' + 'Z' * 36)
+        self.commit()
+        (self.repo / 'credential').unlink()
+        self.commit()
+        head = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        graft = self.repo / '.git/custom-grafts'
+        graft.write_text(head + '\n')
+        with patch.dict(os.environ, {'GIT_GRAFT_FILE': str(graft)}):
+            result = pre_push(self.repo, self.update())
+            self.assertEqual(os.environ['GIT_GRAFT_FILE'], str(graft))
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.rule == 'github-token' for f in result.findings))

@@ -97,6 +97,9 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
         if _ISOLATED_GIT.get():
             env = {k: v for k, v in (os.environ if env is None else env).items()
                    if not k.startswith('GIT_')}
+        # Legacy grafts alter ancestry independently of replacement refs.
+        env = dict(os.environ if env is None else env)
+        env['GIT_GRAFT_FILE'] = os.devnull
     with tempfile.TemporaryFile() as input_stream:
         if input_data is not None:
             input_stream.write(input_data)

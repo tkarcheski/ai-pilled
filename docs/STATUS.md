@@ -42,8 +42,9 @@ oversized, unresolved, and unsupported content as incomplete.
 **Evidence:** `test_security.py`, `test_python_security.py`, `test_redaction.py`,
 `test_json_data.py`, and `test_report_bounds.py`; actual credential-blocked commits
 are also covered by `test_e2e.py`. Reports redact findings rather than echo secret
-values. Runtime Git reads disable replacement objects so substituted local objects
-cannot hide the original content being checked.
+values. Runtime Git reads disable replacement objects and legacy graft overlays so local
+metadata cannot substitute content or conceal outgoing ancestry. Both default and
+environment-selected graft bypasses have credential-history regression tests.
 
 **Activation / limits:** Git commit/push scanning is active here. Codex hook files
 are installed, but live trust/activation has not been verified. A manual lifecycle
