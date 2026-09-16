@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import fcntl
 import json
 import os
+import stat
 from pathlib import Path
 import uuid
 import tempfile
@@ -21,34 +22,54 @@ def directory(repo):
 
 
 def record(repo, report, event):
-    path = directory(repo) / 'events.jsonl'
-    flags = os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW
-    fd = os.open(path, flags, 0o600)
     entry = {'id': uuid.uuid4().hex, 'at': datetime.now(timezone.utc).isoformat(),
              'event': event, 'report': report.to_dict()}
-    with os.fdopen(fd, 'r+', encoding='utf-8') as stream:
+    encoded = (json.dumps(entry) + '\n').encode('utf-8')
+    if len(encoded) > MAX_HISTORY_BYTES:
+        raise CommandError('Check record exceeds the local history size limit')
+    path = directory(repo) / 'events.jsonl'
+    flags = os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK
+    fd = os.open(path, flags, 0o600)
+    with os.fdopen(fd, 'r+b') as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise CommandError('Local history must be a regular file')
         fcntl.flock(stream, fcntl.LOCK_EX)
-        if os.fstat(stream.fileno()).st_size > MAX_HISTORY_BYTES:
-            stream.seek(0)
-            records = stream.readlines()[-100:]
+        size = os.fstat(stream.fileno()).st_size
+        if size + len(encoded) > MAX_HISTORY_BYTES:
+            offset = max(0, size - MAX_HISTORY_BYTES)
+            stream.seek(offset)
+            content = stream.read(MAX_HISTORY_BYTES)
+            if offset:
+                # The bounded tail may begin inside a record; retain whole lines only.
+                content = content.partition(b'\n')[2]
+            records = content.splitlines(keepends=True)[-100:]
+            retained = sum(map(len, records))
+            while records and retained + len(encoded) > MAX_HISTORY_BYTES:
+                retained -= len(records.pop(0))
             stream.seek(0)
             stream.truncate()
-            stream.writelines(records)
-        stream.write(json.dumps(entry) + '\n')
+            stream.write(b''.join(records))
+        stream.write(encoded)
         stream.flush()
     return entry
 
 
 def history(repo):
     path = Path(repo) / '.ai-pilled' / 'events.jsonl'
-    if not path.exists():
-        return []
     if path.is_symlink() or path.parent.is_symlink():
         raise CommandError('Refusing symlink state files')
-    with path.open() as stream:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return []
+    with os.fdopen(fd, 'rb') as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise CommandError('Local history must be a regular file')
         fcntl.flock(stream, fcntl.LOCK_SH)
-        return [json.loads(line) for line in stream if line.strip()]
-
+        content = stream.read(MAX_HISTORY_BYTES + 1)
+        if len(content) > MAX_HISTORY_BYTES:
+            raise CommandError('Local history exceeds the size limit; archive it before reading')
+        return [json.loads(line) for line in content.splitlines() if line.strip()]
 
 
 def atomic_text(path, text, mode=0o600):

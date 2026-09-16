@@ -1,10 +1,11 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ai_pilled.reporting import dashboard, summarize
 from ai_pilled.runtime import CommandError, Report
-from ai_pilled.state import record
+from ai_pilled.state import history, record
 
 
 class ReportingTests(unittest.TestCase):
@@ -66,3 +67,40 @@ class ReportingTests(unittest.TestCase):
             (path / 'events.jsonl').write_text(value + '\n')
             with self.assertRaises(CommandError):
                 summarize(self.repo)
+
+
+    def test_rotation_enforces_byte_budget_and_preserves_latest_record(self):
+        with patch('ai_pilled.state.MAX_HISTORY_BYTES', 1400):
+            for index in range(10):
+                result = Report('test')
+                result.add('failure', 'detail ' * 70)
+                entry = record(self.repo, result, str(index))
+                path = self.repo / '.ai-pilled' / 'events.jsonl'
+                self.assertLessEqual(path.stat().st_size, 1400)
+                self.assertEqual(history(self.repo)[-1]['id'], entry['id'])
+            self.assertEqual(summarize(self.repo)['blocker'], 'wait')
+
+    def test_oversized_record_does_not_change_existing_history(self):
+        record(self.repo, Report('test'), 'test')
+        path = self.repo / '.ai-pilled' / 'events.jsonl'
+        original = path.read_bytes()
+        result = Report('test')
+        result.add('large', 'x' * 2000)
+        with patch('ai_pilled.state.MAX_HISTORY_BYTES', 1400):
+            with self.assertRaises(CommandError):
+                record(self.repo, result, 'test')
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_oversized_history_read_is_explicitly_incomplete(self):
+        record(self.repo, Report('test'), 'test')
+        with patch('ai_pilled.state.MAX_HISTORY_BYTES', 10):
+            with self.assertRaises(CommandError):
+                summarize(self.repo)
+
+    def test_legacy_oversized_history_rotates_using_complete_records(self):
+        for index in range(20):
+            record(self.repo, Report('test'), str(index))
+        with patch('ai_pilled.state.MAX_HISTORY_BYTES', 1400):
+            latest = record(self.repo, Report('test'), 'latest')
+            self.assertEqual(history(self.repo)[-1]['id'], latest['id'])
+            self.assertLessEqual((self.repo / '.ai-pilled' / 'events.jsonl').stat().st_size, 1400)

@@ -405,7 +405,10 @@ private command arguments or historical pass claims.
 `summary` returns one sentence, unresolved checks, a proceed/wait indicator, and the
 next step from the latest recorded result for each check. No history means wait.
 `dashboard` writes an offline HTML view to .ai-pilled/dashboard.html, including the
-latest 100 runs. It escapes findings and loads no external scripts or assets.
+latest 100 retained runs. It escapes findings and loads no external scripts or assets.
+Local history is capped at 2 MB. Rotation retains whole recent records that fit;
+a single oversized record is rejected before changing existing history. Oversized
+legacy history must be archived before reading, or is bounded on the next recorded check.
 
 Explicit scans, configured checks, Git gates, lifecycle hooks, model reviews, and npm
 audits record local results. These are historical observations: a green dashboard
