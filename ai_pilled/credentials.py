@@ -18,6 +18,8 @@ PATTERNS = (
     ('slack-token', re.compile(r'(?a)\bxox[baprs]-[A-Za-z0-9-]{20,}\b')),
 )
 
+AWS_SECRET_ASSIGNMENT = dict(PATTERNS)['aws-secret-key']
+
 PRIVATE_KEY_BLOCK = re.compile(
     r'-----BEGIN (?P<kind>(?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY)-----'
     r'[\s\S]*?(?:-----END (?P=kind)-----|\Z)')
@@ -59,26 +61,44 @@ def json_string_literals(text):
             start = None
 
 
+def aws_secret_field(key, value):
+    if not isinstance(key, str) or not isinstance(value, str):
+        return False
+    boundary = len(key) + 1
+    return any(match.end() > boundary for match in AWS_SECRET_ASSIGNMENT.finditer(key + '=' + value))
+
+
+def json_secret_literals(text):
+    previous_end, previous_value = 0, None
+    for start, end, line, value in json_string_literals(text):
+        secret_field = (text[previous_end:start].strip() == ':'
+                        and aws_secret_field(previous_value, value))
+        yield start, end, line, value, secret_field
+        previous_end, previous_value = end, value
+
+
 def redact(text):
-    text = redact_plain(text)
+    # Preserve whole-block privacy before rewriting any individually quoted header.
+    text = PRIVATE_KEY_BLOCK.sub('[REDACTED PRIVATE KEY]', text)
     pieces: list[str] = []
     position = 0
-    for start, end, _, value in json_string_literals(text):
-        cleaned = redact_plain(value)
+    for start, end, _, value, secret_field in json_secret_literals(text):
+        cleaned = '[REDACTED]' if secret_field else redact_plain(value)
         if cleaned != value:
             pieces.extend((text[position:start], json.dumps(cleaned)))
             position = end
     if not pieces:
-        return text
+        return redact_plain(text)
     pieces.append(text[position:])
-    return ''.join(pieces)
+    return redact_plain(''.join(pieces))
 
 
 def redact_data(value):
     if isinstance(value, str):
         return redact(value)
     if isinstance(value, dict):
-        return {redact(key) if isinstance(key, str) else key: redact_data(item)
+        return {redact(key) if isinstance(key, str) else key:
+                '[REDACTED]' if aws_secret_field(key, item) else redact_data(item)
                 for key, item in value.items()}
     if isinstance(value, list):
         return [redact_data(item) for item in value]

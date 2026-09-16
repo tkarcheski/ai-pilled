@@ -38,7 +38,10 @@ Credential scanning covers file contents, names, UTF-16/32 BOM encodings, and st
 Git blobs. ASCII token boundaries prevent non-ASCII neighboring bytes or text from
 hiding recognizable credentials in scans or redacted output. Quoted JSON strings are decoded once for Unicode/slash escapes, including
 values hidden by duplicate keys; malformed literals do not suppress raw scanning.
-The shared redactor sanitizes those decoded secrets while preserving JSON quoting.
+AWS secret-key field names are paired with their decoded JSON values, including
+escaped keys and duplicate entries. The shared redactor handles nested dictionary fields
+and masks those values while retaining JSON keys/quoting and unrelated data. Complete
+private-key block redaction still precedes individual quoted-string handling.
 This is direct string-escape handling, not arbitrary encoding or runtime data-flow analysis.
 PyPI publishing tokens follow the provider’s documented prefix and minimum
 payload length; the shared pattern also redacts reports/history and blocks credential-like

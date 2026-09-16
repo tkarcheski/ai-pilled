@@ -102,6 +102,17 @@ class SecurityTests(unittest.TestCase):
         self.write('ordinary.txt', 'prefixghp_' + 'A' * 36)
         self.assertEqual(scan(self.repo).status, 'pass')
 
+    def test_json_aws_secret_fields_are_decoded_with_their_values(self):
+        secret = 'aB3/+' * 8
+        for key in ('aws_secret_access_key', 'AWS_SECRET_ACCESS_KEY', 'SecretAccessKey'):
+            with self.subTest(key=key):
+                encoded_key = json.dumps(key).replace(key[0], r'\u%04x' % ord(key[0]), 1)
+                encoded_value = json.dumps(secret).replace('a', r'\u0061', 1)
+                source = '{\n' + encoded_key + ':\n' + encoded_value + ', ' + encoded_key + ': "ordinary"}'
+                self.write('encoded.json', source)
+                result = scan(self.repo)
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('aws-secret-key', 3)])
+
     def test_clean_snapshot_changes_with_content(self):
         self.write('file.txt', 'first')
         before = scan(self.repo)

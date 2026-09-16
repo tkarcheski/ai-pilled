@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from ai_pilled.__main__ import main
-from ai_pilled.credentials import redact
+from ai_pilled.credentials import redact, redact_data
 from ai_pilled.lifecycle import handle
 from ai_pilled.reporting import dashboard, summarize
 from ai_pilled.runtime import Report
@@ -81,6 +81,40 @@ class RedactionTests(unittest.TestCase):
         for token in ('ghp_' + 'A' * 36, 'AKIA' + 'A' * 16, 'pypi-' + 'A' * 85):
             value = chr(255) + token + chr(255)
             self.assertEqual(redact(value), chr(255) + '[REDACTED]' + chr(255))
+
+    def test_aws_json_field_redaction_preserves_structure_and_duplicate_keys(self):
+        secret = 'aB3/+' * 8
+        for escaped in (False, True):
+            key, value = json.dumps('aws_secret_access_key'), json.dumps(secret)
+            if escaped:
+                key = key.replace('a', r'\u0061', 1)
+                value = value.replace('a', r'\u0061', 1)
+            source = '{' + key + ':' + value + ',' + key + ':"ordinary", "note":"keep"}'
+            self.assertEqual(json.loads(redact(source), object_pairs_hook=list),
+                             [('aws_secret_access_key', '[REDACTED]'),
+                              ('aws_secret_access_key', 'ordinary'), ('note', 'keep')])
+
+    def test_aws_fields_are_redacted_in_nested_data_and_legacy_history(self):
+        secret = 'aB3/+' * 8
+        data = {'items': [{'AWS_SECRET_ACCESS_KEY': secret}], 'checksum': secret,
+                'SecretAccessKey': None}
+        cleaned = redact_data(data)
+        self.assertEqual(cleaned['items'][0]['AWS_SECRET_ACCESS_KEY'], '[REDACTED]')
+        self.assertEqual(cleaned['checksum'], secret)
+        self.assertIsNone(cleaned['SecretAccessKey'])
+        state = self.repo / '.ai-pilled'
+        state.mkdir()
+        entry = {'at': '2026-09-16T00:00:00Z', 'report': {'check': 'test', 'status': 'fail',
+                 'findings': [{'message': 'legacy', 'SecretAccessKey': secret}]}}
+        (state / 'events.jsonl').write_text(json.dumps(entry) + '\n')
+        self.assertNotIn(secret, json.dumps(summarize(self.repo)))
+        self.assertNotIn(secret, dashboard(self.repo).read_text())
+
+    def test_quoted_private_key_headers_do_not_expose_the_remaining_body(self):
+        header = '-----BEGIN ' + 'PRIVATE KEY-----'
+        footer = '-----END ' + 'PRIVATE KEY-----'
+        source = json.dumps(header) + '\nprivate-body\n' + json.dumps(footer)
+        self.assertNotIn('private-body', redact(source))
 
     def test_cli_missing_executable_error_redacts_its_name(self):
         (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {'test': [str(self.repo / self.token)]}}))
