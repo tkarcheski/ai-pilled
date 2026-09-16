@@ -41,6 +41,10 @@ class CommandError(RuntimeError):
     pass
 
 
+class CommandUnavailable(CommandError):
+    """No completed command result exists (missing executable or resource limit)."""
+
+
 def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, acceptable_codes=(0,)):
     """Bound stdout + stderr while running and kill descendants on failure."""
     if timeout <= 0 or limit < 0:
@@ -55,7 +59,7 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
                 stdin=input_stream if input_data is not None else subprocess.DEVNULL,
                 start_new_session=True, env=env)
         except OSError as exc:
-            raise CommandError(f'Cannot start {Path(argv[0]).name}: {exc.strerror}') from exc
+            raise CommandUnavailable(f'Cannot start {Path(argv[0]).name}: {exc.strerror}') from exc
         assert child.stdout is not None and child.stderr is not None
         deadline = time.monotonic() + timeout
         captured = bytearray()
@@ -67,7 +71,7 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
                 while selector.get_map():
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
-                        raise CommandError(f'{Path(argv[0]).name} exceeded {timeout}s')
+                        raise CommandUnavailable(f'{Path(argv[0]).name} exceeded {timeout}s')
                     for key, _ in selector.select(min(remaining, 0.1)):
                         chunk = os.read(key.fd, 65536)
                         if not chunk:
@@ -75,13 +79,15 @@ def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None, input_data=None, ac
                             continue
                         total += len(chunk)
                         if total > limit:
-                            raise CommandError(f'{Path(argv[0]).name} output exceeded {limit} bytes')
+                            raise CommandUnavailable(f'{Path(argv[0]).name} output exceeded {limit} bytes')
                         if key.data == 'stdout':
                             captured.extend(chunk)
                 try:
                     code = child.wait(timeout=max(0.001, deadline - time.monotonic()))
                 except subprocess.TimeoutExpired as exc:
-                    raise CommandError(f'{Path(argv[0]).name} exceeded {timeout}s') from exc
+                    raise CommandUnavailable(f'{Path(argv[0]).name} exceeded {timeout}s') from exc
+                if code < 0:
+                    raise CommandUnavailable(f'{Path(argv[0]).name} terminated by signal {-code}')
                 if code not in acceptable_codes:
                     raise CommandError(f'{Path(argv[0]).name} exited with status {code}')
                 return bytes(captured)

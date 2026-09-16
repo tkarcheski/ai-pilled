@@ -100,3 +100,15 @@ class HealingTests(unittest.TestCase):
         self.assertEqual(result.action, 'inspect-checkout')
         self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.bad)
         self.assertTrue(self.git('diff', '--cached'))
+
+    def test_unavailable_tests_are_not_evidence_for_a_revert(self):
+        self.config['commands']['test'] = ['missing-ai-pilled-test-executable']
+        (self.repo / '.ai-pilled.json').write_text(json.dumps(self.config))
+        self.git('add', '.ai-pilled.json')
+        self.git('commit', '-qm', 'chore: unavailable tool')
+        head = self.git('rev-parse', 'HEAD').decode().strip()
+        result = heal(self.repo, head, apply=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.checks[0]['status'], 'incomplete')
+        self.assertFalse(result.patch)
+        self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), head)

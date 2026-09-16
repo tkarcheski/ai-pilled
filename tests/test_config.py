@@ -39,9 +39,9 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(command_check(self.repo, 'test').status, 'pass')
         self.assertFalse((self.repo / 'hacked').exists())
 
-    def test_unknown_executable_fails(self):
+    def test_unknown_executable_is_incomplete(self):
         self.configure({'commands': {'test': ['ai-pilled-nonexistent-executable']}})
-        self.assertEqual(command_check(self.repo, 'test').status, 'fail')
+        self.assertEqual(command_check(self.repo, 'test').status, 'incomplete')
 
     def test_invalid_configs_rejected(self):
         for value in [[], {'typo': True}, {'version': True}, {'timeout': True},
@@ -60,3 +60,15 @@ class ConfigTests(unittest.TestCase):
         with patch.dict(os.environ, {'GIT_DIR': '/not-the-test-repo', 'GIT_CONFIG_COUNT': '1',
                                      'GIT_CONFIG_KEY_0': 'core.bare', 'GIT_CONFIG_VALUE_0': 'true'}):
             self.assertEqual(command_check(self.repo, 'test').status, 'pass')
+
+    def test_timeout_and_output_limit_do_not_claim_test_failure(self):
+        for program in ('import time; time.sleep(5)', 'print("x" * 2_000_001)'):
+            self.configure({'timeout': 1, 'commands': {'test': [sys.executable, '-c', program]}})
+            result = command_check(self.repo, 'test')
+            self.assertEqual(result.status, 'incomplete')
+            self.assertEqual(result.findings[0].rule, 'command-unavailable')
+
+    def test_signal_termination_does_not_claim_test_failure(self):
+        self.configure({'commands': {'test': [sys.executable, '-c',
+                        'import os,signal; os.kill(os.getpid(), signal.SIGTERM)']}})
+        self.assertEqual(command_check(self.repo, 'test').status, 'incomplete')

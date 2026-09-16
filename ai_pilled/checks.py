@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from .config import load
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, CommandUnavailable, Report, run
 
 
 def command_check(repo, name, executable_root=None):
@@ -24,6 +24,8 @@ def command_check(repo, name, executable_root=None):
         # not inherit the parent repository's Git directory, index, or config.
         env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
         run(argv, repo, timeout=config.timeout, env=env)
+    except CommandUnavailable as exc:
+        report.add('command-unavailable', str(exc), severity='warning')
     except CommandError as exc:
         report.add('command-failed', str(exc))
     return report
