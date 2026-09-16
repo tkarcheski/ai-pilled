@@ -44,3 +44,11 @@ temp/
 audit-reports/
 ai/audits/
 hook-activity.log
+
+__pycache__/
+
+*.pyc
+
+.ai-pilled/
+
+docs/IMPLEMENTATION.md

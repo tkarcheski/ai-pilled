@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "commands": {
+    "test": [
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tests",
+      "-v"
+    ]
+  },
+  "protected_branches": [
+    "main",
+    "master"
+  ],
+  "require_tests": true,
+  "timeout": 120,
+  "aggressiveness": "normal"
+}
