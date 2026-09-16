@@ -207,6 +207,100 @@ class GitHookTests(unittest.TestCase):
         self.assertFalse((self.repo / '.ai-pilled' / 'installation.json').exists())
         install(self.repo)
 
+    def test_new_hook_symlink_race_cannot_overwrite_another_file(self):
+        target = self.repo / 'keep.txt'
+        target.write_text('preserve me')
+        mode = target.stat().st_mode
+        real_open = os.open
+        def race(path, flags, *args, **kwargs):
+            if Path(path).name == 'pre-commit' and flags & os.O_CREAT:
+                Path(path).symlink_to(target)
+            return real_open(path, flags, *args, **kwargs)
+        with patch('ai_pilled.git_hooks.os.open', side_effect=race), self.assertRaises(FileExistsError):
+            install(self.repo)
+        self.assertEqual(target.read_text(), 'preserve me')
+        self.assertEqual(target.stat().st_mode, mode)
+        self.assertTrue((self.repo / '.ai-pilled/hooks/pre-commit').is_symlink())
+        self.assertFalse((self.repo / '.ai-pilled/installation.json').exists())
+        self.assertNotEqual(self.git('config', '--get', 'core.hooksPath', success=False).returncode, 0)
+
+    def test_new_manifest_race_is_preserved_during_rollback(self):
+        real_open = os.open
+        def race(path, flags, *args, **kwargs):
+            if Path(path).name == 'installation.json' and flags & os.O_CREAT:
+                Path(path).write_text('concurrent owner')
+            return real_open(path, flags, *args, **kwargs)
+        with patch('ai_pilled.git_hooks.os.open', side_effect=race), self.assertRaises(FileExistsError):
+            install(self.repo)
+        self.assertEqual((self.repo / '.ai-pilled/installation.json').read_text(), 'concurrent owner')
+        self.assertFalse((self.repo / '.ai-pilled/hooks').exists())
+        self.assertNotEqual(self.git('config', '--get', 'core.hooksPath', success=False).returncode, 0)
+
+    def test_late_configuration_failure_removes_only_files_created_by_this_install(self):
+        from ai_pilled.runtime import run
+        def fail_write(argv, *args, **kwargs):
+            if len(argv) == 5 and argv[:4] == ['git', 'config', '--local', 'core.hooksPath']:
+                self.assertTrue((self.repo / '.ai-pilled/hooks/pre-commit').is_file())
+                self.assertTrue((self.repo / '.ai-pilled/installation.json').is_file())
+                raise CommandError('simulated late config failure')
+            return run(argv, *args, **kwargs)
+        with patch('ai_pilled.git_hooks.run', side_effect=fail_write), self.assertRaises(CommandError):
+            install(self.repo)
+        self.assertFalse((self.repo / '.ai-pilled/hooks').exists())
+        self.assertFalse((self.repo / '.ai-pilled/installation.json').exists())
+        install(self.repo)
+
+    def test_rollback_preserves_a_concurrently_replaced_hook(self):
+        from ai_pilled.runtime import run
+        def replace_then_fail(argv, *args, **kwargs):
+            if len(argv) == 5 and argv[:4] == ['git', 'config', '--local', 'core.hooksPath']:
+                replacement = self.repo / 'replacement'
+                replacement.write_text('concurrent hook owner')
+                replacement.replace(self.repo / '.ai-pilled/hooks/pre-commit')
+                raise CommandError('simulated late config failure')
+            return run(argv, *args, **kwargs)
+        with patch('ai_pilled.git_hooks.run', side_effect=replace_then_fail), self.assertRaises(CommandError):
+            install(self.repo)
+        self.assertEqual((self.repo / '.ai-pilled/hooks/pre-commit').read_text(), 'concurrent hook owner')
+        self.assertFalse((self.repo / '.ai-pilled/hooks/commit-msg').exists())
+        self.assertFalse((self.repo / '.ai-pilled/installation.json').exists())
+
+    def test_lost_activation_completion_preserves_active_hooks_for_safe_retry(self):
+        from ai_pilled.runtime import run, CommandUnavailable
+        def lose_completion(argv, *args, **kwargs):
+            result = run(argv, *args, **kwargs)
+            if len(argv) == 5 and argv[:4] == ['git', 'config', '--local', 'core.hooksPath']:
+                raise CommandUnavailable('simulated lost completion after config write')
+            return result
+        with patch('ai_pilled.git_hooks.run', side_effect=lose_completion), self.assertRaises(CommandUnavailable):
+            install(self.repo)
+        self.assertTrue((self.repo / '.ai-pilled/installation.json').is_file())
+        self.assertEqual(self.git('config', '--get', 'core.hooksPath').stdout.decode().rstrip('\n'),
+                         str(self.repo / '.ai-pilled/hooks'))
+        result = self.git('commit', '-m', 'invalid message', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'commit-message', result.stdout + result.stderr)
+        install(self.repo)
+        uninstall(self.repo)
+
+    def test_unknown_activation_outcome_retains_ready_files(self):
+        from ai_pilled.runtime import run, CommandUnavailable
+        attempted = False
+        def unknown(argv, *args, **kwargs):
+            nonlocal attempted
+            if len(argv) == 5 and argv[:4] == ['git', 'config', '--local', 'core.hooksPath']:
+                attempted = True
+                raise CommandUnavailable('simulated activation failure')
+            if attempted and argv[:2] == ['git', 'config']:
+                raise CommandUnavailable('simulated unreadable activation result')
+            return run(argv, *args, **kwargs)
+        with patch('ai_pilled.git_hooks.run', side_effect=unknown), self.assertRaises(CommandUnavailable):
+            install(self.repo)
+        self.assertTrue((self.repo / '.ai-pilled/installation.json').is_file())
+        self.assertTrue((self.repo / '.ai-pilled/hooks/pre-commit').is_file())
+        install(self.repo)
+        uninstall(self.repo)
+
     def test_commit_hook_runs_opted_in_model_review_and_blocks_missing_cli(self):
         import json
         (self.repo / '.ai-pilled.json').write_text(json.dumps({

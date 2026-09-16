@@ -73,6 +73,12 @@ scopes, comprehensive review, quality, and a real credential-blocked hook commit
 environment-selected graft bypasses have credential-history regression tests. Hook
 installation configuration reads use the bounded command runner (16 KB per value),
 preserve exact trailing newlines, and distinguish absent keys from command failures.
+New Git hooks and manifests use exclusive descriptor creation; concurrent files or
+symlinks cannot be truncated. Rollback removes only matching inodes created by that
+attempt and preserves detected replacements. If configuration activation succeeded
+or its outcome cannot be read after a command failure, ready hooks and the ownership
+manifest are retained for inspection/retry instead of deleting potentially active gates. These cooperative installation protections
+do not claim isolation from every hostile parent-directory race.
 Commit-message, installation-manifest, and owned-hook reads require bounded regular
 files (64 KB); rejected special/oversized files leave hooks and Git configuration intact.
 
@@ -263,7 +269,8 @@ the tested fix with index flags and export an empty or incomplete patch.
 Refactor and healing policy comparisons use bounded regular-file reads; generated
 FIFO, symlink, and oversized policies produce incomplete results without exporting
 a patch or changing the source checkout. The real repository refactor preview at
-`55eb817` passed simplify, repair, and all seven stronger quality gates with zero patch bytes.
+`7e2b611` passed simplify, repair, and all seven quality gates with zero patch bytes,
+using the candidate index guards; the source checkout remained clean.
 
 Scheduler state and lock files must be regular files opened without following symlinks.
 Records are read through a 16 KB bound; FIFO, symlink, and oversized-state regressions

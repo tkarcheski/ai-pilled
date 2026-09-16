@@ -81,6 +81,17 @@ def locked(repo):
         yield root
 
 
+def create_owned_file(path, content, mode, created):
+    """Claim a new file exclusively; never follow or truncate a racing replacement."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+        metadata = os.fstat(stream.fileno())
+        created.append((path, metadata.st_dev, metadata.st_ino))
+        stream.write(content)
+        stream.flush()
+        os.fchmod(stream.fileno(), mode)
+
+
 def install(repo):
     with locked(repo) as root:
         return _install(root)
@@ -125,23 +136,34 @@ def _install(repo):
         previous = installed['previous']
     # Validate every owned file before creating or rewriting any of them.
     directory.mkdir(parents=True, exist_ok=True)
-    created = []
+    created: list[tuple[Path, int, int]] = []
+    activation_started = False
     try:
         for event, content in contents.items():
             path = directory / event
             if not path.exists():
-                created.append(path)
-                path.write_text(content)
-                path.chmod(0o755)
+                create_owned_file(path, content, 0o755, created)
         if not installed:
-            manifest.write_text(json.dumps({'previous': previous, 'scope': scope,
-                                            'hooks_path': str(directory), 'hashes': hashes}, indent=2))
+            create_owned_file(manifest, json.dumps({'previous': previous, 'scope': scope,
+                              'hooks_path': str(directory), 'hashes': hashes}, indent=2), 0o600, created)
+        activation_started = True
         run(['git', 'config', scope, 'core.hooksPath', str(directory)], repo)
     except BaseException:
-        for path in created:
-            path.unlink(missing_ok=True)
+        if activation_started:
+            try:
+                active = git_value(repo, 'core.hooksPath', scope=None) == str(directory)
+            except (CommandError, OSError):
+                active = True  # An unknown outcome cannot authorize deleting potentially active hooks.
+            if active:
+                raise
+        for path, device, inode in reversed(created):
+            try:
+                metadata = path.lstat()
+                if (metadata.st_dev, metadata.st_ino) == (device, inode):
+                    path.unlink()
+            except FileNotFoundError:
+                pass
         if not installed:
-            manifest.unlink(missing_ok=True)
             if not any(directory.iterdir()):
                 directory.rmdir()
         raise
