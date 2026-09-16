@@ -98,3 +98,19 @@ class PrePushTests(unittest.TestCase):
 
     def test_malformed_input_fails(self):
         self.assertEqual(pre_push(self.repo, 'not valid').status, 'fail')
+
+    def test_test_command_cannot_mutate_files_and_still_authorize_push(self):
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {'test': [
+            sys.executable, '-c', 'from pathlib import Path; Path("changed.py").write_text("changed")']}}))
+        self.commit()
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertIn('test-snapshot-changed', [f.rule for f in result.findings])
+
+    def test_test_command_cannot_switch_to_a_new_clean_commit(self):
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {'test': [
+            'git', 'commit', '--allow-empty', '-qm', 'test: changed head']}}))
+        self.commit()
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertIn('test-snapshot-changed', [f.rule for f in result.findings])

@@ -90,4 +90,8 @@ def pre_push(repo, updates):
             tests = command_check(repo, 'test')
             for finding in tests.findings:
                 report.add(finding.rule, finding.message, severity=finding.severity)
+            current_head = run(['git', 'rev-parse', '--verify', 'HEAD'], repo).decode().strip()
+            if current_head != head or run(['git', 'status', '--porcelain', '--untracked-files=normal'], repo):
+                report.add('test-snapshot-changed',
+                           'Tests changed HEAD or working files; restore a clean pushed snapshot and rerun.')
     return report
