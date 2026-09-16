@@ -140,3 +140,14 @@ class HealingTests(unittest.TestCase):
         self.assertFalse(result.patch)
         self.assertFalse(result.commit)
         self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.bad)
+
+    def test_inherited_git_routing_does_not_test_the_broken_original_as_candidate(self):
+        with patch.dict(os.environ, {'GIT_DIR': str(self.repo / '.git'),
+                                     'GIT_WORK_TREE': str(self.repo),
+                                     'GIT_INDEX_FILE': str(self.repo / '.git/index')}):
+            result = heal(self.repo, self.bad)
+        self.assertEqual(result.status, 'pass', result.to_dict())
+        self.assertEqual(result.action, 'preview')
+        self.assertEqual([c['status'] for c in result.checks], ['fail', 'pass', 'fail'])
+        self.assertEqual(self.git('rev-parse', 'HEAD').decode().strip(), self.bad)
+        self.assertEqual(self.git('status', '--porcelain'), b'')

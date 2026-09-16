@@ -8,7 +8,7 @@ import uuid
 from .checks import command_check
 from .config import ConfigError, load
 from .pipeline import quality
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, isolated_git, run
 from .security import scan
 from .state import directory
 
@@ -71,12 +71,14 @@ def refactor(repo):
                     raise CommandError('Refactor commands must not create commits or change HEAD')
                 if (clone / '.ai-pilled.json').is_symlink() or (clone / '.ai-pilled.json').read_bytes() != policy:
                     raise CommandError('Refactor commands must not change the quality configuration')
-                security = scan(clone, 'worktree', patterns=config.aggressiveness == 'strict')
+                with isolated_git():
+                    security = scan(clone, 'worktree', patterns=config.aggressiveness == 'strict')
                 if security.status != 'pass':
                     report.status = security.status
                     report.findings = security.findings
                     return report
-            verified = quality(clone, executable_root=root)
+            with isolated_git():
+                verified = quality(clone, executable_root=root)
             report.steps.append(verified.to_dict())
             if verified.status != 'pass':
                 report.status = verified.status

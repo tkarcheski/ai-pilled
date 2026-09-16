@@ -107,3 +107,31 @@ class RefactorTests(unittest.TestCase):
                               'import sys; assert sys.prefix != sys.base_prefix'])
         result = refactor(self.repo)
         self.assertEqual(result.status, 'pass', result.to_dict())
+
+    def test_inherited_git_routing_cannot_hide_generated_credentials(self):
+        self.configure(repair=[sys.executable, '-c',
+            'from pathlib import Path; Path("credential").write_text("ghp_" + "A" * 36)'])
+        config = json.loads((self.repo / '.ai-pilled.json').read_text())
+        config['commands']['test'] = [sys.executable, '-c', 'pass']
+        (self.repo / '.ai-pilled.json').write_text(json.dumps(config))
+        self.git('add', '.ai-pilled.json')
+        self.git('commit', '-qm', 'test: routing fixture')
+        before = self.git('rev-parse', 'HEAD')
+        with patch.dict(os.environ, {'GIT_DIR': str(self.repo / '.git'),
+                                     'GIT_WORK_TREE': str(self.repo),
+                                     'GIT_INDEX_FILE': str(self.repo / '.git/index')}):
+            result = refactor(self.repo)
+        self.assertEqual(result.status, 'fail', result.to_dict())
+        self.assertFalse(result.patch)
+        self.assertTrue(any(f.rule == 'github-token' for f in result.findings))
+        self.assertEqual(self.git('rev-parse', 'HEAD'), before)
+        self.assertEqual(self.git('status', '--porcelain'), b'')
+
+    def test_inherited_git_routing_checks_refactored_source(self):
+        self.configure()
+        with patch.dict(os.environ, {'GIT_DIR': str(self.repo / '.git'),
+                                     'GIT_WORK_TREE': str(self.repo)}):
+            result = refactor(self.repo)
+        self.assertEqual(result.status, 'pass', result.to_dict())
+        self.assertTrue(result.patch)
+        self.assertEqual((self.repo / 'code.py').read_text(), 'value = 1\n')

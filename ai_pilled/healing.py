@@ -8,7 +8,7 @@ from .checks import command_check
 from .config import ConfigError, load
 from .pipeline import quality
 from .refactor import export_patch
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, Report, isolated_git, run
 from .security import scan
 from .state import directory
 
@@ -68,7 +68,8 @@ def heal(repo, expected_head, apply=False):
             run(['git', 'revert', '--no-commit', head], clone, env=env)
             if (clone / '.ai-pilled.json').is_symlink() or (clone / '.ai-pilled.json').read_bytes() != policy:
                 raise CommandError('Revert would change the quality policy; review it manually')
-            candidate = quality(clone, executable_root=root)
+            with isolated_git():
+                candidate = quality(clone, executable_root=root)
             report.checks.append(candidate.to_dict())
             if candidate.status != 'pass':
                 report.status, report.findings = candidate.status, candidate.findings

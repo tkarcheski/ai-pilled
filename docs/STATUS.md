@@ -163,7 +163,7 @@ suggestions beyond generic remediation are planned below.
 | 11 | Full audit / parallel review — opt-in | Quality first, optional one-to-three isolated perspectives; `test_full_audit.py` | Concurrency tested with fake reviewers; no live parallel run claimed. |
 | 12 | PR-ready checker — implemented | `ready`: clean committed non-protected proposal plus passing quality; `test_pipeline.py` | Does not create a PR or assert hosted checks passed. |
 | 13 | Release flow — opt-in | `prepare-release`, `publish-release`, exact local/remote tags and committed metadata; release/publishing tests | Preview default. Actual GitHub publication tested with provider fixtures only. |
-| 14 | Simplify → fix → test — implemented | `refactor`, trusted commands in disposable clone, verified patch export; `test_refactor.py` | No automatic patch application; clone is not an OS sandbox. |
+| 14 | Simplify → fix → test — implemented | `refactor`, trusted commands in disposable clone, verified patch export; `test_refactor.py` | Candidate scans/checks isolate inherited Git routing; generated credentials are blocked. No automatic patch application; clone is not an OS sandbox. |
 | 15 | Slack notifications — opt-in | Preview and explicit `notify slack --send`; `test_notifications.py` | Fixture transport only; no live delivery or recipient configured. |
 | 16 | Linear tickets — opt-in | Preview and explicit team/`--send`; notification tests | Fixture transport only; no live issue created. |
 | 17 | GitHub comments — opt-in | Explicit repository and issue/PR with `--send`; notification tests | Fixture transport only; no live comment posted. |
@@ -206,7 +206,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | P1 | Complete hosted GitHub acceptance when credentials permit | Workflow refresh and local parity are complete. Publishing remains blocked by OAuth scope. Inspect both matrix jobs and downloaded artifacts after publication; never substitute local evidence for a hosted result. |
 | P1 | Investigate intermittent full-suite failures if they recur | Earlier runs occasionally failed without named diagnostics; repeated exact reruns passed. Cause remains unknown. An ignored diagnostic wrapper retains redacted failed-test output; never bypass a gate or describe the issue as fixed. |
-| P1 | Audit disposable operations under inherited Git routing | Staged review now isolates routing; verify refactor/healing/full-audit paths with the same adversarial fixtures before extending guarantees. |
+| Done | Isolate disposable operations from inherited Git routing | Reproduced a refactor credential-export bypass and healing candidate misrouting. Candidate scans/quality now isolate routing; real fixtures verify rejection and preservation of original HEAD/index/worktree. Model review already strips Git variables from its subprocess environment. |
 | P2 | Product-generated follow-up suggestions | Prioritize current failed/incomplete checks and missing configuration, distinguish historical evidence, produce explicit next commands, and never activate external integrations automatically. |
 | P2 | Broaden Python lock input support | Choose one well-defined export format, preserve exact-pin/coverage guarantees, and test markers/hashes/includes without evaluating package setup code. |
 | P2 | Verify live Codex lifecycle and dashboard appearance | Demonstrate actual events and visual output in the allowed environment; installed files/unit tests are insufficient activation evidence. |
