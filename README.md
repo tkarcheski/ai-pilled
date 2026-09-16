@@ -62,7 +62,7 @@ This command contacts your configured npm registry with dependency metadata, as
 [documented by npm](https://docs.npmjs.com/cli/v11/commands/npm-audit/). It does not
 install packages, run lifecycle scripts, or apply fixes. Registry errors and missing
 lockfiles produce incomplete results. This checks known vulnerabilities only;
-other package managers and automatic install-event auditing remain pending.
+other package managers remain pending.
 
 `dependency-health` checks the installed tree with npm ls and queries available
 versions with npm outdated. Invalid/missing dependencies block; newer versions are
@@ -73,6 +73,19 @@ npm lockfile v2/v3 package metadata against your exact allowlist. Missing metada
 incomplete; expressions outside the list fail. Compound expressions must be allowed
 explicitly in their complete form. This is a metadata policy check, not a determination
 of legal compliance or verification of package license files.
+
+Set audit_dependencies_on_change to true in .ai-pilled.json to enable npm auditing
+from the post-tool hook. It compares dependency-file contents, checks the first observed
+snapshot, and reuses complete results for unchanged inputs for up to one hour. Failures
+remain blocking; incomplete results retry. Automatic calls have a 30-second process
+limit and run only after the credential scan passes. This requires active trusted Codex
+hooks and contacts the configured npm registry; it does not intercept every system-wide
+package installation.
+
+Post-tool summaries include one sentence, a proceed/wait indicator, and a next step.
+Structured exit codes and MCP error flags are recognized without retaining raw tool
+output. Unstructured outcomes remain unknown and request review of the original result.
+No unsupported PostToolBatch event is invented.
 
 ## Review commits with Codex
 
@@ -120,7 +133,7 @@ Local reports live in .ai-pilled/; add that directory to the target's .gitignore
 | Git commit-msg | Validate subject format, message credentials, and optional Codex review |
 | Git pre-push | Protect destination branches, scan outgoing commit snapshots, run required tests |
 | Codex session start | Load branch and working-tree status |
-| Codex post-tool | Scan working-tree credentials and report findings |
+| Codex post-tool | Scan credentials, summarize tool/check status, optionally audit changed npm inputs |
 | Codex stop | Run configured tests; request one repair pass if they fail |
 | Explicit review | Ask Codex to review the staged diff with a strict result schema |
 

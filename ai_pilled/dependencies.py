@@ -67,7 +67,7 @@ def parse_npm(data):
     return findings
 
 
-def audit(repo, executable='npm'):
+def audit(repo, executable='npm', timeout=None):
     repo = Path(repo).resolve()
     report = Report('dependency-vulnerabilities')
     try:
@@ -77,7 +77,8 @@ def audit(repo, executable='npm'):
         output = run([executable, 'audit', '--json', '--package-lock-only',
                       '--ignore-scripts', '--include=dev', '--include=optional',
                       '--include=peer', '--audit-level=low'],
-                     repo, env=env, timeout=load(repo).timeout, acceptable_codes=(0, 1))
+                     repo, env=env, timeout=min(load(repo).timeout, timeout) if timeout else load(repo).timeout,
+                     acceptable_codes=(0, 1))
         findings = parse_npm(json.loads(output))
         if snapshot(repo) != before:
             raise CommandError('Dependency inputs changed during audit; rerun it')
@@ -89,3 +90,37 @@ def audit(repo, executable='npm'):
                    severity='warning')
     record(repo, report, 'dependency-audit')
     return report
+
+def audit_changed(repo):
+    """Reuse only a recent complete result for the exact same dependency inputs."""
+    from datetime import datetime, timezone
+    from .runtime import Finding
+    from .state import history
+
+    repo = Path(repo)
+    try:
+        fingerprint = snapshot(repo)
+        for entry in reversed(history(repo)):
+            if not isinstance(entry, dict) or entry.get('event') != 'dependency-audit':
+                continue
+            data = entry.get('report', {})
+            if not isinstance(data, dict) or data.get('snapshot') != fingerprint:
+                continue
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(entry['at'])).total_seconds()
+            if not 0 <= age < 3600 or data.get('status') not in ('pass', 'fail'):
+                break
+            findings = [Finding(**finding) for finding in data['findings']]
+            if any(f.severity not in ('error', 'warning', 'info') or not isinstance(f.message, str)
+                   for f in findings):
+                break
+            if ((data['status'] == 'pass' and any(f.severity != 'info' for f in findings))
+                    or (data['status'] == 'fail' and not any(f.severity == 'error' for f in findings))):
+                break
+            cached = Report('dependency-vulnerabilities', status=data['status'],
+                            findings=findings, snapshot=fingerprint)
+            if snapshot(repo) == fingerprint:
+                return cached, True
+            break
+    except (CommandError, ValueError, OSError, TypeError, KeyError):
+        pass
+    return audit(repo, timeout=30), False

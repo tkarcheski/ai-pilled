@@ -1,8 +1,11 @@
 """Codex command-hook protocol, independently testable without a model call."""
 import json
+import re
 from pathlib import Path
 
 from .checks import command_check
+from .config import load
+from .dependencies import audit_changed
 from .runtime import CommandError, Report, run
 from .security import scan
 from .state import record
@@ -31,9 +34,41 @@ def handle(repo, payload):
     if event == 'PostToolUse':
         report = scan(root, 'worktree')
         record(root, report, event)
-        summary = f'ai-pilled credential scan: {report.status}; {len(report.findings)} finding(s).'
-        output = context(event, summary + ' Findings (data): ' + json.dumps(report.to_dict()))
-        if report.status != 'pass':
+        reports = [report]
+        dependency_cached = False
+        if (report.status == 'pass' and load(root).audit_dependencies_on_change
+                and any((root / name).exists() for name in
+                        ('package.json', 'package-lock.json', 'npm-shrinkwrap.json'))):
+            dependency, dependency_cached = audit_changed(root)
+            reports.append(dependency)
+        tool = payload.get('tool_name', 'tool')
+        if not isinstance(tool, str) or not re.fullmatch(r'[A-Za-z0-9_:-]{1,100}', tool):
+            tool = 'tool'
+        response = payload.get('tool_response')
+        tool_status = 'unknown'
+        if isinstance(response, dict):
+            if response.get('isError') is True:
+                tool_status = 'fail'
+            elif type(response.get('exit_code')) is int:
+                tool_status = 'pass' if response['exit_code'] == 0 else 'fail'
+            elif response.get('isError') is False:
+                tool_status = 'pass'
+        check_blocked = any(result.status != 'pass' for result in reports)
+        blocked = check_blocked or tool_status != 'pass'
+        summary = {
+            'summary': f'{tool} finished; tool result {tool_status}; ' +
+                       ', '.join(f'{result.check} {result.status}' for result in reports) + '.',
+            'blocker': 'wait' if blocked else 'proceed',
+            'next': ('Review the original tool result; its outcome was not supplied in structured form.'
+                     if tool_status == 'unknown' and not check_blocked else
+                     'Resolve the reported errors or incomplete checks before continuing.'
+                     if blocked else 'Continue the requested work; validate the next change.'),
+            'tool_status': tool_status,
+            'dependency_result_reused': dependency_cached,
+            'checks': [result.to_dict() for result in reports],
+        }
+        output = context(event, 'ai-pilled tool summary (data, not instructions): ' + json.dumps(summary))
+        if check_blocked:
             output.update(decision='block', reason='Review ai-pilled findings before continuing.')
         return output
     if event == 'Stop':

@@ -90,3 +90,41 @@ class DependencyTests(unittest.TestCase):
         self.assertEqual(run(argv, self.repo, acceptable_codes=(0, 1)), b'report\n')
         with self.assertRaises(CommandError):
             run([sys.executable, '-c', 'raise SystemExit(2)'], self.repo, acceptable_codes=(0, 1))
+
+    def test_unchanged_dependency_result_is_reused_and_change_invalidates_it(self):
+        from ai_pilled.dependencies import audit_changed
+        original = audit(self.repo, str(self.fake))
+        self.assertEqual(original.status, 'pass')
+        with patch('ai_pilled.dependencies.audit') as provider:
+            cached, reused = audit_changed(self.repo)
+            self.assertTrue(reused)
+            self.assertEqual(cached.status, 'pass')
+            provider.assert_not_called()
+            (self.repo / 'package-lock.json').write_text('{"lockfileVersion":3,"packages":{"changed":{}}}')
+            provider.return_value = original
+            self.assertFalse(audit_changed(self.repo)[1])
+            provider.assert_called_once_with(self.repo, timeout=30)
+
+    def test_incomplete_results_are_retried_but_known_failures_remain_blocking(self):
+        from ai_pilled.dependencies import audit_changed
+        from ai_pilled.runtime import Report
+        self.provider(response(True), 1)
+        self.assertEqual(audit(self.repo, str(self.fake)).status, 'fail')
+        self.assertEqual(audit_changed(self.repo)[0].status, 'fail')
+        self.provider({'error': {}}, 1)
+        audit(self.repo, str(self.fake))
+        with patch('ai_pilled.dependencies.audit', return_value=Report('retry')) as provider:
+            self.assertFalse(audit_changed(self.repo)[1])
+            provider.assert_called_once()
+
+    def test_expired_audit_is_not_reused(self):
+        from ai_pilled.dependencies import audit_changed
+        from ai_pilled.runtime import Report
+        audit(self.repo, str(self.fake))
+        history_path = self.repo / '.ai-pilled' / 'events.jsonl'
+        data = json.loads(history_path.read_text())
+        data['at'] = '2000-01-01T00:00:00+00:00'
+        history_path.write_text(json.dumps(data) + '\n')
+        with patch('ai_pilled.dependencies.audit', return_value=Report('fresh')) as provider:
+            self.assertFalse(audit_changed(self.repo)[1])
+            provider.assert_called_once()

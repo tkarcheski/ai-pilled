@@ -69,3 +69,45 @@ class LifecycleTests(unittest.TestCase):
     def test_unsupported_event_fails(self):
         with self.assertRaises(CommandError):
             handle(self.repo, {'hook_event_name': 'PostToolBatch'})
+
+    def test_tool_summary_reports_exit_failure_without_replacing_diagnostics(self):
+        output = handle(self.repo, {'hook_event_name': 'PostToolUse', 'tool_name': 'Bash',
+                                   'tool_response': {'exit_code': 2, 'output': 'private raw output'}})
+        context = output['hookSpecificOutput']['additionalContext']
+        self.assertIn('"tool_status": "fail"', context)
+        self.assertIn('"blocker": "wait"', context)
+        self.assertNotIn('private raw output', json.dumps(output))
+        self.assertNotIn('decision', output)
+
+    def test_enabled_dependency_changes_are_checked_and_reported(self):
+        config = json.loads((self.repo / '.ai-pilled.json').read_text())
+        config['audit_dependencies_on_change'] = True
+        (self.repo / '.ai-pilled.json').write_text(json.dumps(config))
+        (self.repo / 'package.json').write_text('{}')
+        failing = Report('dependency-vulnerabilities')
+        failing.add('vulnerable', 'Dependency has a known vulnerability')
+        with patch('ai_pilled.lifecycle.audit_changed', return_value=(failing, False)) as audit:
+            output = handle(self.repo, {'hook_event_name': 'PostToolUse'})
+            audit.assert_called_once_with(self.repo)
+        self.assertEqual(output['decision'], 'block')
+        self.assertIn('dependency-vulnerabilities fail', output['hookSpecificOutput']['additionalContext'])
+
+    def test_dependency_automation_is_opt_in_and_credentials_stop_it(self):
+        (self.repo / 'package.json').write_text('{}')
+        with patch('ai_pilled.lifecycle.audit_changed') as audit:
+            handle(self.repo, {'hook_event_name': 'PostToolUse'})
+            audit.assert_not_called()
+        config = json.loads((self.repo / '.ai-pilled.json').read_text())
+        config['audit_dependencies_on_change'] = True
+        (self.repo / '.ai-pilled.json').write_text(json.dumps(config))
+        (self.repo / 'secret').write_text('ghp_' + 'A' * 36)
+        with patch('ai_pilled.lifecycle.audit_changed') as audit:
+            handle(self.repo, {'hook_event_name': 'PostToolUse'})
+            audit.assert_not_called()
+
+    def test_unstructured_tool_outcome_is_not_claimed_successful(self):
+        output = handle(self.repo, {'hook_event_name': 'PostToolUse', 'tool_response': 'opaque'})
+        context = output['hookSpecificOutput']['additionalContext']
+        self.assertIn('"tool_status": "unknown"', context)
+        self.assertIn('"blocker": "wait"', context)
+        self.assertNotIn('decision', output)
