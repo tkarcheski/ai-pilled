@@ -4,6 +4,7 @@ import re
 
 from .checks import command_check
 from .config import load
+from .commit_messages import check_subject
 from .runtime import CommandError, Report, run
 from .security import MAX_FILE_BYTES, scan_text, scan_bytes, scan_path
 from .python_security import inspect_python
@@ -34,7 +35,7 @@ def blob_findings(repo, oid, path, patterns, cache):
     return findings
 
 
-def scan_revision(repo, revision, patterns=False, cache=None):
+def scan_revision(repo, revision, patterns=False, cache=None, conventions=False):
     report = Report('history-security', snapshot=revision)
     cache = {} if cache is None else cache
     metadata = run(['git', 'cat-file', 'commit', revision], repo, limit=128_000)
@@ -46,6 +47,9 @@ def scan_revision(repo, revision, patterns=False, cache=None):
     for line in headers.splitlines():
         (identity if line.startswith((b'author ', b'committer ')) else other).append(line)
     scan_text(report, '(commit message)', message.decode('latin-1'))
+    if conventions:
+        lines = message.decode('utf-8', errors='replace').splitlines()
+        check_subject(report, lines[0] if lines else '')
     scan_text(report, '(commit identity)', b'\n'.join(identity).decode('latin-1'))
     scan_text(report, '(commit headers)', b'\n'.join(other).decode('latin-1'))
     records = run(['git', 'ls-tree', '-rz', '--full-tree', revision], repo).split(b'\0')
@@ -137,7 +141,7 @@ def pre_push(repo, updates):
     blob_cache: dict = {}
     for commit in sorted(commits):
         result = scan_revision(repo, commit, patterns=config.aggressiveness == 'strict' and commit in tips,
-                               cache=blob_cache)
+                               cache=blob_cache, conventions=True)
         for finding in result.findings:
             report.add(finding.rule, f'{commit[:12]}: {finding.message}', path=finding.path,
                        line=finding.line, severity=finding.severity)

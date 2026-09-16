@@ -249,3 +249,25 @@ class PrePushTests(unittest.TestCase):
         self.assertEqual(result.status, 'fail')
         self.assertTrue(any(f.path == 'credential.txt' for f in result.findings))
         self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_actual_push_rejects_nonconventional_outgoing_history(self):
+        self.git('commit', '--allow-empty', '-qm', 'unreviewed imported change')
+        self.git('commit', '--allow-empty', '-qm', 'fix: conventional tip')
+        install(self.repo)
+        result = self.git('push', 'origin', 'HEAD:feature', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'conventional-commit', result.stdout + result.stderr)
+        self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote),
+                                                 'for-each-ref']), b'')
+
+    def test_outgoing_subject_length_is_enforced(self):
+        self.git('commit', '--allow-empty', '-qm', 'fix: ' + 'x' * 70)
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.rule == 'subject-length' for f in result.findings))
+
+    def test_existing_remote_conventions_do_not_block_valid_new_commits(self):
+        self.git('commit', '--allow-empty', '-qm', 'legacy remote subject')
+        old = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        self.git('commit', '--allow-empty', '-qm', 'fix: follow current conventions')
+        self.assertEqual(pre_push(self.repo, self.update(old=old)).status, 'pass')

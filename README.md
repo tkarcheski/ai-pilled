@@ -303,7 +303,10 @@ Local reports live in .ai-pilled/; add that directory to the target's .gitignore
 | Codex stop | Run configured tests; request one repair pass if they fail |
 | Explicit review | Ask Codex to review the staged diff with a strict result schema |
 
-Pre-push tests require a clean working tree and the pushed commit checked out at HEAD.
+Pre-push enforces the same conventional subject format and 72-character limit on every
+outgoing commit, including commits created without local hooks. Already-published history
+reachable from the known remote tip is excluded. Pre-push tests require a clean working
+tree and the pushed commit checked out at HEAD.
 A secret removed in a later outgoing commit is still caught. More than 2,000 outgoing
 commits requires a smaller audited range. Files larger than 2 MB produce an incomplete
 scan, not a clean bill of health. Commit messages, identities, extra headers, annotated

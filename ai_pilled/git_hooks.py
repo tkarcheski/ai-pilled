@@ -13,6 +13,7 @@ import stat
 
 from .runtime import CommandError, Report, run
 from .config import load
+from .commit_messages import check_subject
 from .security import scan, scan_text
 from .state import directory as state_directory
 
@@ -28,11 +29,7 @@ def commit_message(path):
     scan_text(report, '(commit message)', text)
     lines = text.splitlines()
     subject = next((line for line in lines if line and not line.startswith('#')), '')
-    if not re.fullmatch(r'(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)'
-                        r'(\([^()\r\n]+\))?!?: \S.*', subject):
-        report.add('conventional-commit', 'Use type(scope): subject, for example fix: handle empty input.')
-    if len(subject) > 72:
-        report.add('subject-length', 'Keep the commit subject at 72 characters or fewer.')
+    check_subject(report, subject)
     return report
 
 
