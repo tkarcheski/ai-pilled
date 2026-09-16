@@ -48,6 +48,7 @@ def review_environment():
 
 def materialize_index(repo, destination):
     records = run(['git', 'ls-files', '--stage', '-z'], repo).split(b'\0')
+    total = 0
     for raw in filter(None, records):
         metadata, raw_path = raw.split(b'\t', 1)
         mode, oid, stage = metadata.split()
@@ -57,8 +58,34 @@ def materialize_index(repo, destination):
         if not path.resolve().is_relative_to(destination.resolve()):
             raise CommandError('Staged path escapes review snapshot')
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(run(['git', 'cat-file', 'blob', oid.decode()], repo))
+        content = run(['git', 'cat-file', 'blob', oid.decode()], repo)
+        total += len(content)
+        if total > 20_000_000:
+            raise CommandError('Review snapshot exceeds 20 MB limit')
+        path.write_bytes(content)
         path.chmod(0o755 if mode == b'100755' else 0o644)
+
+
+def invoke_review(snapshot, prompt, executable, timeout):
+    if os.environ.get('AI_PILLED_REVIEW_ACTIVE'):
+        raise CommandError('Recursive model reviews are not supported')
+    with tempfile.TemporaryDirectory(prefix='ai-pilled-result-') as temporary:
+        schema = Path(temporary) / 'schema.json'
+        output = Path(temporary) / 'result.json'
+        schema.write_text(json.dumps(SCHEMA))
+        env = review_environment()
+        env['AI_PILLED_REVIEW_ACTIVE'] = '1'
+        run([executable, 'exec', '--ephemeral', '--ignore-user-config', '--ignore-rules',
+             '--skip-git-repo-check', '--sandbox', 'read-only',
+             '--disable', 'hooks', '-c', 'approval_policy="never"',
+             '--output-schema', str(schema), '--output-last-message', str(output),
+             '--color', 'never', '-'], snapshot, timeout=timeout,
+            env=env, input_data=prompt)
+        if not output.is_file() or output.is_symlink() or output.stat().st_size > 100_000:
+            raise CommandError('Codex did not return a bounded review result')
+        data = json.loads(output.read_text())
+        findings = list(validated_findings(data))
+        return findings
 
 
 def review(repo, executable=None, message=None):
@@ -97,21 +124,7 @@ def review(repo, executable=None, message=None):
             snapshot = Path(temporary) / 'snapshot'
             snapshot.mkdir()
             materialize_index(root, snapshot)
-            schema = Path(temporary) / 'schema.json'
-            output = Path(temporary) / 'result.json'
-            schema.write_text(json.dumps(SCHEMA))
-            env = review_environment()
-            env['AI_PILLED_REVIEW_ACTIVE'] = '1'
-            run([executable, 'exec', '--ephemeral', '--ignore-user-config', '--ignore-rules',
-                 '--skip-git-repo-check', '--sandbox', 'read-only',
-                 '--disable', 'hooks', '-c', 'approval_policy="never"',
-                 '--output-schema', str(schema), '--output-last-message', str(output),
-                 '--color', 'never', '-'], snapshot, timeout=config.timeout,
-                env=env, input_data=prompt)
-            if not output.is_file() or output.is_symlink() or output.stat().st_size > 100_000:
-                raise CommandError('Codex did not return a bounded review result')
-            data = json.loads(output.read_text())
-            findings = list(validated_findings(data))
+            findings = invoke_review(snapshot, prompt, executable, config.timeout)
             if scan(root).snapshot != before.snapshot:
                 raise CommandError('Staged snapshot changed during review; rerun the review')
             for path, line, message in findings:

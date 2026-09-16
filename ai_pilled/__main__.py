@@ -22,6 +22,7 @@ from .releases import prepare_release, release_plan
 from .documentation import update_readme
 from .refactor import refactor
 from .notifications import notify
+from .full_audit import full_audit
 
 
 def build_parser():
@@ -61,6 +62,10 @@ def build_parser():
     readme.add_argument('--path', default='README.md')
     readme.add_argument('--check', action='store_true')
     commands.add_parser('refactor', help='Run configured refactor steps in a disposable clone and export a patch')
+    audit_parser = commands.add_parser('full-audit', help='Run quality gates and optional isolated model perspectives')
+    audit_parser.add_argument('--model-reviews', action='store_true')
+    audit_parser.add_argument('--codex')
+    audit_parser.add_argument('--workers', type=int, choices=[1, 2, 3], default=3)
     commands.add_parser('quality', help='Run the configured quality profile')
     commands.add_parser('ready', help='Validate a clean proposal branch and its quality checks')
     notification = commands.add_parser('notify', help='Preview or explicitly send a historical check digest')
@@ -113,6 +118,8 @@ def main(argv=None):
             report = health(args.repo, args.npm)
         elif args.command == 'licenses':
             report = licenses(args.repo, args.allow)
+        elif args.command == 'full-audit':
+            report = full_audit(args.repo, args.model_reviews, args.codex, args.workers)
         elif args.command in ('quality', 'ready'):
             report = quality(args.repo, ready=args.command == 'ready')
         elif args.command == 'benchmark':

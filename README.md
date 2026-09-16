@@ -51,6 +51,23 @@ The benchmark command uses a separate commands.benchmark argument array.
 These commands report the configured tool's result; they do not invent coverage numbers
 or dependency vulnerability data.
 
+## Full audit and bug finding
+
+Run `python -m ai_pilled full-audit` for the configured quality profile. Adding
+--model-reviews explicitly starts three subscription-backed Codex reviews focused on
+correctness, security, and maintenance. Use --workers 1 to run those perspectives
+sequentially, or up to three workers for concurrent reviews. --codex selects an installed
+CLI binary. The default command makes no model calls.
+
+Model audits require passing quality gates and a clean committed checkout. Each reviewer
+gets its own regular-file snapshot (20 MB maximum), the read-only Codex sandbox, disabled
+hooks, and an allowlisted environment. Missing reviewers and malformed output are
+incomplete; defects retain their file/line evidence. Source or index changes invalidate
+results. Model findings need engineering review and do not prove the absence of bugs.
+This is a local issue-finding workflow; it does not submit bounty reports or create tickets.
+Concurrency and failure handling are tested with fake reviewers. No model audit workers
+have been launched as part of this development session.
+
 ## Explicit notifications
 
 The notify command previews a minimal digest of recorded results. Findings, source,
@@ -336,10 +353,10 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
@@ -354,6 +371,7 @@ positional arguments:
     update-readme       Refresh a generated README command reference
     refactor            Run configured refactor steps in a disposable clone and export a
                         patch
+    full-audit          Run quality gates and optional isolated model perspectives
     quality             Run the configured quality profile
     ready               Validate a clean proposal branch and its quality checks
     notify              Preview or explicitly send a historical check digest
