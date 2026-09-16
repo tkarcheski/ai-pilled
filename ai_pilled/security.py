@@ -4,7 +4,7 @@ import hashlib
 import os
 import stat
 
-from .file_io import file_identity
+from .file_io import file_identity, open_beneath
 from .git_blobs import read_blobs
 from .runtime import CommandError, Report, run, git_path
 from .python_security import inspect_python, is_python_source, parse_python
@@ -177,13 +177,10 @@ def scan(repo, scope='staged', patterns=False):
             if not file.exists():
                 digest.update(path.encode(errors='surrogateescape') + b'\0deleted\0')
                 continue
-            fd = os.open(file, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-            with os.fdopen(fd, 'rb') as stream:
+            with open_beneath(root, path) as stream:
                 metadata = os.fstat(stream.fileno())
                 identity = file_identity(metadata)
                 mode = metadata.st_mode
-                if not stat.S_ISREG(mode):
-                    raise CommandError('Only regular files can be scanned')
                 content = stream.read(MAX_FILE_BYTES + 1)
                 if file_identity(os.fstat(stream.fileno())) != identity:
                     raise CommandError('File changed during reading; finish edits and rerun the scan')

@@ -531,3 +531,70 @@ class SecurityTests(unittest.TestCase):
         self.write('entrypoint', '#!/usr/bin/env python3\nprint("safe")', stage=False)
         self.assertEqual([f.rule for f in scan(self.repo, patterns=True).findings], ['shell-execution'])
         self.assertEqual(scan(self.repo, scope='worktree', patterns=True).status, 'pass')
+
+    def test_swapped_parent_cannot_redirect_worktree_reads_outside_repository(self):
+        from ai_pilled.security import scan_bytes
+        nested = self.repo / 'nested'
+        nested.mkdir()
+        target = nested / 'config.txt'
+        self.write('nested/config.txt', 'ordinary')
+        original = Path.resolve
+        with tempfile.TemporaryDirectory() as directory:
+            outside = Path(directory)
+            marker = 'ghp_' + 'A' * 36
+            (outside / 'config.txt').write_text(marker)
+            swapped = False
+            def resolve(path, *args, **kwargs):
+                nonlocal swapped
+                resolved = original(path, *args, **kwargs)
+                if path == target and not swapped:
+                    swapped = True
+                    nested.rename(self.repo / 'saved')
+                    nested.symlink_to(outside, target_is_directory=True)
+                return resolved
+            with patch.object(Path, 'resolve', resolve), patch('ai_pilled.security.scan_bytes', wraps=scan_bytes) as inspected:
+                result = scan(self.repo, 'worktree')
+            self.assertTrue(swapped)
+            self.assertEqual(result.status, 'incomplete')
+            self.assertEqual([f.rule for f in result.findings], ['scan-incomplete'])
+            inspected.assert_not_called()
+            self.assertNotIn(marker, json.dumps(result.to_dict()))
+            self.assertEqual((outside / 'config.txt').read_text(), marker)
+
+    def test_descriptor_relative_reads_reject_parent_links_and_escape_paths(self):
+        from ai_pilled.file_io import open_beneath
+        nested = self.repo / 'nested'
+        nested.mkdir()
+        self.write('nested/config.txt', 'ordinary')
+        (self.repo / 'alias').symlink_to(nested, target_is_directory=True)
+        with open_beneath(self.repo, 'nested/config.txt') as stream:
+            self.assertEqual(stream.read(), b'ordinary')
+        for path in ('alias/config.txt', '../outside', '/etc/passwd', '.'):
+            with self.subTest(path=path), self.assertRaises((CommandError, OSError)):
+                with open_beneath(self.repo, path):
+                    self.fail('Unsafe path was opened')
+
+    def test_descriptor_relative_reads_close_handles_after_success_and_failure(self):
+        from ai_pilled.file_io import open_beneath
+        nested = self.repo / 'nested'
+        nested.mkdir()
+        self.write('nested/config.txt', 'ordinary')
+        (nested / 'alias').symlink_to('config.txt')
+        original = os.open
+        for name in ('nested/config.txt', 'nested/alias', 'nested/missing'):
+            with self.subTest(name=name):
+                opened = []
+                def observed(*args, opened=opened, **kwargs):
+                    fd = original(*args, **kwargs)
+                    opened.append(fd)
+                    return fd
+                with patch('ai_pilled.file_io.os.open', side_effect=observed):
+                    try:
+                        with open_beneath(self.repo, name) as stream:
+                            self.assertEqual(stream.read(), b'ordinary')
+                    except OSError:
+                        self.assertNotEqual(name, 'nested/config.txt')
+                self.assertTrue(opened)
+                for fd in opened:
+                    with self.assertRaises(OSError):
+                        os.fstat(fd)

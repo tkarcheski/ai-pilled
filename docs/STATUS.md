@@ -20,14 +20,15 @@ acceptance remains open, and the saved baseline has not been raised. Loading onl
 selected CLI command and skipping literal-free AST identifier leaves reduced the
 follow-up median to 0.211 seconds (27.5% over baseline). An earlier cold-start rerun
 measured 0.216 seconds (30.3% over baseline). The latest rerun at `2e32729`
-measured 0.244 seconds (47.4% over baseline); the unchanged budget still fails. Separately, reusing
+measured 0.244 seconds (47.4% over baseline). At `d337655`, the cold-start median
+was 0.255 seconds (54.0% over baseline); the unchanged budget still fails. Separately, reusing
 the same per-file AST for credential and pattern checks reduced five-run in-process
 comprehensive-scan medians from 0.384 to 0.322 seconds with identical reports. That
 improves comprehensive scans but does not turn the cold-start budget into a passing check.
 A later JSON string-scanner experiment at `dbcdd8c` reduced seven-run staged scan
 medians from 0.213 to 0.196 seconds (about 8%) with identical reports, 10,000
 differential parser cases, and passing security/redaction fixtures. This is an
-in-process comparison; the cold-start budget still needs a fresh measurement.
+in-process comparison; the subsequent cold-start measurement above still fails.
 
 ## What the statuses mean
 
@@ -57,7 +58,9 @@ Git blobs. Python literal and pattern checks cover `.py`, `.pyw`, `.pyi`, and
 files with a Python-identifying shebang, including extensionless entrypoints.
 This detects common Python/PyPy interpreter names and env wrappers without executing
 them; arbitrary launcher aliases and Python code without a suffix/shebang remain outside
-detection. Worktree reads compare descriptor identities before/after reading and
+detection. Worktree reads open each relative directory through anchored descriptors
+with no symlink following, so a parent symlink swap cannot redirect a file read outside the
+repository. They compare descriptor identities before/after reading and
 verify the path still names that file, rejecting observed edits, replacements, deletions,
 permission changes, and symlink swaps. This prevents stale-descriptor false passes;
 it does not claim an atomic repository-wide snapshot. ASCII token boundaries prevent non-ASCII neighboring bytes or text from
