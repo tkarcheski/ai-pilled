@@ -29,6 +29,24 @@ class GitHookTests(unittest.TestCase):
             self.fail(result.stderr.decode())
         return result
 
+    def test_configuration_values_preserve_empty_and_trailing_newlines(self):
+        from ai_pilled.git_hooks import git_value
+        self.assertIsNone(git_value(self.repo, 'probe.missing'))
+        for value in ('', 'trailing\n', 'multiple\n\n'):
+            self.git('config', 'probe.value', value)
+            self.assertEqual(git_value(self.repo, 'probe.value'), value)
+            self.assertEqual(git_value(self.repo, 'probe.value', scope=None), value)
+
+    def test_configuration_reads_are_bounded_and_errors_are_not_absence(self):
+        from ai_pilled.git_hooks import git_value
+        with (self.repo / '.git/config').open('a') as stream:
+            stream.write('[probe]\n value = ' + 'x' * 20_000 + '\n')
+        with self.assertRaises(CommandError):
+            git_value(self.repo, 'probe.value')
+        (self.repo / '.git/config').write_text('[invalid config')
+        with self.assertRaises(CommandError):
+            git_value(self.repo, 'probe.value')
+
     def test_real_git_commit_blocks_secret(self):
         install(self.repo)
         (self.repo / 'secret.txt').write_text('ghp_' + 'A' * 36)

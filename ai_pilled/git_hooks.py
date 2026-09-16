@@ -11,7 +11,7 @@ import shlex
 import sys
 import stat
 
-from .runtime import CommandError, Report, run
+from .runtime import CommandError, CommandFailed, Report, run
 from .config import load
 from .commit_messages import check_subject
 from .security import scan, scan_text
@@ -34,15 +34,20 @@ def commit_message(path):
 
 
 def git_value(repo, key, scope='--local'):
-    # Git returns 1 when a key is absent; other failures are not absence.
-    import subprocess
-    result = subprocess.run(['git', 'config', scope, '--get', key], cwd=repo,
-                            capture_output=True, timeout=10)
-    if result.returncode == 1:
-        return None
-    if result.returncode:
-        raise CommandError('Cannot read Git configuration')
-    return result.stdout.decode().rstrip('\n')
+    # Git returns 1 when a key is absent; all other failures remain blocking.
+    arguments = ['git', 'config', *([scope] if scope else []), '--get', key]
+    try:
+        output = run(arguments, repo, timeout=10, limit=16_000)
+    except CommandFailed as exc:
+        if exc.exit_code == 1:
+            return None
+        raise CommandError('Cannot read Git configuration') from exc
+    if not output.endswith(b'\n'):
+        raise CommandError('Incomplete Git configuration value')
+    try:
+        return output[:-1].decode('utf-8')
+    except UnicodeError as exc:
+        raise CommandError('Git configuration value must be valid UTF-8') from exc
 
 
 def hook_config_scope(repo):
@@ -91,12 +96,7 @@ def _install(repo):
     scope = hook_config_scope(repo)
     previous = git_value(repo, 'core.hooksPath', scope)
     # Effective user/global settings count too: do not replace another hook manager.
-    import subprocess
-    result = subprocess.run(['git', 'config', '--get', 'core.hooksPath'],
-                            cwd=repo, capture_output=True, timeout=10)
-    if result.returncode not in (0, 1):
-        raise CommandError('Cannot read effective hooks path')
-    effective = result.stdout.decode().rstrip('\n') if result.returncode == 0 else None
+    effective = git_value(repo, 'core.hooksPath', scope=None)
     if effective not in (None, str(directory)):
         raise CommandError('Existing core.hooksPath detected; compose hooks manually')
     if not manifest.exists():

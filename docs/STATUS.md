@@ -46,7 +46,9 @@ oversized, unresolved, and unsupported content as incomplete.
 are also covered by `test_e2e.py`. Reports redact findings rather than echo secret
 values. Runtime Git reads disable replacement objects and legacy graft overlays so local
 metadata cannot substitute content or conceal outgoing ancestry. Both default and
-environment-selected graft bypasses have credential-history regression tests.
+environment-selected graft bypasses have credential-history regression tests. Hook
+installation configuration reads use the bounded command runner (16 KB per value),
+preserve exact trailing newlines, and distinguish absent keys from command failures.
 
 **Activation / limits:** Git commit/push scanning is active here. Codex hook files
 are installed, but live trust/activation has not been verified. A manual lifecycle
