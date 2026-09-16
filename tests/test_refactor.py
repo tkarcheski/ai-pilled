@@ -91,6 +91,30 @@ class RefactorTests(unittest.TestCase):
         self.assertIn('quality configuration', result.findings[0].message)
         self.assertFalse(result.patch)
 
+    def test_generated_nonregular_and_oversized_policy_never_blocks_or_exports(self):
+        for replacement in ('os.mkfifo(p)', 'p.symlink_to("code.py")',
+                            'p.write_bytes(b"x" * 64_001)'):
+            with self.subTest(replacement=replacement):
+                code = ('import os; from pathlib import Path; '
+                        'p=Path(".ai-pilled.json"); p.unlink(); ' + replacement)
+                self.configure(simplify=[sys.executable, '-c', code])
+                before = self.git('rev-parse', 'HEAD')
+                policy = (self.repo / '.ai-pilled.json').read_bytes()
+                env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),
+                           PYTHONDONTWRITEBYTECODE='1')
+                process = subprocess.run([sys.executable, '-m', 'ai_pilled', '--repo',
+                                          str(self.repo), 'refactor'], env=env,
+                                         capture_output=True, timeout=5, check=False)
+                self.assertEqual(process.returncode, 2)
+                result = json.loads(process.stdout)
+                self.assertEqual(result['status'], 'incomplete')
+                self.assertFalse(result['patch'])
+                self.assertEqual(result['steps'][0]['status'], 'pass')
+                self.assertEqual(self.git('rev-parse', 'HEAD'), before)
+                self.assertEqual(self.git('status', '--porcelain'), b'')
+                self.assertEqual((self.repo / '.ai-pilled.json').read_bytes(), policy)
+                self.assertFalse(list((self.repo / '.ai-pilled').glob('refactor-work-*')))
+
     def test_new_files_are_included_in_patch(self):
         self.configure(repair=[sys.executable, '-c',
             'from pathlib import Path; Path("new.py").write_text("new = True")'])

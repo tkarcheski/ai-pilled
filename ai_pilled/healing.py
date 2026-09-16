@@ -6,6 +6,7 @@ import tempfile
 
 from .checks import command_check
 from .config import ConfigError, load
+from .file_io import read_regular
 from .pipeline import quality
 from .refactor import export_patch
 from .runtime import CommandError, Report, isolated_git, run
@@ -47,7 +48,7 @@ def heal(repo, expected_head, apply=False):
         if security.status != 'pass':
             report.status, report.findings = security.status, security.findings
             return report
-        policy = (root / '.ai-pilled.json').read_bytes()
+        policy = read_regular(root / '.ai-pilled.json', 64_000)
         baseline = command_check(root, 'test')
         report.checks.append(baseline.to_dict())
         unchanged(root, head, branch)
@@ -66,7 +67,7 @@ def heal(repo, expected_head, apply=False):
             run(['git', 'remote', 'remove', 'origin'], clone, env=env)
             run(['git', 'checkout', '--quiet', '--detach', head], clone, env=env)
             run(['git', 'revert', '--no-commit', head], clone, env=env)
-            if (clone / '.ai-pilled.json').is_symlink() or (clone / '.ai-pilled.json').read_bytes() != policy:
+            if read_regular(clone / '.ai-pilled.json', 64_000) != policy:
                 raise CommandError('Revert would change the quality policy; review it manually')
             with isolated_git():
                 candidate = quality(clone, executable_root=root)

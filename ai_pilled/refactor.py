@@ -7,6 +7,7 @@ import uuid
 
 from .checks import command_check
 from .config import ConfigError, load
+from .file_io import read_regular
 from .pipeline import quality
 from .runtime import CommandError, Report, isolated_git, run
 from .security import scan
@@ -36,7 +37,7 @@ def refactor(repo):
     try:
         root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
         config = load(root)
-        policy = (root / ".ai-pilled.json").read_bytes()
+        policy = read_regular(root / '.ai-pilled.json', 64_000)
         if any(name not in config.commands for name in ('simplify', 'repair', 'test')):
             raise CommandError('Configure commands.simplify, commands.repair, and commands.test first')
         if run(['git', 'status', '--porcelain', '--untracked-files=normal'], root):
@@ -69,7 +70,7 @@ def refactor(repo):
                     return report
                 if run(['git', 'rev-parse', 'HEAD'], clone, env=env).decode().strip() != base:
                     raise CommandError('Refactor commands must not create commits or change HEAD')
-                if (clone / '.ai-pilled.json').is_symlink() or (clone / '.ai-pilled.json').read_bytes() != policy:
+                if read_regular(clone / '.ai-pilled.json', 64_000) != policy:
                     raise CommandError('Refactor commands must not change the quality configuration')
                 with isolated_git():
                     security = scan(clone, 'worktree', patterns=config.aggressiveness == 'strict')
