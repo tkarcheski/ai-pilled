@@ -33,6 +33,9 @@ class PublishingTests(unittest.TestCase):
         self.remote_head = self.head
         self.response = {'tagName': 'v1.2.3', 'isDraft': False, 'isPrerelease': False,
                          'body': 'New behavior.', 'publishedAt': '2026-09-16T00:00:00Z'}
+        self.tag_object = None
+        self.tag_ref = 'refs/tags/v1.2.3'
+        self.annotations = {}
         self.calls = []
         fake = patch('ai_pilled.publishing.run', side_effect=self.run_command)
         fake.start()
@@ -51,7 +54,13 @@ class PublishingTests(unittest.TestCase):
             return real_run(argv, cwd, **kwargs)
         self.calls.append(argv)
         if argv[1] == 'api':
-            return self.remote_head.encode()
+            endpoint = argv[4]
+            if endpoint == 'repos/owner/repo/git/ref/tags/v1.2.3':
+                return json.dumps({'ref': self.tag_ref, 'object': self.tag_object or {
+                    'type': 'commit', 'sha': self.remote_head}}).encode()
+            prefix = 'repos/owner/repo/git/tags/'
+            self.assertTrue(endpoint.startswith(prefix), endpoint)
+            return json.dumps(self.annotations[endpoint.removeprefix(prefix)]).encode()
         if argv[2] == 'create':
             self.assertIn('--verify-tag', argv)
             self.assertEqual(argv[argv.index('--target') + 1], self.head)
@@ -153,3 +162,76 @@ class PublishingTests(unittest.TestCase):
         result = self.invoke(publish=True)
         self.assertEqual(result.status, 'fail')
         self.assertEqual(self.calls, [])
+
+    def test_annotated_tags_are_peeled_to_the_verified_commit(self):
+        first, second = 'a' * 40, 'b' * 40
+        self.tag_object = {'type': 'tag', 'sha': first}
+        self.annotations = {
+            first: {'sha': first, 'object': {'type': 'tag', 'sha': second}},
+            second: {'sha': second, 'object': {'type': 'commit', 'sha': self.head}},
+        }
+        result = self.invoke(publish=True)
+        self.assertEqual(result.action, 'published', result.to_dict())
+        self.assertEqual(sum(call[1] == 'api' for call in self.calls), 9)
+
+    def test_same_named_branch_cannot_supply_tag_evidence(self):
+        self.tag_ref = 'refs/heads/v1.2.3'
+        result = self.invoke(publish=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.action, 'not-published')
+        self.assertTrue(all(call[1] == 'api' for call in self.calls))
+
+    def test_malformed_or_noncommit_tag_objects_block_publication(self):
+        for target in ({'type': 'tree', 'sha': self.head}, {'type': 'commit', 'sha': True},
+                       {'type': 'commit', 'sha': '../outside'}, ['invalid']):
+            with self.subTest(target=target):
+                self.tag_object = target
+                self.assertEqual(self.invoke(publish=True).status, 'incomplete')
+        self.assertTrue(all(call[1] == 'api' for call in self.calls))
+
+    def test_annotated_tag_identity_cycles_and_target_mismatch_are_blocked(self):
+        sha = 'a' * 40
+        self.tag_object = {'type': 'tag', 'sha': sha}
+        for annotation in (
+                {'sha': 'b' * 40, 'object': {'type': 'commit', 'sha': self.head}},
+                {'sha': sha, 'object': self.tag_object},
+                {'sha': sha, 'object': {'type': 'commit', 'sha': 'b' * 40}},
+                {'sha': sha, 'object': None}, []):
+            with self.subTest(annotation=annotation):
+                self.annotations = {sha: annotation}
+                self.assertEqual(self.invoke(publish=True).status, 'incomplete')
+        self.assertTrue(all(call[1] == 'api' for call in self.calls))
+
+    def test_annotation_chain_is_bounded(self):
+        hashes = [format(i, '040x') for i in range(17)]
+        self.tag_object = {'type': 'tag', 'sha': hashes[0]}
+        self.annotations = {sha: {'sha': sha, 'object': {'type': 'tag', 'sha': hashes[i + 1]}}
+                            for i, sha in enumerate(hashes[:-1])}
+        self.assertEqual(self.invoke(publish=True).status, 'incomplete')
+        self.assertEqual(len(self.calls), 17)
+        self.assertTrue(all(call[1] == 'api' for call in self.calls))
+        self.calls.clear()
+        self.annotations[hashes[15]]['object'] = {'type': 'commit', 'sha': self.head}
+        self.assertEqual(self.invoke().status, 'pass')
+        self.assertEqual(len(self.calls), 17)
+
+    def test_tag_movement_before_create_blocks_and_after_create_is_unconfirmed(self):
+        original = self.run_command
+        for change_at, expected in ((2, 'preview'), (3, 'unconfirmed')):
+            with self.subTest(change_at=change_at):
+                self.calls.clear()
+                self.remote_head = self.head
+                reads = 0
+                def changed(argv, cwd, change_at=change_at, **kwargs):
+                    nonlocal reads
+                    if argv[0] == 'fake-gh' and argv[1] == 'api':
+                        reads += 1
+                        if reads == change_at:
+                            self.remote_head = 'b' * 40
+                    return original(argv, cwd, **kwargs)
+                with patch('ai_pilled.publishing.run', side_effect=changed):
+                    result = self.invoke(publish=True)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.action, expected)
+                self.assertEqual(sum(call[1:3] == ['release', 'create'] for call in self.calls),
+                                 int(change_at == 3))

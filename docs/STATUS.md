@@ -397,6 +397,13 @@ this attempt's output, preserving detected concurrent edits. Uncertain publicati
 failed restoration reports incomplete evidence and requires file inspection; these
 two-file updates are not claimed to be fully atomic. Tests exercise second-write
 failure, edits before publication/during rollback, and lost completion after a write.
+Release publication reads the exact remote `refs/tags/...` reference, rather than
+resolving an ambiguous branch/tag name through the commit API. Annotated tags are
+peeled with validated object identities, cycle rejection, and a 16-annotation limit;
+only the selected commit is accepted. Verification repeats immediately before creation
+and after the provider response. Fixtures cover same-named branch evidence, malformed
+objects, moved tags, nested annotations, and chain boundaries. These repeated checks
+detect observed movement; they cannot make separate GitHub requests transactional.
 No live release was prepared or published during this hardening work.
 
 Performance evidence rejects invalid numeric budgets, nonpositive/nonfinite timings,

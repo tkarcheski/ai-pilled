@@ -69,11 +69,32 @@ def publish_release(repo, github_repo, tag, expected_head, publish=False, execut
         env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
         env.update({'GH_HOST': 'github.com', 'GH_PROMPT_DISABLED': '1', 'GH_NO_UPDATE_NOTIFIER': '1'})
         def remote_tag():
-            value = run([executable, 'api', '--hostname', 'github.com',
-                         f'repos/{github_repo}/commits/{tag}', '--jq', '.sha'],
-                        root, env=env, timeout=30, limit=1000).decode().strip()
-            if value != head:
-                raise CommandError('Remote release tag must point to the selected commit')
+            def api(path):
+                return loads(run([executable, 'api', '--hostname', 'github.com',
+                                  f'repos/{github_repo}/git/{path}'],
+                                 root, env=env, timeout=30, limit=100_000))
+            reference = api('ref/tags/' + tag)
+            if not isinstance(reference, dict) or reference.get('ref') != 'refs/tags/' + tag:
+                raise CommandError('Remote release reference must be the exact selected tag')
+            target = reference.get('object')
+            seen: set[str] = set()
+            while True:
+                if not isinstance(target, dict):
+                    raise CommandError('Remote release tag object is malformed')
+                kind, sha = target.get('type'), target.get('sha')
+                if not isinstance(sha, str) or not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', sha):
+                    raise CommandError('Remote release tag object has an invalid SHA')
+                if kind == 'commit':
+                    if sha != head:
+                        raise CommandError('Remote release tag must point to the selected commit')
+                    return
+                if kind != 'tag' or sha in seen or len(seen) >= 16:
+                    raise CommandError('Remote release tag cannot be resolved to a bounded commit target')
+                seen.add(sha)
+                annotation = api('tags/' + sha)
+                if not isinstance(annotation, dict) or annotation.get('sha') != sha:
+                    raise CommandError('Remote annotated tag identity does not match its reference')
+                target = annotation.get('object')
         remote_tag()
         report.snapshot, report.target, report.notes = head, github_repo + '@' + tag, notes
         report.action = 'preview'
