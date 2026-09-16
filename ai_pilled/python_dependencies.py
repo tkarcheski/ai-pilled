@@ -3,10 +3,10 @@ import hashlib
 import os
 from pathlib import Path
 import re
-import stat
 import tempfile
 
 from .config import load
+from .file_io import read_beneath
 from .json_data import loads
 from .metrics import local_path
 from .runtime import CommandError, Report, run_completed
@@ -56,17 +56,12 @@ def logical_requirements(text):
 def requirements(repo, files):
     if not files:
         raise CommandError('Select at least one fully pinned requirements file')
+    root = Path(repo).resolve()
     digest = hashlib.sha256()
     packages: dict[str, str] = {}
     for name in files:
-        path = local_path(repo, name)
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-        with os.fdopen(fd, 'rb') as stream:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                raise CommandError('Python requirements must be regular files')
-            content = stream.read(2_000_001)
-        if len(content) > 2_000_000:
-            raise CommandError('Python requirements exceed the 2 MB size limit')
+        path = local_path(root, name)
+        content = read_beneath(root, path.relative_to(root), 2_000_000)
         checked = Report('requirements-security')
         scan_text(checked, '(requirements)', content.decode('utf-8-sig'))
         if checked.status != 'pass':

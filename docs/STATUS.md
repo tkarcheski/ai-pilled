@@ -282,6 +282,11 @@ required hosted checks are separate controls and have not been configured or cla
 
 ### 4. Dependency auditing — npm and Python implemented; Python active here
 
+Python requirement inputs use descriptor-relative, no-symlink reads and identity
+checks during and after reading. Observed parent substitutions, replacements, and
+mutations are rejected before invoking pip-audit, preventing the reproduced outside-pin
+submission. This is bounded snapshot checking, not an atomic filesystem transaction.
+
 | Capability | Available behavior | Evidence and remaining limits |
 | --- | --- | --- |
 | npm vulnerability audit | Lockfile-only audit, scripts disabled, validated package/count evidence and matching exit status at the requested low threshold | `test_dependencies.py`; npm fixtures and malformed/offline responses. No package install or automatic fix. Requires supported npm audit JSON. |

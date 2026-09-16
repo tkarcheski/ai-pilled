@@ -293,3 +293,56 @@ class PythonDependencyTests(unittest.TestCase):
         with patch('ai_pilled.python_dependencies.audit_python') as provider:
             self.assertFalse(audit_python_changed(self.repo)[1])
             provider.assert_called_once()
+
+    def test_parent_swap_cannot_send_outside_pins_to_audit_provider(self):
+        from ai_pilled.python_dependencies import local_path
+        dependencies = self.repo / 'deps'
+        dependencies.mkdir()
+        (dependencies / 'requirements.txt').write_text('inside-example==1\n')
+        with tempfile.TemporaryDirectory() as directory:
+            outside = Path(directory)
+            (outside / 'requirements.txt').write_text('outside-example==1\n')
+            def replaced(*args):
+                selected = local_path(*args)
+                dependencies.rename(self.repo / 'saved')
+                dependencies.symlink_to(outside, target_is_directory=True)
+                return selected
+            with patch('ai_pilled.python_dependencies.local_path', side_effect=replaced), \
+                    patch('ai_pilled.python_dependencies.run_completed') as provider:
+                result = audit_python(self.repo, ['deps/requirements.txt'])
+            self.assertEqual(result.status, 'incomplete')
+            self.assertEqual(result.metrics, {})
+            self.assertEqual(result.snapshot, '')
+            provider.assert_not_called()
+            self.assertNotIn('outside-example', json.dumps(result.to_dict()))
+
+    def test_requirements_replacement_is_rejected_before_provider_invocation(self):
+        from contextlib import contextmanager
+        from ai_pilled.file_io import open_beneath
+        state = {'changed': False}
+        @contextmanager
+        def replaced(*args, **kwargs):
+            with open_beneath(*args, **kwargs) as stream:
+                yield stream
+            if not state['changed']:
+                state['changed'] = True
+                replacement = self.repo / 'replacement.txt'
+                replacement.write_text('other-package==1\n')
+                replacement.replace(self.path)
+        with patch('ai_pilled.file_io.open_beneath', side_effect=replaced), \
+                patch('ai_pilled.python_dependencies.run_completed') as provider:
+            result = audit_python(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.metrics, {})
+        provider.assert_not_called()
+        self.assertEqual(self.path.read_text(), 'other-package==1\n')
+
+    def test_nested_requirements_use_confined_regular_reads(self):
+        directory = self.repo / 'deps'
+        directory.mkdir()
+        (directory / 'requirements.txt').write_text(self.path.read_text())
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=self.response()) as provider:
+            result = audit_python(self.repo, ['deps/requirements.txt'])
+        self.assertEqual(result.status, 'pass')
+        self.assertEqual(result.metrics['packages_audited'], 1)
+        provider.assert_called_once()
