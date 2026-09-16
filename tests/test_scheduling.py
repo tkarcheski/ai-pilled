@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -94,6 +95,48 @@ class SchedulingTests(unittest.TestCase):
                         {'now': datetime(2026, 9, 16, 3)}):
             self.assertEqual(nightly_refactor(self.repo, **options).status, 'incomplete')
         self.refactor.assert_not_called()
+
+    def test_special_schedule_files_fail_without_blocking(self):
+        self.run_at('2026-09-16T03:00:00+00:00')
+        state = self.repo / '.ai-pilled'
+        record = next(state.glob('nightly-*.json'))
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]),
+                   PYTHONDONTWRITEBYTECODE='1')
+        script = ('import json,sys; from datetime import datetime; '
+                  'from ai_pilled.scheduling import nightly_refactor; '
+                  'r=nightly_refactor(sys.argv[1], now=datetime.fromisoformat("2026-09-16T02:00:00+00:00")); '
+                  'print(json.dumps(r.to_dict()))')
+        for path in (record, state / 'nightly-refactor.lock'):
+            with self.subTest(path=path.name):
+                original = path.read_bytes()
+                path.unlink()
+                os.mkfifo(path)
+                try:
+                    result = subprocess.run([sys.executable, '-c', script, str(self.repo)],
+                                            env=env, capture_output=True, timeout=3, check=True)
+                    report = json.loads(result.stdout)
+                    self.assertEqual(report['status'], 'incomplete')
+                    self.assertEqual(report['action'], 'not-run')
+                    self.assertTrue(path.is_fifo())
+                finally:
+                    path.unlink()
+                    path.write_bytes(original)
+        self.assertEqual(self.refactor.call_count, 1)
+
+    def test_schedule_symlinks_and_oversized_records_remain_untouched(self):
+        self.run_at('2026-09-16T03:00:00+00:00')
+        path = next((self.repo / '.ai-pilled').glob('nightly-*.json'))
+        path.write_bytes(b'x' * 16_001)
+        self.assertEqual(self.run_at('2026-09-17T03:00:00+00:00').status, 'incomplete')
+        self.assertEqual(path.stat().st_size, 16_001)
+        path.unlink()
+        target = self.repo / 'user-file'
+        target.write_text('preserve me')
+        path.symlink_to(target)
+        self.assertEqual(self.run_at('2026-09-17T03:00:00+00:00').status, 'incomplete')
+        self.assertTrue(path.is_symlink())
+        self.assertEqual(target.read_text(), 'preserve me')
+        self.assertEqual(self.refactor.call_count, 1)
 
     def test_corrupt_state_is_not_silently_reset(self):
         self.run_at('2026-09-16T03:00:00+00:00')

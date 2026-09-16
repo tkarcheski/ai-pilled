@@ -217,6 +217,10 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | GitHub Actions | Prepared and locally validated at `915696c`; publication blocked | Both-runtime quality/E2E evidence, fresh3.10 environments, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
+Scheduler state and lock files must be regular files opened without following symlinks.
+Records are read through a 16 KB bound; FIFO, symlink, and oversized-state regressions
+return incomplete without running refactor or replacing the original file.
+
 ## Known gaps and prioritized follow-ups
 
 | Priority | Follow-up | Why / completion evidence |

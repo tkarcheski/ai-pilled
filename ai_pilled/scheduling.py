@@ -8,6 +8,7 @@ from .json_data import loads
 import os
 from pathlib import Path
 import re
+import stat
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -26,13 +27,17 @@ class ScheduledReport(Report):
 
 
 def read_attempt(path, at, zone):
-    if path.is_symlink():
-        raise CommandError('Refusing a symlink schedule record')
-    if not path.exists():
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
         return None
-    if path.stat().st_size > 16000:
+    with os.fdopen(fd, 'rb') as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise CommandError('Schedule record must be a regular file')
+        content = stream.read(16_001)
+    if len(content) > 16_000:
         raise CommandError('Schedule record exceeds size limit')
-    data = loads(path.read_text())
+    data = loads(content)
     if (not isinstance(data, dict) or set(data) != {'version', 'date', 'at', 'timezone', 'status', 'patch'}
             or type(data['version']) is not int or data['version'] != 1
             or data['at'] != at or data['timezone'] != zone
@@ -60,8 +65,10 @@ def nightly_refactor(repo, at='03:00', timezone_name='UTC', retry=False, now=Non
         state = directory(root)
         key = hashlib.sha256((timezone_name + '\0' + at).encode()).hexdigest()[:20]
         path = state / ('nightly-' + key + '.json')
-        fd = os.open(state / 'nightly-refactor.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, 'r+') as lock:
+        fd = os.open(state / 'nightly-refactor.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        with os.fdopen(fd, 'rb') as lock:
+            if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
+                raise CommandError('Schedule lock must be a regular file')
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
