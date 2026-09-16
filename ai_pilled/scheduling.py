@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 import fcntl
 import hashlib
 import json
+from .json_data import loads
 import os
 from pathlib import Path
 import re
@@ -31,7 +32,7 @@ def read_attempt(path, at, zone):
         return None
     if path.stat().st_size > 16000:
         raise CommandError('Schedule record exceeds size limit')
-    data = json.loads(path.read_text())
+    data = loads(path.read_text())
     if (not isinstance(data, dict) or set(data) != {'version', 'date', 'at', 'timezone', 'status', 'patch'}
             or type(data['version']) is not int or data['version'] != 1
             or data['at'] != at or data['timezone'] != zone

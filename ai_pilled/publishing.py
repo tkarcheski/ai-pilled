@@ -1,6 +1,6 @@
 """Explicit GitHub release publication from verified, already-pushed tags."""
 from dataclasses import dataclass
-import json
+from .json_data import loads
 import os
 from pathlib import Path
 import re
@@ -84,7 +84,7 @@ def publish_release(repo, github_repo, tag, expected_head, publish=False, execut
             run([executable, 'release', 'create', tag, '--repo', 'github.com/' + github_repo,
                  '--verify-tag', '--target', head, '--title', tag, '--notes-file', '-'],
                 root, env=env, timeout=30, input_data=notes.encode())
-            data = json.loads(run([executable, 'release', 'view', tag, '--repo', 'github.com/' + github_repo,
+            data = loads(run([executable, 'release', 'view', tag, '--repo', 'github.com/' + github_repo,
                                    '--json', 'tagName,isDraft,isPrerelease,body,publishedAt'],
                                   root, env=env, timeout=30, limit=150_000))
             remote_tag()

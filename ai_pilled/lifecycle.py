@@ -1,5 +1,6 @@
 """Codex command-hook protocol, independently testable without a model call."""
 import json
+from .json_data import loads
 import re
 from pathlib import Path
 
@@ -96,6 +97,6 @@ def read_payload(stream):
     if len(text) > 1_000_000:
         raise CommandError('Hook input exceeds size limit')
     try:
-        return json.loads(text)
+        return loads(text)
     except ValueError as exc:
         raise CommandError('Hook input must be valid JSON') from exc

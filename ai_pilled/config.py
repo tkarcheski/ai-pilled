@@ -1,6 +1,6 @@
 """Strict project configuration; commands are argument lists, never shell strings."""
 from dataclasses import dataclass, field
-import json
+from .json_data import loads
 import os
 import stat
 from pathlib import Path
@@ -39,7 +39,7 @@ def load(repo):
             content = stream.read(64_001)
         if len(content) > 64_000:
             raise ConfigError('Configuration exceeds the 64 KB size limit')
-        data = json.loads(content)
+        data = loads(content)
     except ConfigError:
         raise
     except (ValueError, OSError) as exc:

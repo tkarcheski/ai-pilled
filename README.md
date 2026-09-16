@@ -31,6 +31,8 @@ Prepared blobs are rescanned, and an index change before invocation cancels the 
 
 Commands emit JSON. Exit codes: **0** passed, **1** found blockers, **2** incomplete or
 unable to run. Missing tools and missing configuration do not count as passing.
+Structured JSON inputs are limited to 100 nested containers; excessive nesting is
+reported explicitly instead of producing a recursion traceback.
 Reports retain up to 100 findings plus a truncation notice, prioritizing errors over
 informational notices. Truncated reports remain blocking. Recognizable credentials
 are redacted from reports, command errors, hook context, and legacy history views;

@@ -1,7 +1,7 @@
 """Merge command hooks into project-local Codex configuration; preserve unrelated hooks."""
 from contextlib import contextmanager
 import fcntl
-import json
+from .json_data import loads
 import os
 from pathlib import Path
 import shlex
@@ -31,7 +31,7 @@ def read_object(path):
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text())
+        data = loads(path.read_text())
     except (OSError, ValueError) as exc:
         raise CommandError('Cannot read valid JSON configuration') from exc
     if not isinstance(data, dict):

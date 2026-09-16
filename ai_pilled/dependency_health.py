@@ -1,5 +1,5 @@
 """Installed npm tree health and explicit lockfile license-expression policy."""
-import json
+from .json_data import loads
 import os
 from pathlib import Path
 import re
@@ -21,7 +21,7 @@ def health(repo, executable='npm'):
         report.snapshot = before
         config = load(repo)
         env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
-        tree = json.loads(run([executable, 'ls', '--all', '--json', '--ignore-scripts',
+        tree = loads(run([executable, 'ls', '--all', '--json', '--ignore-scripts',
                                '--include=dev', '--include=optional', '--include=peer'],
                               repo, env=env, timeout=config.timeout, acceptable_codes=(0, 1)))
         if not isinstance(tree, dict) or not isinstance(tree.get('dependencies', {}), dict):
@@ -37,7 +37,7 @@ def health(repo, executable='npm'):
         if problems:
             report.add('dependency-tree-problems',
                        f'npm reports {len(problems)} invalid, missing, or extraneous dependency entries; inspect npm ls.')
-        outdated = json.loads(run([executable, 'outdated', '--all', '--json', '--ignore-scripts'],
+        outdated = loads(run([executable, 'outdated', '--all', '--json', '--ignore-scripts'],
                                   repo, env=env, timeout=config.timeout, acceptable_codes=(0, 1)))
         if not isinstance(outdated, dict) or 'error' in outdated:
             raise CommandError('npm could not inspect available dependency versions')

@@ -135,3 +135,11 @@ class NotificationTests(unittest.TestCase):
                                     team='00000000-0000-0000-0000-000000000001')
                 self.assertEqual(result.status, 'incomplete')
                 self.assertEqual(result.delivery, 'unconfirmed')
+
+
+    def test_excessively_nested_provider_response_is_unconfirmed(self):
+        nested = b'[' * 1500 + b'0' + b']' * 1500
+        with patch('ai_pilled.notifications.post', return_value=(201, nested)):
+            result = notify(self.repo, 'github', send=True, github_repo='owner/repo', issue=1)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.delivery, 'unconfirmed')

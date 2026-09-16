@@ -104,3 +104,13 @@ class ReportingTests(unittest.TestCase):
             latest = record(self.repo, Report('test'), 'latest')
             self.assertEqual(history(self.repo)[-1]['id'], latest['id'])
             self.assertLessEqual((self.repo / '.ai-pilled' / 'events.jsonl').stat().st_size, 1400)
+
+
+    def test_excessively_nested_history_is_an_explicit_error(self):
+        state = self.repo / '.ai-pilled'
+        state.mkdir()
+        nested = '[' * 150 + '0' + ']' * 150
+        (state / 'events.jsonl').write_text('{"at":"now","report":{"check":"test",'
+            '"status":"pass","findings":[],"metrics":{"nested":' + nested + '}}}\n')
+        with self.assertRaises(CommandError):
+            summarize(self.repo)

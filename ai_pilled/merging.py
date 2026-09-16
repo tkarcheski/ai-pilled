@@ -1,6 +1,6 @@
 """Explicit GitHub auto-merge requests pinned to a reviewed PR head."""
 from dataclasses import dataclass
-import json
+from .json_data import loads
 import os
 import re
 
@@ -31,7 +31,7 @@ def auto_merge(repo, github_repo, number, base, expected_head, enable=False, exe
         env.update({'GH_HOST': 'github.com', 'GH_PROMPT_DISABLED': '1', 'GH_NO_UPDATE_NOTIFIER': '1'})
         selection = [str(number), '--repo', 'github.com/' + github_repo]
         def view():
-            return json.loads(run([executable, 'pr', 'view', *selection, '--json', FIELDS],
+            return loads(run([executable, 'pr', 'view', *selection, '--json', FIELDS],
                                   repo, env=env, timeout=30, limit=100_000))
         def validate(data):
             if not isinstance(data, dict) or data.get('number') != number:
@@ -43,7 +43,7 @@ def auto_merge(repo, github_repo, number, base, expected_head, enable=False, exe
             if data.get('reviewDecision') != 'APPROVED' or data.get('mergeable') != 'MERGEABLE':
                 raise CommandError('PR must be approved and confirmed mergeable before enabling auto-merge')
         validate(view())
-        checks = json.loads(run([executable, 'pr', 'checks', *selection, '--required', '--json', 'bucket'],
+        checks = loads(run([executable, 'pr', 'checks', *selection, '--required', '--json', 'bucket'],
                                 repo, env=env, timeout=30, limit=100_000, acceptable_codes=(0, 1, 8)))
         if not isinstance(checks, list) or not checks or any(
                 not isinstance(check, dict) or check.get('bucket') not in ('pass', 'pending') for check in checks):

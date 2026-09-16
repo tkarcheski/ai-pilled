@@ -99,3 +99,9 @@ class ConfigTests(unittest.TestCase):
         output = run([sys.executable, '-c', code, str(self.repo)],
                      Path(__file__).resolve().parents[1], timeout=5)
         self.assertEqual(output.strip(), b'rejected')
+
+
+    def test_excessively_nested_configuration_is_a_config_error(self):
+        (self.repo / '.ai-pilled.json').write_text('[' * 1500 + '0' + ']' * 1500)
+        with self.assertRaises(ConfigError):
+            load(self.repo)

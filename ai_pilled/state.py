@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 import fcntl
 import json
+from .json_data import loads
 import os
 import stat
 from pathlib import Path
@@ -69,7 +70,7 @@ def history(repo):
         content = stream.read(MAX_HISTORY_BYTES + 1)
         if len(content) > MAX_HISTORY_BYTES:
             raise CommandError('Local history exceeds the size limit; archive it before reading')
-        return [json.loads(line) for line in content.splitlines() if line.strip()]
+        return [loads(line) for line in content.splitlines() if line.strip()]
 
 
 def atomic_text(path, text, mode=0o600):

@@ -1,6 +1,6 @@
 """Explicit coverage-report and built-artifact budget checks."""
 import hashlib
-import json
+from .json_data import loads
 import math
 from pathlib import Path
 
@@ -33,7 +33,7 @@ def coverage(repo, source, minimum):
             content = stream.read(2_000_001)
         if len(content) > 2_000_000:
             raise CommandError('Coverage report exceeds size limit')
-        data = json.loads(content)
+        data = loads(content)
         if not isinstance(data, dict) or not isinstance(data.get('totals'), dict):
             raise CommandError('Expected a coverage.py JSON report with totals')
         totals = data['totals']

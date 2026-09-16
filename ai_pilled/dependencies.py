@@ -1,6 +1,6 @@
 """Structured npm lockfile vulnerability audits; never installs or applies fixes."""
 import hashlib
-import json
+from .json_data import loads
 import os
 from pathlib import Path
 import re
@@ -21,7 +21,7 @@ def read_input(path):
         content = stream.read(2_000_001)
     if len(content) > 2_000_000:
         raise CommandError('Dependency input exceeds size limit')
-    data = json.loads(content)
+    data = loads(content)
     if not isinstance(data, dict):
         raise CommandError('Dependency input must be a JSON object')
     return content, data
@@ -89,7 +89,7 @@ def audit(repo, executable='npm', timeout=None):
                       '--include=peer', '--audit-level=low'],
                      repo, env=env, timeout=min(load(repo).timeout, timeout) if timeout else load(repo).timeout,
                      acceptable_codes=(0, 1))
-        findings = parse_npm(json.loads(output))
+        findings = parse_npm(loads(output))
         if snapshot(repo) != before:
             raise CommandError('Dependency inputs changed during audit; rerun it')
         for name, message in findings:

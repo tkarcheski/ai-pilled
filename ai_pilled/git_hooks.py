@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import fcntl
 import hashlib
 import json
+from .json_data import loads
 import os
 from pathlib import Path
 import re
@@ -154,7 +155,7 @@ def _install(repo):
 
 def read_manifest(manifest, expected):
     try:
-        data = json.loads(manifest.read_text())
+        data = loads(manifest.read_text())
     except (ValueError, OSError) as exc:
         raise CommandError('Cannot read installation manifest') from exc
     if (not isinstance(data, dict) or set(data) != {'previous', 'scope', 'hooks_path', 'hashes'}

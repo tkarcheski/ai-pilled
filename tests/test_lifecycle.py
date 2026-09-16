@@ -138,3 +138,8 @@ class LifecycleTests(unittest.TestCase):
         context = output['hookSpecificOutput']['additionalContext']
         self.assertIn('"tool_status": "pass"', context)
         self.assertIn('"blocker": "proceed"', context)
+
+
+    def test_excessively_nested_payload_is_a_protocol_error(self):
+        with self.assertRaises(CommandError):
+            read_payload(io.StringIO('[' * 1500 + '0' + ']' * 1500))

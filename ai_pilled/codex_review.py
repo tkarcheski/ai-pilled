@@ -1,5 +1,6 @@
 """Read-only, subscription-backed Codex review of the staged snapshot."""
 import json
+from .json_data import loads
 import os
 from pathlib import Path
 import tempfile
@@ -95,7 +96,7 @@ def invoke_review(snapshot, prompt, executable, timeout):
             env=env, input_data=prompt)
         if not output.is_file() or output.is_symlink() or output.stat().st_size > 100_000:
             raise CommandError('Codex did not return a bounded review result')
-        data = json.loads(output.read_text())
+        data = loads(output.read_text())
         findings = list(validated_findings(data))
         return findings
 

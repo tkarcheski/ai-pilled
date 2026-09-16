@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 import http.client
 import json
+from .json_data import loads
 import os
 import re
 import smtplib
@@ -143,7 +144,7 @@ def notify(repo, provider, *, send=False, github_repo=None, issue=None, team=Non
             if provider == 'slack':
                 confirmed = status == 200 and raw.strip() == b'ok'
             else:
-                data = json.loads(raw)
+                data = loads(raw)
                 if provider == 'github':
                     confirmed = status == 201 and isinstance(data, dict) and type(data.get('id')) is int and data['id'] > 0
                 else:
