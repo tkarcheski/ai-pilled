@@ -10,10 +10,33 @@ from .python_security import inspect_python
 
 OID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
 MAX_COMMITS = 2000
+MAX_CACHE_ENTRIES = 10000
 
 
-def scan_revision(repo, revision, patterns=False):
+def blob_findings(repo, oid, path, patterns, cache):
+    key = (oid, patterns and path.endswith('.py'))
+    if key in cache:
+        return cache[key]
+    result = Report('blob-security')
+    try:
+        if int(run(['git', 'cat-file', '-s', oid], repo)) > MAX_FILE_BYTES:
+            raise CommandError('File exceeds scan size limit')
+        content = run(['git', 'cat-file', 'blob', oid], repo, limit=MAX_FILE_BYTES)
+        scan_bytes(result, '', content)
+        if patterns:
+            inspect_python(result, path, content)
+    except CommandError as exc:
+        result.add('scan-incomplete', str(exc), severity='warning')
+    # Cache only location-independent findings, never credential-bearing source bytes.
+    findings = tuple((f.rule, f.message, f.line, f.severity) for f in result.findings)
+    if len(cache) < MAX_CACHE_ENTRIES:
+        cache[key] = findings
+    return findings
+
+
+def scan_revision(repo, revision, patterns=False, cache=None):
     report = Report('history-security', snapshot=revision)
+    cache = {} if cache is None else cache
     message = run(['git', 'log', '-1', '--format=%B', revision], repo, limit=64_000)
     scan_text(report, '(commit message)', message.decode('latin-1'))
     records = run(['git', 'ls-tree', '-rz', '--full-tree', revision], repo).split(b'\0')
@@ -25,15 +48,8 @@ def scan_revision(repo, revision, patterns=False):
             report.add('submodule-unscanned', 'Submodule content requires its own audit.',
                        path=path, severity='warning')
             continue
-        try:
-            if int(run(['git', 'cat-file', '-s', oid.decode()], repo)) > MAX_FILE_BYTES:
-                raise CommandError('File exceeds scan size limit')
-            content = run(['git', 'cat-file', 'blob', oid.decode()], repo, limit=MAX_FILE_BYTES)
-            scan_bytes(report, path, content)
-            if patterns:
-                inspect_python(report, path, content)
-        except CommandError as exc:
-            report.add('scan-incomplete', str(exc), path=path, severity='warning')
+        for rule, message, line, severity in blob_findings(repo, oid.decode(), path, patterns, cache):
+            report.add(rule, message, path=path, line=line, severity=severity)
     return report
 
 
@@ -79,8 +95,10 @@ def pre_push(repo, updates):
             report.add('history-unavailable', str(exc))
     if report.status != 'pass':
         return report
+    blob_cache: dict = {}
     for commit in sorted(commits):
-        result = scan_revision(repo, commit, patterns=config.aggressiveness == 'strict' and commit in tips)
+        result = scan_revision(repo, commit, patterns=config.aggressiveness == 'strict' and commit in tips,
+                               cache=blob_cache)
         for finding in result.findings:
             report.add(finding.rule, f'{commit[:12]}: {finding.message}', path=finding.path,
                        line=finding.line, severity=finding.severity)

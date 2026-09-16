@@ -131,3 +131,47 @@ class PrePushTests(unittest.TestCase):
         (self.repo / 'parse.py').write_text('value = 1\n')
         self.commit()
         self.assertEqual(pre_push(self.repo, self.update()).status, 'pass')
+
+    def test_unchanged_blobs_are_read_once_across_outgoing_commits(self):
+        from ai_pilled.runtime import run
+        for number in range(4):
+            self.git('commit', '--allow-empty', '-qm', f'test: unchanged tree {number}')
+        with patch('ai_pilled.pre_push.run', wraps=run) as commands:
+            result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'pass')
+        blob_calls = [call.args[0] for call in commands.call_args_list
+                      if call.args[0][:3] == ['git', 'cat-file', 'blob']]
+        blobs = {line.split()[2] for line in self.git('ls-tree', '-r', 'HEAD').stdout.splitlines()}
+        self.assertEqual(len(blob_calls), len(blobs))
+
+    def test_cache_preserves_locations_and_never_stores_secret_bytes(self):
+        from ai_pilled.pre_push import scan_revision
+        token = 'ghp_' + 'A' * 36
+        (self.repo / 'first.txt').write_text(token)
+        (self.repo / 'second.txt').write_text(token)
+        self.commit()
+        cache = {}
+        result = scan_revision(self.repo, 'HEAD', cache=cache)
+        self.assertEqual({f.path for f in result.findings}, {'first.txt', 'second.txt'})
+        self.assertNotIn(token, str(cache))
+        self.assertEqual(scan_revision(self.repo, 'HEAD', cache=cache).to_dict(), result.to_dict())
+
+    def test_cache_separates_python_inspection_from_plain_credential_scan(self):
+        from ai_pilled.pre_push import scan_revision
+        (self.repo / 'example.txt').write_text('eval(data)\n')
+        (self.repo / 'example.py').write_text('eval(data)\n')
+        self.commit()
+        cache = {}
+        self.assertEqual(scan_revision(self.repo, 'HEAD', cache=cache).status, 'pass')
+        result = scan_revision(self.repo, 'HEAD', patterns=True, cache=cache)
+        self.assertEqual([f.path for f in result.findings], ['example.py'])
+
+    def test_full_cache_still_scans_uncached_blobs(self):
+        from ai_pilled.pre_push import scan_revision
+        (self.repo / 'secret.txt').write_text('ghp_' + 'B' * 36)
+        self.commit()
+        cache = {}
+        with patch('ai_pilled.pre_push.MAX_CACHE_ENTRIES', 1):
+            result = scan_revision(self.repo, 'HEAD', cache=cache)
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual(len(cache), 1)
