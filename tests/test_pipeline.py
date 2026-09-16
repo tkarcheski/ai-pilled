@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from ai_pilled.pipeline import quality
+from ai_pilled.reporting import summarize
 
 
 class PipelineTests(unittest.TestCase):
@@ -88,3 +89,30 @@ class PipelineTests(unittest.TestCase):
             result = quality(self.repo)
             self.assertEqual(result.status, 'pass')
             audit.assert_called_once_with(self.repo)
+
+
+    def test_unscannable_file_created_by_check_blocks_quality(self):
+        self.configure(test=[sys.executable, '-c',
+                             'from pathlib import Path; Path("new-link").symlink_to(".gitignore")'])
+        result = quality(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertTrue(any(f.rule == 'security:scan-incomplete' for f in result.findings))
+
+    def test_secret_created_by_check_is_reported_as_failure(self):
+        self.configure(test=[sys.executable, '-c',
+                             'from pathlib import Path; Path("new-secret").write_text("ghp_" + "Z" * 36)'])
+        result = quality(self.repo)
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.path == 'new-secret' for f in result.findings))
+        self.assertIn('security', summarize(self.repo)['unresolved'])
+
+
+    def test_strict_final_scan_reports_new_unsafe_python(self):
+        commands = {name: [sys.executable, '-c', 'pass']
+                    for name in ('lint', 'typecheck', 'deadcode', 'coverage')}
+        commands['test'] = [sys.executable, '-c',
+                            'from pathlib import Path; Path("unsafe.py").write_text("eval(input())")']
+        self.configure('strict', **commands)
+        result = quality(self.repo)
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.path == 'unsafe.py' for f in result.findings))

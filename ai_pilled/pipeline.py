@@ -74,7 +74,10 @@ def quality(repo, ready=False, executable_root=None):
             if config.aggressiveness != 'lazy' and 'dependency' not in names and any(
                     (root / name).exists() for name in ('package-lock.json', 'npm-shrinkwrap.json')):
                 combine(report, audit(root))
-            after = scan(root, 'worktree')
+            after = scan(root, 'worktree', patterns=config.aggressiveness == 'strict')
+            record(root, after, 'quality:security-final')
+            if after.status != 'pass':
+                combine(report, after)
             try:
                 current_head = run(['git', 'rev-parse', '--verify', 'HEAD'], root).decode().strip()
             except CommandError:
