@@ -194,3 +194,48 @@ class GitHookTests(unittest.TestCase):
             uninstall(self.repo)
         self.assertNotEqual(self.git('config', '--get', 'core.hooksPath').stdout.strip(), b'unrelated-hooks')
         self.assertTrue((self.repo / '.ai-pilled' / 'hooks' / 'pre-commit').exists())
+
+
+    def prepare_local_push(self):
+        import json
+        import sys
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({
+            'commands': {'test': [sys.executable, '-c', 'pass']}}))
+        self.git('add', '.ai-pilled.json')
+        self.git('commit', '-m', 'test: initialize push fixture')
+        install(self.repo)
+        remote = self.repo / '.ai-pilled' / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
+        self.git('remote', 'add', 'fixture', str(remote))
+        return remote
+
+    def test_real_push_updates_only_after_installed_hook_passes(self):
+        remote = self.prepare_local_push()
+        self.git('push', 'fixture', 'HEAD:refs/heads/feature')
+        actual = subprocess.check_output(['git', '--git-dir', str(remote),
+                                          'rev-parse', 'refs/heads/feature'])
+        self.assertEqual(actual, self.git('rev-parse', 'HEAD').stdout)
+
+    def test_real_push_to_protected_destination_leaves_remote_unchanged(self):
+        remote = self.prepare_local_push()
+        result = self.git('push', 'fixture', 'HEAD:refs/heads/main', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'protected-branch', result.stdout + result.stderr)
+        refs = subprocess.check_output(['git', '--git-dir', str(remote),
+                                        'for-each-ref', '--format=%(refname)'])
+        self.assertEqual(refs, b'')
+
+    def test_real_push_with_failing_tests_leaves_remote_unchanged(self):
+        import json
+        import sys
+        remote = self.prepare_local_push()
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({
+            'commands': {'test': [sys.executable, '-c', 'raise SystemExit(1)']}}))
+        self.git('add', '.ai-pilled.json')
+        self.git('commit', '-m', 'test: introduce failing check')
+        result = self.git('push', 'fixture', 'HEAD:refs/heads/feature', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'command-failed', result.stdout + result.stderr)
+        refs = subprocess.check_output(['git', '--git-dir', str(remote),
+                                        'for-each-ref', '--format=%(refname)'])
+        self.assertEqual(refs, b'')
