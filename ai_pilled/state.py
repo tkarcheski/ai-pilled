@@ -138,7 +138,12 @@ def atomic_text(path, text, mode=0o600, *, before_publish=None, exclusive=False,
 
 
 def atomic_text_beneath(root, relative, text, mode=0o600, *, before_publish=None, exclusive=False):
-    """Create and publish through one anchored parent, including temporary cleanup."""
+    return atomic_bytes_beneath(root, relative, text.encode('utf-8'), mode,
+                                before_publish=before_publish, exclusive=exclusive)
+
+
+def atomic_bytes_beneath(root, relative, content, mode=0o600, *, before_publish=None, exclusive=False):
+    """Create and publish bytes through one anchored parent, including cleanup."""
     relative = Path(relative)
     if relative.is_absolute() or '..' in relative.parts or not relative.parts:
         raise CommandError('Output path must stay beneath its root')
@@ -147,8 +152,8 @@ def atomic_text_beneath(root, relative, text, mode=0o600, *, before_publish=None
         descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
                              0o600, dir_fd=parent)
         try:
-            with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
-                stream.write(text)
+            with os.fdopen(descriptor, 'wb') as stream:
+                stream.write(content)
                 os.fchmod(stream.fileno(), mode)
                 metadata = os.fstat(stream.fileno())
             if before_publish is not None:

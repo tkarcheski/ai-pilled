@@ -4,8 +4,8 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `a72713c`: 643 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `fdf5c0d`
+The verification baseline is `f988c67`: 649 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `26ac527`
 passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `a72713c` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
@@ -460,7 +460,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `fdf5c0d`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.64% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `26ac527`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.61% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
@@ -518,6 +518,14 @@ in the fingerprint, including non-UTF-8 names; measurements do not rename input 
 
 Root-relative file reads and publication share the directory-descriptor traversal
 helper, retaining the same symlink rejection and descriptor cleanup rules.
+
+Refactor and healing patch exports share the root-anchored publication helper,
+preserve binary bytes and private mode, use exclusive final names, and verify the
+exported bytes before returning a path. Parent swaps cannot redirect the export;
+failed writes clean their temporary file without publishing a partial patch.
+A candidate already published in the original directory can remain after a late
+path change, which is reported as incomplete. No live refactor/healing action was
+performed for these guards; binary, collision, race, and failure fixtures cover them.
 
 README reads and publication are now anchored beneath the selected repository.
 Temporary creation, rename, exclusive publication, and cleanup use one opened parent

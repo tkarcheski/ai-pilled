@@ -204,3 +204,81 @@ class RefactorTests(unittest.TestCase):
         self.assertEqual(result.status, 'pass', result.to_dict())
         self.assertTrue(result.patch)
         self.assertEqual((self.repo / 'code.py').read_text(), 'value = 1\n')
+
+    def test_patch_export_preserves_binary_bytes_private_mode_and_exclusive_names(self):
+        from ai_pilled.refactor import export_patch
+        state = self.repo / '.ai-pilled'
+        state.mkdir()
+        payload = b'\xff\x00binary fixture\n'
+        output = export_patch(state, payload, 'fixture')
+        self.assertEqual(output.read_bytes(), payload)
+        self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+        with patch('ai_pilled.refactor.uuid.uuid4') as identifier:
+            identifier.return_value.hex = 'fixed'
+            target = state / 'fixture-fixed.patch'
+            target.write_bytes(b'preserve')
+            with self.assertRaises(FileExistsError):
+                export_patch(state, payload, 'fixture')
+        self.assertEqual(target.read_bytes(), b'preserve')
+        self.assertEqual(list(state.glob('.ai-pilled-*.tmp')), [])
+
+    def test_patch_parent_swaps_never_export_outside_or_return_stale_path(self):
+        from ai_pilled.refactor import export_patch
+        from ai_pilled.runtime import CommandError
+        original_open, original_link = os.open, os.link
+        for moment in ('open', 'publish'):
+            with self.subTest(moment=moment):
+                root = self.repo / moment
+                state = root / '.ai-pilled'
+                state.mkdir(parents=True)
+                outside = root / 'outside'
+                outside.mkdir()
+                (outside / 'marker').write_text('preserve')
+
+                def swap(state=state, root=root, outside=outside):
+                    state.rename(root / 'original')
+                    state.symlink_to(outside, target_is_directory=True)
+
+                def before_open(path, *args, selected=state, **kwargs):
+                    if (path == '.ai-pilled' and 'dir_fd' in kwargs
+                            or isinstance(path, Path) and path.parent == selected and path.suffix == '.patch'):
+                        swap()
+                    return original_open(path, *args, **kwargs)
+
+                def before_publish(*args, **kwargs):
+                    swap()
+                    return original_link(*args, **kwargs)
+
+                target, replacement = (('ai_pilled.state.os.open', before_open) if moment == 'open'
+                                       else ('ai_pilled.state.os.link', before_publish))
+                with patch(target, side_effect=replacement):
+                    with self.assertRaises((CommandError, OSError)):
+                        export_patch(state, b'fixture', 'fixture')
+                self.assertEqual(sorted(path.name for path in outside.iterdir()), ['marker'])
+                self.assertEqual((outside / 'marker').read_text(), 'preserve')
+                self.assertEqual(list((root / 'original').glob('.ai-pilled-*.tmp')), [])
+
+    def test_failed_patch_write_leaves_no_partial_artifact(self):
+        from contextlib import contextmanager
+        from ai_pilled.refactor import export_patch
+        state = self.repo / '.ai-pilled'
+        state.mkdir()
+        original_fdopen = os.fdopen
+
+        class BrokenWriter:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def write(self, content):
+                self.stream.write(content[:3])
+                raise OSError('fixture write failure')
+
+        @contextmanager
+        def failed_write(*args, **kwargs):
+            with original_fdopen(*args, **kwargs) as stream:
+                yield BrokenWriter(stream)
+
+        with patch('ai_pilled.state.os.fdopen', side_effect=failed_write):
+            with self.assertRaisesRegex(OSError, 'fixture write failure'):
+                export_patch(state, b'fixture patch', 'fixture')
+        self.assertEqual(list(state.iterdir()), [])

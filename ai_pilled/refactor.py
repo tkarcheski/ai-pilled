@@ -7,11 +7,11 @@ import uuid
 
 from .checks import command_check, require_visible_index
 from .config import ConfigError, load
-from .file_io import read_regular
+from .file_io import read_beneath, read_regular
 from .pipeline import quality
 from .runtime import CommandError, Report, isolated_git, run, git_path
 from .security import scan
-from .state import directory
+from .state import atomic_bytes_beneath, directory
 
 
 @dataclass
@@ -22,13 +22,10 @@ class RefactorReport(Report):
 
 def export_patch(state, patch, prefix):
     output = state / (prefix + '-' + uuid.uuid4().hex + '.patch')
-    fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    try:
-        with os.fdopen(fd, 'wb') as stream:
-            stream.write(patch)
-    except OSError:
-        output.unlink(missing_ok=True)
-        raise
+    relative = output.relative_to(state.parent)
+    atomic_bytes_beneath(state.parent, relative, patch, exclusive=True)
+    if read_beneath(state.parent, relative, len(patch)) != patch:
+        raise CommandError('Exported patch changed during publication; inspect before retrying')
     return output
 
 
