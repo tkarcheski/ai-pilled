@@ -51,6 +51,28 @@ The benchmark command uses a separate commands.benchmark argument array.
 These commands report the configured tool's result; they do not invent coverage numbers
 or dependency vulnerability data.
 
+## GitHub auto-merge (experimental)
+
+Use auto-merge with --github-repo OWNER/REPO, --pr NUMBER, --base BRANCH, and
+--expected-head FULL-COMMIT-SHA to inspect an exact PR. This preview reads GitHub but
+does not mutate it. The PR must be open, non-draft, approved, and confirmed mergeable.
+At least one required CI check must exist; passing and pending checks are acceptable,
+while failures, cancellation, skipped checks, or unknown evidence block the request.
+
+Only --enable requests GitHub squash auto-merge. It re-reads the PR immediately before
+requesting, pins the head using --match-head-commit, and checks the resulting server
+state. **Enabling may merge immediately if all requirements pass.** GitHub branch
+protections remain authoritative; no admin bypass or branch deletion is used. Unknown
+outcomes require inspection before retrying. This does not configure branch protections,
+create PRs, or grant approval. GitHub.com is supported; enterprise hosts are not yet.
+
+The command uses your GitHub CLI login. Select --gh /absolute/path/to/gh if your PATH
+command wraps an installer or updater. See the official
+[GitHub CLI merge reference](https://cli.github.com/manual/gh_pr_merge) and
+[required-check reference](https://cli.github.com/manual/gh_pr_checks).
+Provider behavior is tested with fake CLI responses, including changed heads and
+unconfirmed outcomes. No real repository auto-merge was enabled during development.
+
 ## Verified self-healing (experimental)
 
 Run `python -m ai_pilled heal --expected-head FULL-COMMIT-SHA` to investigate a failing
@@ -371,10 +393,10 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
@@ -389,6 +411,7 @@ positional arguments:
     update-readme       Refresh a generated README command reference
     refactor            Run configured refactor steps in a disposable clone and export a
                         patch
+    auto-merge          Inspect a pinned GitHub PR; enable only with --enable
     heal                Verify reversal of a failing HEAD; preview unless --apply
     full-audit          Run quality gates and optional isolated model perspectives
     quality             Run the configured quality profile

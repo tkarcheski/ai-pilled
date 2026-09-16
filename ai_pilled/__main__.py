@@ -24,6 +24,7 @@ from .refactor import refactor
 from .notifications import notify
 from .full_audit import full_audit
 from .healing import heal
+from .merging import auto_merge
 
 
 def build_parser():
@@ -63,6 +64,13 @@ def build_parser():
     readme.add_argument('--path', default='README.md')
     readme.add_argument('--check', action='store_true')
     commands.add_parser('refactor', help='Run configured refactor steps in a disposable clone and export a patch')
+    merging = commands.add_parser('auto-merge', help='Inspect a pinned GitHub PR; enable only with --enable')
+    merging.add_argument('--github-repo', required=True)
+    merging.add_argument('--pr', required=True, type=int)
+    merging.add_argument('--base', required=True)
+    merging.add_argument('--expected-head', required=True)
+    merging.add_argument('--enable', action='store_true')
+    merging.add_argument('--gh', default='gh')
     healing = commands.add_parser('heal', help='Verify reversal of a failing HEAD; preview unless --apply')
     healing.add_argument('--expected-head', required=True)
     healing.add_argument('--apply', action='store_true')
@@ -122,6 +130,9 @@ def main(argv=None):
             report = health(args.repo, args.npm)
         elif args.command == 'licenses':
             report = licenses(args.repo, args.allow)
+        elif args.command == 'auto-merge':
+            report = auto_merge(args.repo, args.github_repo, args.pr, args.base,
+                                args.expected_head, args.enable, args.gh)
         elif args.command == 'heal':
             report = heal(args.repo, args.expected_head, args.apply)
         elif args.command == 'full-audit':
