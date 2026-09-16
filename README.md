@@ -510,6 +510,21 @@ audits record local results. These are historical observations: a green dashboar
 does not certify files changed since the checks ran. Summaries do not read or store
 raw tool output, and they do not invent a successful check when evidence is absent.
 
+## Suggested follow-ups
+
+`python -m ai_pilled suggest --limit 5` prioritizes recorded failures, incomplete
+checks, and missing feature configuration. Each item gives a reason, a next step,
+and an argument list when a supported check can be rerun. It identifies missing
+quality gates, optional staged review, Python audit scope, performance baselines,
+and disposable refactor setup. Configure commands before enabling their automation.
+
+Newer nested quality/review results supersede older child-check results. Suggestions
+label historical evidence explicitly and do not certify current source. An unknown
+failed integration points to its recorded summary; it never suggests automatically
+replaying a release, notification, merge, or revert. The command reads configuration
+and local history only: no checks, provider requests, file changes, or suggested actions
+are executed. When supported gaps are absent, it recommends verifying the current index.
+
 ## Development
 
 Install the pinned tools into the ignored project-local environment before running
@@ -547,10 +562,10 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,review-checks,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,review-checks,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,suggest,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,review-checks,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,review-checks,dependency-audit,python-audit,python-health,python-licenses,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,suggest,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
@@ -580,6 +595,8 @@ positional arguments:
     quality             Run the configured quality profile
     ready               Validate a clean proposal branch and its quality checks
     notify              Preview or explicitly send a historical check digest
+    suggest             Prioritize read-only follow-ups from configuration and recorded
+                        checks
     summary             Summarize recorded checks and next steps
     dashboard           Build an offline check-history dashboard
 

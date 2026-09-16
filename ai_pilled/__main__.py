@@ -18,6 +18,7 @@ from .credentials import redact, redact_data
 from .runtime import CommandError
 from .security import scan
 from .reporting import dashboard, summarize
+from .suggestions import suggest
 from .state import record
 from .metrics import bundle, coverage
 from .performance import benchmark
@@ -117,6 +118,8 @@ def build_parser():
     notification.add_argument('--team')
     notification.add_argument('--sender')
     notification.add_argument('--recipient')
+    suggestions = commands.add_parser('suggest', help='Prioritize read-only follow-ups from configuration and recorded checks')
+    suggestions.add_argument('--limit', type=int, default=5)
     commands.add_parser('summary', help='Summarize recorded checks and next steps')
     commands.add_parser('dashboard', help='Build an offline check-history dashboard')
     commands.add_parser('lifecycle')
@@ -133,6 +136,9 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
+        if args.command == 'suggest':
+            print(json.dumps(suggest(args.repo, args.limit), indent=2))
+            return 0
         if args.command == 'summary':
             print(json.dumps(summarize(args.repo), indent=2))
             return 0

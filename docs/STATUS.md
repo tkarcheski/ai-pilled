@@ -143,8 +143,11 @@ The dashboard escapes content, uses a restrictive content policy, and writes pri
 output atomically. Symlinks/special files cannot redirect dashboard writes.
 
 **Limits:** no unsupported batch-completion event is claimed. Historical success does
-not certify later changes. Browser rendering has not been verified. Follow-up feature
-suggestions beyond generic remediation are planned below.
+not certify later changes. Browser rendering has not been verified. The `suggest` command prioritizes recorded failures and missing feature configuration,
+provides explicit check argument lists, and labels historical evidence. It is read-only;
+external actions are never replayed automatically. Nested newer check results supersede
+older child results; priority, bounds, redaction, and no-execution tests are in
+`test_suggestions.py`.
 
 ## All 24 requested automations
 
@@ -207,7 +210,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | P1 | Complete hosted GitHub acceptance when credentials permit | Workflow refresh and local parity are complete. Publishing remains blocked by OAuth scope. Inspect both matrix jobs and downloaded artifacts after publication; never substitute local evidence for a hosted result. |
 | P1 | Investigate intermittent full-suite failures if they recur | Earlier runs occasionally failed without named diagnostics; repeated exact reruns passed. Cause remains unknown. An ignored diagnostic wrapper retains redacted failed-test output; never bypass a gate or describe the issue as fixed. |
 | Done | Isolate disposable operations from inherited Git routing | Reproduced a refactor credential-export bypass and healing candidate misrouting. Candidate scans/quality now isolate routing; real fixtures verify rejection and preservation of original HEAD/index/worktree. Model review already strips Git variables from its subprocess environment. |
-| P2 | Product-generated follow-up suggestions | Prioritize current failed/incomplete checks and missing configuration, distinguish historical evidence, produce explicit next commands, and never activate external integrations automatically. |
+| Done | Product-generated follow-up suggestions | `suggest` prioritizes recorded failures and missing configuration, labels historical evidence, and gives explicit next check commands. It performs no checks or external actions; eight targeted tests cover ordering, nested evidence, redaction, and safe integration follow-ups. |
 | P2 | Broaden Python lock input support | Choose one well-defined export format, preserve exact-pin/coverage guarantees, and test markers/hashes/includes without evaluating package setup code. |
 | P2 | Verify live Codex lifecycle and dashboard appearance | Demonstrate actual events and visual output in the allowed environment; installed files/unit tests are insufficient activation evidence. |
 | P3 | Hosted provider acceptance | Explicit target and authorization before real notifications, release publication, merging, or rollback; capture provider IDs/results once exercised. |
