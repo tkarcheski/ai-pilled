@@ -165,3 +165,20 @@ class ReviewTests(unittest.TestCase):
         with self.assertRaises(CommandError):
             materialize_index(self.repo, destination)
         self.assertFalse((destination / 'code.py').exists())
+
+
+    def test_findings_must_cite_existing_staged_source_lines(self):
+        for path, line in (('missing.py', 1), ('code.py', 2), ('.', 1)):
+            with self.subTest(path=path, line=line):
+                self.response({'findings': [{'path': path, 'line': line, 'message': 'Claimed defect'}]})
+                result = review(self.repo, str(self.fake))
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.findings[0].rule, 'review-unavailable')
+
+    def test_invalid_location_rejects_entire_model_response(self):
+        self.response({'findings': [
+            {'path': 'code.py', 'line': 1, 'message': 'Claimed defect'},
+            {'path': 'missing.py', 'line': 1, 'message': 'Unsupported location'}]})
+        result = review(self.repo, str(self.fake))
+        self.assertEqual(result.status, 'incomplete')
+        self.assertTrue(all(f.rule == 'review-unavailable' for f in result.findings))

@@ -37,6 +37,15 @@ def validated_findings(data):
         yield redact(path), line, redact(message)
 
 
+def validate_locations(snapshot, findings):
+    for path, line, _ in findings:
+        source = snapshot / path
+        if (not source.resolve().is_relative_to(snapshot.resolve())
+                or not source.is_file() or source.is_symlink()
+                or line > len(source.read_bytes().splitlines())):
+            raise CommandError('Reviewer cited a location outside the supplied source')
+
+
 def review_environment():
     allowed = {'PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'CODEX_HOME',
                'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME',
@@ -130,6 +139,7 @@ def review(repo, executable=None, message=None):
             if scan(root).snapshot != before.snapshot:
                 raise CommandError('Staged snapshot changed before review; rerun the review')
             findings = invoke_review(snapshot, prompt, executable, config.timeout)
+            validate_locations(snapshot, findings)
             if scan(root).snapshot != before.snapshot:
                 raise CommandError('Staged snapshot changed during review; rerun the review')
             for path, line, message in findings:

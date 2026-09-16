@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import tempfile
 
-from .codex_review import invoke_review, materialize_index
+from .codex_review import invoke_review, materialize_index, validate_locations
 from .config import ConfigError, load
 from .pipeline import PipelineReport, combine, quality
 from .runtime import CommandError, Report, run
@@ -26,10 +26,8 @@ def perspective(snapshot, name, executable, timeout):
               'An empty findings list means no concrete defects found, not proof of correctness.').encode()
     try:
         findings = invoke_review(snapshot, prompt, executable, timeout)
+        validate_locations(snapshot, findings)
         for path, line, message in findings:
-            source = snapshot / path
-            if not source.is_file() or source.is_symlink() or line > len(source.read_bytes().splitlines()):
-                raise CommandError('Reviewer cited a location outside the supplied source')
             report.add('model-finding', message, path=path, line=line)
     except (CommandError, ValueError, OSError) as exc:
         report.add('review-unavailable', str(exc) if isinstance(exc, CommandError)
