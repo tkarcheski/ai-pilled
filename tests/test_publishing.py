@@ -117,6 +117,21 @@ class PublishingTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual(result.action, 'unconfirmed')
 
+    def test_metadata_replaced_before_open_blocks_provider(self):
+        from ai_pilled.file_io import read_regular
+        version = self.repo / 'VERSION'
+        def replaced(path, maximum):
+            if path == version:
+                path.unlink()
+                os.mkfifo(path)
+            return read_regular(path, maximum)
+        with patch('ai_pilled.publishing.read_regular', side_effect=replaced):
+            result = self.invoke(publish=True)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.action, 'not-published')
+        self.assertEqual(self.calls, [])
+        self.assertTrue(version.is_fifo())
+
     def test_failed_quality_blocks_publication(self):
         (self.repo / '.ai-pilled.json').write_text(json.dumps({'commands': {
             'test': [sys.executable, '-c', 'raise SystemExit(1)']}}))

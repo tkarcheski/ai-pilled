@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from .config import ConfigError
+from .file_io import read_regular
 from .metrics import local_path
 from .pipeline import quality
 from .releases import VERSION
@@ -42,11 +43,9 @@ def publish_release(repo, github_repo, tag, expected_head, publish=False, execut
         unchanged()
         run(['git', 'ls-files', '--error-unmatch', '--', 'VERSION', 'CHANGELOG.md'], root)
         version_path, changelog_path = local_path(root, 'VERSION'), local_path(root, 'CHANGELOG.md')
-        if version_path.stat().st_size > 100 or changelog_path.stat().st_size > 2_000_000:
-            raise CommandError('Release metadata exceeds size limits')
-        if version_path.read_text().strip() != version:
+        if read_regular(version_path, 100).decode('utf-8').strip() != version:
             raise CommandError('VERSION must match the selected tag')
-        changelog = changelog_path.read_text()
+        changelog = read_regular(changelog_path, 2_000_000).decode('utf-8')
         headings = list(re.finditer(r'^## ([^\n]+)\n', changelog, re.MULTILINE))
         matching = [i for i, heading in enumerate(headings) if heading.group(1).strip() == version]
         if len(matching) != 1:

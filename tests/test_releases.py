@@ -134,6 +134,42 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(prepare_release(self.repo, '1.2.3', 'v1.2.3').status, 'fail')
         self.assertEqual((self.repo / 'VERSION').read_text(), '1.2.3\n')
 
+    def test_replaced_metadata_is_rejected_without_release_writes(self):
+        from ai_pilled.releases import prepare_release
+        from ai_pilled.runtime import Report
+        self.prepare_fixture()
+        version = self.repo / 'VERSION'
+        changelog = self.repo / 'CHANGELOG.md'
+        before_head = self.git('rev-parse', 'HEAD')
+        before_index = self.git('write-tree')
+        before_notes = changelog.read_bytes()
+        for kind in ('fifo', 'symlink', 'oversized'):
+            with self.subTest(kind=kind):
+                version.unlink()
+                version.write_text('1.2.3\n')
+                def replace(*args, replacement=kind, **kwargs):
+                    version.unlink()
+                    if replacement == 'fifo':
+                        os.mkfifo(version)
+                    elif replacement == 'symlink':
+                        version.symlink_to(changelog)
+                    else:
+                        version.write_bytes(b'x' * 2_000_001)
+                    return Report('quality')
+                with patch('ai_pilled.pipeline.quality', side_effect=replace):
+                    result = prepare_release(self.repo, '1.2.3', 'v1.2.3')
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.files, [])
+                self.assertEqual(changelog.read_bytes(), before_notes)
+                self.assertEqual(self.git('rev-parse', 'HEAD'), before_head)
+                self.assertEqual(self.git('write-tree'), before_index)
+                if kind == 'fifo':
+                    self.assertTrue(version.is_fifo())
+                elif kind == 'symlink':
+                    self.assertTrue(version.is_symlink())
+                else:
+                    self.assertEqual(version.stat().st_size, 2_000_001)
+
     def test_second_write_failure_restores_first_file(self):
         from ai_pilled.releases import prepare_release
         from ai_pilled.state import atomic_text

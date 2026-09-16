@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import html
 import re
 
+from .file_io import read_regular
 from .runtime import CommandError, Report, run
 from .security import scan_text
 
@@ -122,13 +123,16 @@ def prepare_release(repo, current, since=None):
         report.add('no-release-change', 'The selected commits do not require a version bump.', severity='warning')
         return report
     try:
+        def metadata(path):
+            try:
+                return read_regular(path, 2_000_000).decode('utf-8')
+            except FileNotFoundError:
+                return None
         paths = [local_path(repo, 'VERSION'), local_path(repo, 'CHANGELOG.md')]
         originals = {}
         modes = {}
         for path in paths:
-            if path.exists() and (not path.is_file() or path.stat().st_size > 2_000_000):
-                raise CommandError('Release metadata must be bounded regular files')
-            originals[path] = path.read_text() if path.exists() else None
+            originals[path] = metadata(path)
             modes[path] = path.stat().st_mode & 0o777 if path.exists() else 0o644
         original_version = originals[paths[0]]
         if original_version is not None and original_version.strip() != current:
@@ -145,7 +149,7 @@ def prepare_release(repo, current, since=None):
         if run(['git', 'rev-parse', 'HEAD'], repo).decode().strip() != report.snapshot:
             raise CommandError('HEAD changed after release planning; rerun the preparation')
         for path, original in originals.items():
-            if (path.read_text() if path.exists() else None) != original:
+            if metadata(path) != original:
                 raise CommandError('Release metadata changed during checks; rerun the preparation')
         if old_changelog.startswith('# Changelog\n'):
             old_changelog = old_changelog[len('# Changelog\n'):].lstrip('\n')
