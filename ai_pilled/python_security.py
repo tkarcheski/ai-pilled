@@ -9,6 +9,59 @@ TLS_VERIFY_CALLS = {
 } | {'httpx.Client', 'httpx.AsyncClient', 'httpx.stream'}
 
 
+def import_scopes(tree):
+    """Index import bindings by lexical block without recursive AST traversal.
+
+    This resolves imports, not general assignment or runtime object data flow.
+    Conflicting imports remain ambiguous rather than silently overwriting evidence.
+    """
+    scopes = {}
+    bindings: list[dict[str, set[str]]] = [{}]
+    parents: list[int | None] = [None]
+    kinds = ['module']
+    pending = [(tree, 0)]
+    while pending:
+        node, scope = pending.pop()
+        scopes[node] = scope
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            parent = scope
+            while kinds[parent] == 'class':
+                enclosing = parents[parent]
+                if enclosing is None:
+                    break
+                parent = enclosing
+            child = len(bindings)
+            local: dict[str, set[str]] = {}
+            if not isinstance(node, ast.ClassDef):
+                arguments = node.args
+                for argument in [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs,
+                                 *([arguments.vararg] if arguments.vararg else []),
+                                 *([arguments.kwarg] if arguments.kwarg else [])]:
+                    local[argument.arg] = {''}
+            bindings.append(local)
+            parents.append(parent)
+            kinds.append('class' if isinstance(node, ast.ClassDef) else 'function')
+            # Defaults, decorators, and bases are evaluated in the containing scope.
+            for field, value in ast.iter_fields(node):
+                selected = child if field == 'body' else scope
+                for item in value if isinstance(value, list) else [value]:
+                    if isinstance(item, ast.AST):
+                        pending.append((item, selected))
+            continue
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                if isinstance(node, ast.Import):
+                    name = alias.asname or alias.name.split('.')[0]
+                    target = alias.name if alias.asname else alias.name.split('.')[0]
+                else:
+                    name = alias.asname or alias.name
+                    prefix = '.' * node.level + (node.module + '.' if node.module else '')
+                    target = prefix + alias.name
+                bindings[scope].setdefault(name, set()).add(target)
+        pending.extend((child, scope) for child in ast.iter_child_nodes(node))
+    return scopes, bindings, parents
+
+
 def inspect_python(report, path, content):
     if not path.endswith('.py'):
         return
@@ -18,23 +71,33 @@ def inspect_python(report, path, content):
         report.add('python-unparsed', 'Python syntax could not be inspected by this interpreter.',
                    path=path, severity='warning')
         return
-    aliases = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                aliases[alias.asname or alias.name.split('.')[0]] = (
-                    alias.name if alias.asname else alias.name.split('.')[0])
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            for alias in node.names:
-                aliases[alias.asname or alias.name] = node.module + '.' + alias.name
+    scopes, bindings, parents = import_scopes(tree)
+    ambiguous = set()
 
     def qualified(node):
         attributes = []
         while isinstance(node, ast.Attribute):
             attributes.append(node.attr)
             node = node.value
-        base = aliases.get(node.id, node.id) if isinstance(node, ast.Name) else ''
-        return '.'.join([base, *reversed(attributes)])
+        if not isinstance(node, ast.Name):
+            return ''
+        base = node.id
+        scope = scopes[node]
+        while scope is not None:
+            if base in bindings[scope]:
+                candidates = bindings[scope][base]
+                if len(candidates) != 1:
+                    key = (scope, base)
+                    if key not in ambiguous:
+                        ambiguous.add(key)
+                        report.add('python-import-ambiguous',
+                                   'Conflicting imports prevent reliable call inspection; use distinct aliases.',
+                                   path=path, line=node.lineno, severity='warning')
+                    return ''
+                base = next(iter(candidates))
+                break
+            scope = parents[scope]
+        return '.'.join([base, *reversed(attributes)]) if base else ''
 
     def environment_dump(node):
         pending = [node]

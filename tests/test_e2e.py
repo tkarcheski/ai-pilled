@@ -85,7 +85,8 @@ class EndToEndTests(unittest.TestCase):
         self.assertIn(b'github-token', output)
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         (self.repo / 'note.txt').write_text('safe note\n')
-        (self.repo / 'transport.py').write_text('import requests\nrequests.get(url, verify=False)\n')
+        (self.repo / 'transport.py').write_text('import requests as http\nhttp.get(url, verify=False)\n'
+                                              'def unrelated():\n import json as http\n return http.dumps({})\n')
         self.git('add', 'note.txt', 'transport.py')
         (self.repo / 'transport.py').write_text('import requests\nrequests.get(url)\n')
         output = self.git('commit', '-m', 'feat: rejected TLS bypass', codes=(1,))

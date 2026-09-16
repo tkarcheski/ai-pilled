@@ -15,6 +15,41 @@ class PythonPatternTests(unittest.TestCase):
         self.assertEqual(report.status, 'fail')
         self.assertEqual((report.findings[0].rule, report.findings[0].line), ('unsafe-deserialization', 2))
 
+    def test_unrelated_nested_import_cannot_hide_outer_tls_call(self):
+        result = self.inspect('import requests as http\nhttp.get(url, verify=False)\n'
+                              'def unrelated():\n import json as http\n return http.dumps({})\n')
+        self.assertEqual([(f.rule, f.line) for f in result.findings], [('tls-verification-disabled', 2)])
+
+    def test_sibling_function_aliases_are_inspected_independently(self):
+        result = self.inspect('def unsafe(data):\n import pickle as parser\n return parser.loads(data)\n'
+                              'def safe(data):\n import json as parser\n return parser.loads(data)\n')
+        self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-deserialization', 3)])
+
+    def test_relative_imports_are_not_mistaken_for_public_packages(self):
+        for source in ('from . import pickle\npickle.loads(data)',
+                       'from .vendor import requests\nrequests.get(url, verify=False)'):
+            self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_methods_inherit_outer_imports_instead_of_class_aliases(self):
+        result = self.inspect('import pickle as parser\nclass Example:\n import json as parser\n'
+                              ' value = parser.loads(data)\n def unsafe(self, data):\n  return parser.loads(data)')
+        self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-deserialization', 6)])
+
+    def test_defaults_and_nested_closures_keep_their_import_scope(self):
+        result = self.inspect('import pickle as parser\ndef outer(value=parser.loads(data)):\n'
+                              ' import json as parser\n def inner():\n  return parser.loads(data)\n')
+        self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-deserialization', 2)])
+        result = self.inspect('def outer():\n import pickle as parser\n'
+                              ' return lambda data: parser.loads(data)')
+        self.assertEqual(result.findings[0].rule, 'unsafe-deserialization')
+
+    def test_parameters_shadow_imports_and_conflicting_imports_are_incomplete(self):
+        self.assertEqual(self.inspect('import pickle as parser\n'
+                                      'def local(parser):\n return parser.loads(data)').status, 'pass')
+        result = self.inspect('import pickle as parser\nimport json as parser\nparser.loads(data)')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.findings[0].rule, 'python-import-ambiguous')
+
     def test_explicit_tls_bypasses_and_import_aliases_are_blocked(self):
         for source in ('import requests\nrequests.get(url, verify=False)',
                        'import requests as http\nhttp.post(url, verify=False)',

@@ -1,8 +1,8 @@
 # Continuous integration and local parity
 
 The GitHub workflow is prepared on the local `codex/ai-pilled-ci-pending` branch.
-The recorded validation below covers snapshot `6983aae` and implementation baseline
-`a70e381`. Inspect the current proposal file:
+The recorded validation below covers snapshot `c8661e9` and implementation baseline
+`66de30e`. Inspect the current proposal file:
 
 ```sh
 git show codex/ai-pilled-ci-pending:.github/workflows/quality.yml
@@ -25,14 +25,11 @@ are push, pull request, and explicit workflow dispatch; no privileged pull-reque
 workflow or scheduled background job is configured.
 
 The jobs create isolated development and pip-audit environments. Development tools
-come from `requirements-dev.txt`; the separate audit tool is pinned to pip-audit 2.10.1.
-Installation permits wheels only. Runtime ai-pilled remains standard-library based.
-At that recorded snapshot, the audit tool’s transitive dependencies were resolver-selected.
-The current primary checkout additionally provides `requirements-audit.txt`, with a
-verified 28-package hash lock; the reproduction commands below use that newer lock.
-Python, pip, and ensurepip bootstrap packages remain outside these dependency locks. The prepared workflow now enforces
-`--require-hashes` for the ten development packages. Fresh Python 3.10 and 3.14 installs
-verified their wheel hashes and passed `pip check`.
+come from the ten-package `requirements-dev.txt`; the separate audit tool is pinned
+to pip-audit 2.10.1 in the 28-package `requirements-audit.txt`. Both installations enforce
+`--require-hashes` and permit wheels only. Fresh Python 3.10 and 3.14 installs verified
+the wheel hashes and passed `pip check`. Runtime ai-pilled remains standard-library based.
+Python, pip, and ensurepip bootstrap packages remain outside these dependency locks.
 
 Each job runs the seven-gate quality profile and the shared real CLI/Git E2E scenarios.
 An offline registry, missing tool, failed test, incomplete check, or malformed result
@@ -86,9 +83,9 @@ coverage; the dedicated E2E invocation additionally exports JSON/JUnit evidence.
 Fixtures use local bare remotes and controlled registry responses. The quality audit
 separately contacts PyPI for the actual selected development pins.
 
-At prepared snapshot `6983aae`, Python 3.10 passed all seven gates and the four E2E
-scenarios, with fresh coverage of 2,869 of 3,146 lines (91.20%). Its implementation
-baseline `a70e381` passed all 370 tests on both Python 3.10 and 3.14, and the primary
+At prepared snapshot `c8661e9`, Python 3.10 passed all seven gates and the four E2E
+scenarios, with fresh coverage of 2,906 of 3,180 lines (91.38%). Its implementation
+baseline `66de30e` passed all 381 tests on both Python 3.10 and 3.14, and the primary
 branch passed the stronger staged quality profile on 3.14. The E2E scenario now also
 rejects a staged TLS bypass hidden by an unstaged fix. These measurements belong to
 their recorded snapshots, not every later commit.
