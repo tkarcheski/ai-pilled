@@ -2,7 +2,9 @@
 
 Codex-first quality checks for Git repositories. ai-pilled uses itself as its first target.
 
-The approved backlog is preserved in [docs/FEATURES.md](docs/FEATURES.md). The initial
+The approved backlog is preserved in [docs/FEATURES.md](docs/FEATURES.md).
+[Feature evidence and activation status](docs/STATUS.md) tracks what is implemented,
+what was verified, and what still requires deployment. The initial
 prototype's installation and provider claims were not reliable. The list below describes
 the running implementation, not the entire backlog.
 
