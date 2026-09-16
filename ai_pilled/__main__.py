@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 
 from . import codex_hooks
+from .codex_review import review
 from .lifecycle import handle, read_payload
 from .checks import command_check
 from .git_hooks import dispatch, install, uninstall
@@ -20,6 +21,7 @@ def main(argv=None):
     security.add_argument('--scope', choices=['staged', 'worktree'], default='staged')
     check = commands.add_parser('check', help='Run a configured quality command')
     check.add_argument('name', choices=['test', 'lint', 'typecheck', 'deadcode', 'coverage', 'dependency'])
+    commands.add_parser('review', help='Review the staged snapshot with Codex')
     commands.add_parser('lifecycle')
     commands.add_parser('install-codex-hooks')
     commands.add_parser('uninstall-codex-hooks')
@@ -33,7 +35,9 @@ def main(argv=None):
         if args.command == 'lifecycle':
             print(json.dumps(handle(args.repo, read_payload(sys.stdin))))
             return 0
-        if args.command == 'install-codex-hooks':
+        if args.command == 'review':
+            report = review(args.repo)
+        elif args.command == 'install-codex-hooks':
             report = codex_hooks.install(args.repo)
         elif args.command == 'uninstall-codex-hooks':
             report = codex_hooks.uninstall(args.repo)
