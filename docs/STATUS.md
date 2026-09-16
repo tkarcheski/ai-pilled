@@ -254,6 +254,10 @@ also validate the opened descriptor as a regular file. Coverage/README replaceme
 symlinks are rejected; no external content is accepted as local evidence or copied
 into generated documentation. These checks retain their explicit read-size limits.
 
+History reads and writes reject multiply linked files. Appending cannot alter another
+file through a hard link, and successful writes enforce mode 0600 on the validated
+history descriptor. Rejected links retain their contents and permissions.
+
 History readers/writers, hook installers, and performance baselines wait at most two
 seconds for cooperative locks. Busy locks return an explicit unavailable result;
 contention never deletes a lock, appends partial history, runs a benchmark, or enters

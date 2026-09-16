@@ -1,5 +1,6 @@
 import fcntl
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -168,3 +169,29 @@ class ReportingTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), before)
         record(self.repo, Report('other'), 'after-release')
         self.assertEqual(len(history(self.repo)), 2)
+
+    def test_hard_linked_history_never_changes_the_other_file_or_its_mode(self):
+        state = self.repo / '.ai-pilled'
+        state.mkdir()
+        outside = self.repo / 'unrelated'
+        outside.write_text('preserve this file\n')
+        outside.chmod(0o644)
+        path = state / 'events.jsonl'
+        os.link(outside, path)
+        before = outside.read_bytes()
+        with self.assertRaisesRegex(CommandError, 'hard link'):
+            record(self.repo, Report('test'), 'blocked')
+        with self.assertRaisesRegex(CommandError, 'hard link'):
+            history(self.repo)
+        self.assertEqual(outside.read_bytes(), before)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(outside.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(path.stat().st_ino, outside.stat().st_ino)
+
+    def test_appended_history_is_private_even_if_existing_mode_was_broadened(self):
+        record(self.repo, Report('test'), 'first')
+        path = self.repo / '.ai-pilled/events.jsonl'
+        path.chmod(0o644)
+        record(self.repo, Report('test'), 'second')
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual([item['event'] for item in history(self.repo)], ['first', 'second'])

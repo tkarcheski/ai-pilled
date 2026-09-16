@@ -36,7 +36,12 @@ def record(repo, report, event):
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise CommandError('Local history must be a regular file')
         acquire_lock(stream, fcntl.LOCK_EX)
-        size = os.fstat(stream.fileno()).st_size
+        metadata = os.fstat(stream.fileno())
+        if metadata.st_nlink != 1:
+            raise CommandError('Local history must have exactly one hard link')
+        # This descriptor is a private history file, never a shared inode or symlink.
+        os.fchmod(stream.fileno(), 0o600)
+        size = metadata.st_size
         if size + len(encoded) > MAX_HISTORY_BYTES:
             offset = max(0, size - MAX_HISTORY_BYTES)
             stream.seek(offset)
@@ -68,6 +73,8 @@ def history(repo):
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise CommandError('Local history must be a regular file')
         acquire_lock(stream, fcntl.LOCK_SH)
+        if os.fstat(stream.fileno()).st_nlink != 1:
+            raise CommandError('Local history must have exactly one hard link')
         content = stream.read(MAX_HISTORY_BYTES + 1)
         if len(content) > MAX_HISTORY_BYTES:
             raise CommandError('Local history exceeds the size limit; archive it before reading')
