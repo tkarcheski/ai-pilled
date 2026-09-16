@@ -55,3 +55,12 @@ class PythonPatternTests(unittest.TestCase):
             self.assertEqual(result.status, 'fail', expression)
             self.assertEqual(result.findings[0].rule, 'environment-dump')
         self.assertEqual(self.inspect("import os\nprint(f\"home: {os.environ.get('HOME')}\")").status, 'pass')
+
+    def test_deep_expression_is_inspected_without_recursive_traversal(self):
+        for expression, status in (('os.environ', 'fail'), ('"ordinary"', 'pass')):
+            code = 'import os\nprint(' + expression + ' + ""' * 1200 + ')'
+            with self.subTest(expression=expression):
+                result = self.inspect(code)
+                self.assertEqual(result.status, status)
+                if status == 'fail':
+                    self.assertEqual(result.findings[0].rule, 'environment-dump')
