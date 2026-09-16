@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 import fcntl
 from .locking import acquire_lock
+import hashlib
 import json
 from .json_data import loads
 import os
@@ -28,23 +29,37 @@ def groups(repo):
             ('Stop', '', 180, 'test results'))}
 
 
-def read_object(path):
+def read_snapshot(path):
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(fd, 'rb') as stream:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            metadata = os.fstat(stream.fileno())
+            if not stat.S_ISREG(metadata.st_mode):
                 raise CommandError('Codex configuration must be a regular file')
             content = stream.read(1_000_001)
+            after = os.fstat(stream.fileno())
+            if fingerprint(metadata) != fingerprint(after):
+                raise CommandError('Codex configuration changed while reading')
         if len(content) > 1_000_000:
             raise CommandError('Codex configuration exceeds the 1 MB size limit')
         data = loads(content)
     except FileNotFoundError:
-        return {}
+        return {}, None
     except (OSError, ValueError) as exc:
         raise CommandError('Cannot read valid regular JSON configuration') from exc
     if not isinstance(data, dict):
         raise CommandError('Configuration must be a JSON object')
-    return data
+    return data, (*fingerprint(after), hashlib.sha256(content).hexdigest())
+
+
+def fingerprint(metadata):
+    return (metadata.st_dev, metadata.st_ino, metadata.st_size,
+            metadata.st_mtime_ns, metadata.st_ctime_ns)
+
+
+def require_unchanged(path, snapshot):
+    if read_snapshot(path)[1] != snapshot:
+        raise CommandError('Codex configuration changed concurrently; retry after reconciling edits')
 
 
 def render_object(data):
@@ -80,26 +95,26 @@ def validate_hooks(data):
 
 
 def read_installation(path, root):
-    if not path.exists() and not path.is_symlink():
-        return None
-    data = read_object(path)
+    data, snapshot = read_snapshot(path)
+    if snapshot is None:
+        return None, None
     current = groups(root)
     legacy = groups(root)
     legacy['PostToolUse'][0]['matcher'] = 'Bash|apply_patch|Write|Edit'
     legacy['PostToolUse'][0]['hooks'][0]['statusMessage'] = 'ai-pilled: credential scan'
     if set(data) != {'groups'} or data['groups'] not in (current, legacy):
         raise CommandError('Installation metadata differs from this runtime; use the original runtime or reconcile manually')
-    return data
+    return data, snapshot
 
 
 def install(repo):
     with locked(repo) as (root, state):
         path = root / '.codex' / 'hooks.json'
         manifest_path = state / 'codex-installation.json'
-        data = read_object(path)
+        data, config_snapshot = read_snapshot(path)
         hooks = validate_hooks(data)
         desired = groups(root)
-        previous = read_installation(manifest_path, root)
+        previous, manifest_snapshot = read_installation(manifest_path, root)
         if previous:
             if previous['groups'] != desired:
                 raise CommandError('Owned hook definitions changed; uninstall and reinstall to review the new definitions')
@@ -114,9 +129,32 @@ def install(repo):
             data['hooks'] = hooks
             rendered = render_object(data)
             manifest = render_object({'groups': desired})
-            # A manifest written first lets a later invocation detect an interrupted install.
-            atomic_text(manifest_path, manifest)
-            atomic_text(path, rendered)
+            # Never replace ownership metadata created by a concurrent writer.
+            owned_identity = atomic_text(manifest_path, manifest, exclusive=True)
+            _, owned_snapshot = read_snapshot(manifest_path)
+            if (owned_snapshot is None or owned_snapshot[:2] != owned_identity
+                    or owned_snapshot[-1] != hashlib.sha256(manifest.encode()).hexdigest()):
+                raise CommandError('Codex installation metadata changed concurrently')
+            publishing = False
+
+            def guard():
+                nonlocal publishing
+                require_unchanged(path, config_snapshot)
+                require_unchanged(manifest_path, owned_snapshot)
+                publishing = True
+
+            try:
+                atomic_text(path, rendered, before_publish=guard)
+            except (OSError, CommandError):
+                # Keep recovery metadata if publication may have succeeded.
+                try:
+                    if not publishing or read_snapshot(path)[1] == config_snapshot:
+                        require_unchanged(manifest_path, owned_snapshot)
+                        manifest_path.unlink()
+                except (OSError, CommandError):
+                    pass
+                raise
+            require_unchanged(manifest_path, owned_snapshot)
     result = Report('install-codex-hooks')
     # Installation is complete, activation remains explicitly separate.
     result.findings = []
@@ -127,10 +165,10 @@ def uninstall(repo):
     with locked(repo) as (root, state):
         path = root / '.codex' / 'hooks.json'
         manifest_path = state / 'codex-installation.json'
-        previous = read_installation(manifest_path, root)
+        previous, manifest_snapshot = read_installation(manifest_path, root)
         if not previous:
             return Report('uninstall-codex-hooks')
-        data = read_object(path)
+        data, config_snapshot = read_snapshot(path)
         hooks = validate_hooks(data)
         for event, entries in previous.get('groups', {}).items():
             for group in entries:
@@ -142,6 +180,11 @@ def uninstall(repo):
             if not hooks[event]:
                 del hooks[event]
         data['hooks'] = hooks
-        atomic_text(path, render_object(data))
+        def guard():
+            require_unchanged(path, config_snapshot)
+            require_unchanged(manifest_path, manifest_snapshot)
+
+        atomic_text(path, render_object(data), before_publish=guard)
+        require_unchanged(manifest_path, manifest_snapshot)
         manifest_path.unlink()
     return Report('uninstall-codex-hooks')

@@ -81,7 +81,7 @@ def history(repo):
         return [loads(line) for line in content.splitlines() if line.strip()]
 
 
-def atomic_text(path, text, mode=0o600):
+def atomic_text(path, text, mode=0o600, *, before_publish=None, exclusive=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(dir=path.parent)
     temporary = Path(name)
@@ -89,7 +89,14 @@ def atomic_text(path, text, mode=0o600):
         with os.fdopen(fd, 'w') as stream:
             stream.write(text)
             os.fchmod(stream.fileno(), mode)
-        os.replace(temporary, path)
+            metadata = os.fstat(stream.fileno())
+        if before_publish is not None:
+            before_publish()
+        if exclusive:
+            os.link(temporary, path)
+        else:
+            os.replace(temporary, path)
+        return metadata.st_dev, metadata.st_ino
     finally:
         temporary.unlink(missing_ok=True)
 

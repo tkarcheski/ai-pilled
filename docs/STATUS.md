@@ -123,6 +123,15 @@ do not claim isolation from every hostile parent-directory race.
 Commit-message, installation-manifest, and owned-hook reads require bounded regular
 files (64 KB); rejected special/oversized files leave hooks and Git configuration intact.
 
+Codex hook installation also creates ownership metadata exclusively and checks bounded
+configuration snapshots immediately before publication. Detected concurrent edits and
+symlink replacements are preserved. Failed writes remove only unchanged metadata owned
+by that attempt; uncertain successful publication retains it for recovery. Uninstall
+checks both snapshots before rewriting and preserves changed metadata before deletion.
+These checks do not make the two files an atomic transaction or prevent every race by
+noncooperating writers. Regression tests cover concurrent edits, metadata replacement,
+write failure, uncertain completion, and symlink targets on Python 3.10 and 3.14.
+
 **Activation / limits:** Git commit/push scanning is active here. Codex hook files
 are installed, but live trust/activation has not been verified. A manual lifecycle
 smoke test passed. AST checks are conservative Python patterns, not whole-program

@@ -162,3 +162,121 @@ class CodexInstallTests(unittest.TestCase):
             install(self.repo)
         self.assertEqual(self.path.read_text(), content)
         self.assertFalse((self.repo / '.ai-pilled' / 'codex-installation.json').exists())
+
+    def test_install_preserves_concurrent_configuration_edit_and_allows_retry(self):
+        from ai_pilled.state import atomic_text
+        changed = dict(self.original, description='concurrent edit')
+
+        def publish(path, text, *args, **kwargs):
+            result = atomic_text(path, text, *args, **kwargs)
+            if path.name == 'codex-installation.json':
+                self.path.write_text(json.dumps(changed))
+            return result
+
+        with patch('ai_pilled.codex_hooks.atomic_text', side_effect=publish):
+            with self.assertRaisesRegex(CommandError, 'concurrently'):
+                install(self.repo)
+        self.assertEqual(json.loads(self.path.read_text()), changed)
+        self.assertFalse((self.repo / '.ai-pilled' / 'codex-installation.json').exists())
+        install(self.repo)
+        uninstall(self.repo)
+        self.assertEqual(json.loads(self.path.read_text()), changed)
+
+    def test_install_does_not_replace_concurrent_manifest(self):
+        from ai_pilled.state import atomic_text
+
+        def publish(path, text, *args, **kwargs):
+            if path.name == 'codex-installation.json':
+                path.write_text('concurrent metadata')
+            return atomic_text(path, text, *args, **kwargs)
+
+        with patch('ai_pilled.codex_hooks.atomic_text', side_effect=publish):
+            with self.assertRaises(FileExistsError):
+                install(self.repo)
+        self.assertEqual(json.loads(self.path.read_text()), self.original)
+        self.assertEqual((self.repo / '.ai-pilled' / 'codex-installation.json').read_text(),
+                         'concurrent metadata')
+
+    def test_install_uncertain_completion_retains_recovery_manifest(self):
+        from ai_pilled.state import atomic_text
+
+        def publish(path, text, *args, **kwargs):
+            result = atomic_text(path, text, *args, **kwargs)
+            if path == self.path:
+                raise OSError('completion lost')
+            return result
+
+        with patch('ai_pilled.codex_hooks.atomic_text', side_effect=publish):
+            with self.assertRaises(OSError):
+                install(self.repo)
+        self.assertTrue((self.repo / '.ai-pilled' / 'codex-installation.json').exists())
+        install(self.repo)
+        uninstall(self.repo)
+        self.assertEqual(json.loads(self.path.read_text()), self.original)
+
+    def test_uninstall_preserves_concurrent_configuration_edit(self):
+        from ai_pilled.state import atomic_text
+        install(self.repo)
+        changed = json.loads(self.path.read_text())
+        changed['description'] = 'concurrent edit'
+
+        def publish(path, text, *args, **kwargs):
+            if path == self.path:
+                path.write_text(json.dumps(changed))
+            return atomic_text(path, text, *args, **kwargs)
+
+        with patch('ai_pilled.codex_hooks.atomic_text', side_effect=publish):
+            with self.assertRaisesRegex(CommandError, 'concurrently'):
+                uninstall(self.repo)
+        self.assertEqual(json.loads(self.path.read_text()), changed)
+        self.assertTrue((self.repo / '.ai-pilled' / 'codex-installation.json').exists())
+
+    def test_uninstall_does_not_delete_replaced_manifest(self):
+        from ai_pilled.state import atomic_text
+        install(self.repo)
+        manifest = self.repo / '.ai-pilled' / 'codex-installation.json'
+
+        def publish(path, text, *args, **kwargs):
+            result = atomic_text(path, text, *args, **kwargs)
+            if path == self.path:
+                manifest.write_text('concurrent metadata')
+            return result
+
+        with patch('ai_pilled.codex_hooks.atomic_text', side_effect=publish):
+            with self.assertRaises(CommandError):
+                uninstall(self.repo)
+        self.assertEqual(manifest.read_text(), 'concurrent metadata')
+        self.assertEqual(json.loads(self.path.read_text()), self.original)
+
+    def test_install_failed_configuration_write_removes_owned_manifest(self):
+        from ai_pilled.state import atomic_text
+
+        def publish(path, text, *args, **kwargs):
+            if path == self.path:
+                raise OSError('write failed')
+            return atomic_text(path, text, *args, **kwargs)
+
+        with patch('ai_pilled.codex_hooks.atomic_text', side_effect=publish):
+            with self.assertRaises(OSError):
+                install(self.repo)
+        self.assertEqual(json.loads(self.path.read_text()), self.original)
+        self.assertFalse((self.repo / '.ai-pilled' / 'codex-installation.json').exists())
+
+    def test_install_preserves_concurrent_symlink_and_its_target(self):
+        from ai_pilled.state import atomic_text
+        target = self.repo / 'user.json'
+        target.write_text(json.dumps(self.original))
+
+        def publish(path, text, *args, **kwargs):
+            result = atomic_text(path, text, *args, **kwargs)
+            if path.name == 'codex-installation.json':
+                self.path.unlink()
+                self.path.symlink_to(target)
+            return result
+
+        with patch('ai_pilled.codex_hooks.atomic_text', side_effect=publish):
+            with self.assertRaises(CommandError):
+                install(self.repo)
+        self.assertTrue(self.path.is_symlink())
+        self.assertEqual(json.loads(target.read_text()), self.original)
+        self.assertFalse((self.repo / '.ai-pilled' / 'codex-installation.json').exists())
