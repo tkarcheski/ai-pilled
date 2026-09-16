@@ -26,10 +26,10 @@ def groups(repo):
 
 
 def read_object(path):
-    if not path.exists():
-        return {}
     if path.is_symlink():
         raise CommandError('Refusing symlink configuration file')
+    if not path.exists():
+        return {}
     try:
         data = json.loads(path.read_text())
     except (OSError, ValueError) as exc:
@@ -58,6 +58,15 @@ def validate_hooks(data):
     return hooks
 
 
+def read_installation(path, root):
+    if not path.exists() and not path.is_symlink():
+        return None
+    data = read_object(path)
+    if set(data) != {'groups'} or data['groups'] != groups(root):
+        raise CommandError('Installation metadata differs from this runtime; use the original runtime or reconcile manually')
+    return data
+
+
 def install(repo):
     with locked(repo) as (root, state):
         path = root / '.codex' / 'hooks.json'
@@ -65,10 +74,8 @@ def install(repo):
         data = read_object(path)
         hooks = validate_hooks(data)
         desired = groups(root)
-        previous = read_object(manifest_path)
+        previous = read_installation(manifest_path, root)
         if previous:
-            if previous.get('groups') != desired:
-                raise CommandError('Installation source changed; uninstall old hooks before reinstalling')
             if any(hooks.get(event, []).count(group) != 1
                    for event, entries in desired.items() for group in entries):
                 raise CommandError('Installed Codex hooks were edited; preserve and reconcile manually')
@@ -91,7 +98,7 @@ def uninstall(repo):
     with locked(repo) as (root, state):
         path = root / '.codex' / 'hooks.json'
         manifest_path = state / 'codex-installation.json'
-        previous = read_object(manifest_path)
+        previous = read_installation(manifest_path, root)
         if not previous:
             return Report('uninstall-codex-hooks')
         data = read_object(path)

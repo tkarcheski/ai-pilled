@@ -78,3 +78,31 @@ class CodexInstallTests(unittest.TestCase):
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)['hookSpecificOutput']['hookEventName'], 'SessionStart')
+
+    def test_forged_manifest_cannot_authorize_removing_unrelated_hooks(self):
+        install(self.repo)
+        before = self.path.read_text()
+        manifest = self.repo / '.ai-pilled' / 'codex-installation.json'
+        manifest.write_text(json.dumps({'groups': self.original['hooks']}))
+        with self.assertRaises(CommandError):
+            uninstall(self.repo)
+        self.assertEqual(self.path.read_text(), before)
+
+    def test_invalid_installation_metadata_is_preserved(self):
+        install(self.repo)
+        before = self.path.read_text()
+        manifest = self.repo / '.ai-pilled' / 'codex-installation.json'
+        for data in ({}, {'groups': []}, {'groups': {}}, {'other': 'field'}):
+            manifest.write_text(json.dumps(data))
+            for operation in (install, uninstall):
+                with self.assertRaises(CommandError):
+                    operation(self.repo)
+            self.assertEqual(self.path.read_text(), before)
+            self.assertEqual(json.loads(manifest.read_text()), data)
+
+    def test_dangling_hook_configuration_symlink_is_preserved(self):
+        self.path.unlink()
+        self.path.symlink_to(self.repo / 'missing')
+        with self.assertRaises(CommandError):
+            install(self.repo)
+        self.assertTrue(self.path.is_symlink())
