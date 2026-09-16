@@ -1,7 +1,8 @@
 # Continuous integration and local parity
 
-The GitHub workflow is prepared on the local `codex/ai-pilled-ci-pending` branch,
-at `6983aae`, including implementation baseline `a70e381`. Inspect its exact file:
+The GitHub workflow is prepared on the local `codex/ai-pilled-ci-pending` branch.
+The recorded validation below covers snapshot `6983aae` and implementation baseline
+`a70e381`. Inspect the current proposal file:
 
 ```sh
 git show codex/ai-pilled-ci-pending:.github/workflows/quality.yml
@@ -26,8 +27,10 @@ workflow or scheduled background job is configured.
 The jobs create isolated development and pip-audit environments. Development tools
 come from `requirements-dev.txt`; the separate audit tool is pinned to pip-audit 2.10.1.
 Installation permits wheels only. Runtime ai-pilled remains standard-library based.
-The audit tool's transitive installation dependencies are resolver-selected; this is
-not a claim of a fully hash-locked CI toolchain. The prepared workflow now enforces
+At that recorded snapshot, the audit tool’s transitive dependencies were resolver-selected.
+The current primary checkout additionally provides `requirements-audit.txt`, with a
+verified 28-package hash lock; the reproduction commands below use that newer lock.
+Python, pip, and ensurepip bootstrap packages remain outside these dependency locks. The prepared workflow now enforces
 `--require-hashes` for the ten development packages. Fresh Python 3.10 and 3.14 installs
 verified their wheel hashes and passed `pip check`.
 
@@ -72,7 +75,7 @@ export PYTHONDONTWRITEBYTECODE=1
 python -m venv .ai-pilled/tools
 .ai-pilled/tools/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.txt
 python -m venv .ai-pilled/python-audit-tools
-.ai-pilled/python-audit-tools/bin/python -m pip install --only-binary=:all: pip-audit==2.10.1
+.ai-pilled/python-audit-tools/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements-audit.txt
 python -m ai_pilled quality > .ai-pilled/quality.json
 python scripts/run_e2e.py
 ```

@@ -114,7 +114,8 @@ files or tools block completion. `"audit_dependencies_on_change": true` also ena
 post-tool auditing; it reuses complete pass/fail evidence for unchanged pins for at
 most one hour, while incomplete results are retried with a 30-second provider limit.
 Quality and staged checks always obtain fresh evidence. Neither path installs or
-upgrades packages. This repository enables these options for its development pins.
+upgrades packages. This repository enables these options for both `requirements-dev.txt` and
+`requirements-audit.txt`, auditing 36 distinct development and audit-tool pins.
 
 Run `python -m ai_pilled python-health --python .venv/bin/python` to inspect a trusted
 Python environment and check missing/incompatible dependencies. Pip23+ with inspect
@@ -557,7 +558,10 @@ Development requirements pin ten packages and published wheel SHA256 digests.
 Fresh Python 3.10 and 3.14 installs pass hash verification and `pip check`; the explicit
 `tomli` pin covers mypy’s Python 3.10 dependency. Hashes come from version-specific
 [PyPI release metadata](https://docs.pypi.org/api/json/); refresh pins and wheel digests
-together and validate fresh installs when updating tools.
+together and validate fresh installs when updating tools. `requirements-audit.txt`
+separately locks pip-audit 2.10.1 and its 28-package dependency closure; fresh installs
+and live combined audits pass on both supported runtimes. Python, pip, and ensurepip
+bootstrap packages are outside these dependency locks.
 
 Install the pinned tools into the ignored project-local environment before running
 the full quality profile:
@@ -565,6 +569,8 @@ the full quality profile:
 ~~~sh
 python -m venv .ai-pilled/tools
 .ai-pilled/tools/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.txt
+python -m venv .ai-pilled/python-audit-tools
+.ai-pilled/python-audit-tools/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements-audit.txt
 python -m ai_pilled quality
 ~~~
 

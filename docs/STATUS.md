@@ -124,16 +124,16 @@ required hosted checks are separate controls and have not been configured or cla
 | Python environment health | `python-health --python PATH`; `pip inspect` plus `pip check` | `test_python_health.py`; isolated interpreter prevents repository `pip.py` shadowing. Environment fingerprint must remain stable. Interpreter/startup environment must be trusted. |
 | Python updates | Optional `python-health --outdated`, confirmed per-package PyPI queries | Failed/unknown lookups remain incomplete. A reproduced `pip list --outdated` empty-success case motivated explicit index queries. Private/unpublished versions require manual comparison. |
 | Python licenses | `python-licenses --python PATH --allow EXPRESSION` | Exact declared expression matching. Missing, unknown, or prose-only metadata remains incomplete. No inferred SPDX evaluation or legal analysis. |
-| Automatic auditing | `python_requirements` and `python_audit_executable` in quality; `audit_dependencies_on_change` in PostToolUse | Enabled here for `requirements-dev.txt`. Quality obtains fresh results; lifecycle may reuse complete matching evidence for at most one hour. Failures stay blocking; incomplete checks are retried with a 30-second provider limit. |
+| Automatic auditing | `python_requirements` and `python_audit_executable` in quality; `audit_dependencies_on_change` in PostToolUse | Enabled here for `requirements-dev.txt` and `requirements-audit.txt` (36 distinct pins). Quality obtains fresh results; lifecycle may reuse complete matching evidence for at most one hour. Failures stay blocking; incomplete checks are retried with a 30-second provider limit. |
 
-**Live dogfood evidence:** the original nine development pins passed pip-audit 2.10.1
-with zero advisories. The current hash lock adds the missing Python 3.10 `tomli` pin:
-all ten packages install successfully from hash-verified wheels in fresh Python 3.10
-and 3.14 environments, with `pip check` passing on both. The live audit of the current
-hash lock checked all ten pins with zero advisories. A separate, never-installed `requests==2.19.1` fixture produced ten
-advisories and failed as expected. The development environment health check inspected
-ten installed packages, confirmed ten PyPI version queries, and found no conflicts
-or updates. Manual PostToolUse correctly reused the fresh matching audit.
+**Live dogfood evidence:** both development (ten packages) and audit-tool (28 packages)
+locks install from hash-verified wheels in fresh Python 3.10 and 3.14 environments,
+with `pip check` passing. Each freshly installed auditor checked the combined 36 distinct
+pins with zero advisories. The development lock explicitly includes the previously
+missing Python 3.10 `tomli` dependency. A separate, never-installed `requests==2.19.1`
+fixture produced ten advisories and failed as expected. Earlier environment health
+checks confirmed package consistency and PyPI update evidence; these are distinct
+from the current lock audit. Manual PostToolUse reused matching fresh audit evidence.
 
 **Scope limits:** only explicitly listed exact pins are audited. Transitive closure is
 not inferred. Ranges, markers, extras, URLs, recursive includes, editable installs,
@@ -141,8 +141,9 @@ and unsupported options are rejected. Exact-pin exports with repeated SHA256 has
 and bounded continuations are supported; hashes are syntax-checked and fingerprinted,
 not downloaded or verified against artifact bytes. Joined credential and changed-hash
 regressions block provider calls or stale evidence.
-The standalone audit tool's own environment is separate from the selected development
-requirements. Python health needs pip inspect schema 1; update queries additionally
+The auditor runs in a separate environment, with its dependency lock included in
+the selected audit scope. Python, pip, and ensurepip bootstrap packages remain outside
+these locks. Python health needs pip inspect schema 1; update queries additionally
 need pip's JSON index output. Health/license execution requires an explicit interpreter.
 
 ### 5. Tool-chain summaries — implemented, lifecycle activation unverified
@@ -237,7 +238,7 @@ return incomplete without running refactor or replacing the original file.
 | Done | Isolate disposable operations from inherited Git routing | Reproduced a refactor credential-export bypass and healing candidate misrouting. Candidate scans/quality now isolate routing; real fixtures verify rejection and preservation of original HEAD/index/worktree. Model review already strips Git variables from its subprocess environment. |
 | Done | Product-generated follow-up suggestions | `suggest` prioritizes recorded failures and missing configuration, labels historical evidence, and gives explicit next check commands. It performs no checks or external actions; eight targeted tests cover ordering, nested evidence, redaction, and safe integration follow-ups. |
 | Done | Support SHA256 requirement exports | Exact pins with repeated hashes and bounded continuations; malformed syntax, split credentials, and changed hashes are covered. No setup code runs. Other lock formats and conditional dependency resolution remain outside scope. |
-| P2 | Hash-pin the audit tool’s transitive dependencies | Development pins are hash-verified; the separate pip-audit environment still resolves its own dependencies. Pin the closure and verify fresh installs on both supported runtimes before claiming a locked toolchain. |
+| Done | Hash-pin and audit the auditor’s dependencies | Separate 28-package lock, fresh hash-enforced wheel installs on 3.10/3.14, and zero advisories across 36 distinct combined pins. Interpreter/pip/ensurepip bootstrap remains outside the lock. |
 | P2 | Verify live Codex lifecycle and dashboard appearance | Demonstrate actual events and visual output in the allowed environment; installed files/unit tests are insufficient activation evidence. |
 | P3 | Hosted provider acceptance | Explicit target and authorization before real notifications, release publication, merging, or rollback; capture provider IDs/results once exercised. |
 | Deferred | GitLab, prerelease policy, package publishing, external bounty workflow | Keep planned until their scope and target are selected; do not present fixture coverage as live completion. |

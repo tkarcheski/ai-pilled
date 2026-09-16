@@ -82,7 +82,8 @@
   "aggressiveness": "strict",
   "review_checks_on_commit": true,
   "python_requirements": [
-    "requirements-dev.txt"
+    "requirements-dev.txt",
+    "requirements-audit.txt"
   ],
   "python_audit_executable": ".ai-pilled/python-audit-tools/bin/pip-audit",
   "audit_dependencies_on_change": true
