@@ -43,6 +43,30 @@
     "coverage": [
       ".ai-pilled/tools/bin/python",
       "scripts/check_coverage.py"
+    ],
+    "simplify": [
+      ".ai-pilled/tools/bin/ruff",
+      "check",
+      "--isolated",
+      "--no-cache",
+      "--fix",
+      "--select",
+      "F401",
+      "ai_pilled",
+      "tests",
+      "scripts"
+    ],
+    "repair": [
+      ".ai-pilled/tools/bin/ruff",
+      "check",
+      "--isolated",
+      "--no-cache",
+      "--fix",
+      "--select",
+      "E4,E7,E9,F",
+      "ai_pilled",
+      "tests",
+      "scripts"
     ]
   },
   "protected_branches": [

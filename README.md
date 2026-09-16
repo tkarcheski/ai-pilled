@@ -161,6 +161,26 @@ After an unconfirmed result, inspect the destination before retrying. No notific
 sent by hooks, and no schedule is installed. Transport behavior is tested with fakes;
 credentials and delivery to a real recipient must be verified separately.
 
+## Nightly refactoring (explicit foreground mode)
+
+After configuring and verifying refactor, run nightly-refactor --at 03:00 --timezone
+America/Chicago for one due-time check. Before that local wall time it waits; at or after
+it, the command attempts one refactor per calendar date. It exports verified patches
+through the same disposable workflow and never applies, commits, or pushes them.
+
+Add --watch to keep checking once per minute in the foreground until Ctrl-C. This does
+not install a daemon, cron entry, system service, or Codex automation. Nothing recurs
+unless that foreground process is deliberately started and kept running. Missed dates
+are not replayed. A skipped spring-forward time runs after the clock jumps ahead; the
+repeated fall-back hour does not run twice.
+
+Attempts are serialized with a nonblocking repository lock and recorded before work.
+Restarting after failure or interruption does not silently repeat that day's commands.
+Inspect the prior result and any generated patch before using --retry for a deliberate
+same-day retry. Changing the time or timezone selects a separate schedule. Schedule state
+and patches stay under ignored .ai-pilled/. Tests use controlled clocks and fake refactors;
+no recurring process is active as part of this repository's setup.
+
 ## Refactor in a disposable checkout
 
 Configure commands.simplify and commands.repair as trusted argument arrays, plus
@@ -169,6 +189,10 @@ The workflow runs simplify, repair, credential checks, and the configured qualit
 in a temporary local clone. It exports a private patch under the ignored .ai-pilled/
 directory only after all gates pass. Review and apply that patch explicitly; the workflow
 does not modify the source checkout, commit, push, or schedule itself.
+
+This repository configures Ruff unused-import cleanup for simplify and safe Ruff fixes
+for repair; the strict quality profile validates the result. These are deterministic
+cleanup steps and do not launch another model.
 
 Commands cannot change HEAD or the quality configuration. Relative executable paths
 may use the source checkout's local tools, preserving virtual environments; command
@@ -414,15 +438,15 @@ MIT license.
 
 Generated from the installed CLI and project check configuration.
 
-Quality profile: **strict**. Configured commands: benchmark, coverage, deadcode, lint, test, typecheck.
+Quality profile: **strict**. Configured commands: benchmark, coverage, deadcode, lint, repair, simplify, test, typecheck.
 Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
@@ -436,6 +460,7 @@ positional arguments:
     prepare-release     Validate readiness and write VERSION/CHANGELOG.md
     publish-release     Verify an existing release tag; publish only with --publish
     update-readme       Refresh a generated README command reference
+    nightly-refactor    Run a due daily refactor or watch explicitly in the foreground
     refactor            Run configured refactor steps in a disposable clone and export a
                         patch
     auto-merge          Inspect a pinned GitHub PR; enable only with --enable

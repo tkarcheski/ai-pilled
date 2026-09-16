@@ -26,6 +26,7 @@ from .full_audit import full_audit
 from .healing import heal
 from .merging import auto_merge
 from .publishing import publish_release
+from .scheduling import nightly_refactor, watch
 
 
 def build_parser():
@@ -70,6 +71,12 @@ def build_parser():
     readme = commands.add_parser('update-readme', help='Refresh a generated README command reference')
     readme.add_argument('--path', default='README.md')
     readme.add_argument('--check', action='store_true')
+    nightly = commands.add_parser('nightly-refactor', help='Run a due daily refactor or watch explicitly in the foreground')
+    nightly.add_argument('--at', default='03:00')
+    nightly.add_argument('--timezone', default='UTC')
+    nightly_mode = nightly.add_mutually_exclusive_group()
+    nightly_mode.add_argument('--watch', action='store_true')
+    nightly_mode.add_argument('--retry', action='store_true')
     commands.add_parser('refactor', help='Run configured refactor steps in a disposable clone and export a patch')
     merging = commands.add_parser('auto-merge', help='Inspect a pinned GitHub PR; enable only with --enable')
     merging.add_argument('--github-repo', required=True)
@@ -120,6 +127,8 @@ def main(argv=None):
         if args.command == 'lifecycle':
             print(json.dumps(handle(args.repo, read_payload(sys.stdin))))
             return 0
+        if args.command == 'nightly-refactor' and args.watch:
+            return watch(args.repo, args.at, args.timezone)
         if args.command == 'review':
             report = review(args.repo, args.codex)
         elif args.command == 'update-readme':
@@ -127,6 +136,8 @@ def main(argv=None):
         elif args.command == 'notify':
             report = notify(args.repo, args.provider, send=args.send, github_repo=args.github_repo,
                             issue=args.issue, team=args.team, sender=args.sender, recipient=args.recipient)
+        elif args.command == 'nightly-refactor':
+            report = nightly_refactor(args.repo, args.at, args.timezone, args.retry)
         elif args.command == 'refactor':
             report = refactor(args.repo)
         elif args.command == 'publish-release':
