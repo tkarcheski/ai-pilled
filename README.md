@@ -205,6 +205,14 @@ The base must resolve to an ancestor of HEAD. Without --since, all history is co
 recognizable credentials. This command proposes metadata; it does not modify versions,
 create tags, push, publish packages, or create a GitHub release.
 
+## Generated README reference
+
+Run update-readme to refresh one marked command-reference section without replacing
+handwritten documentation. update-readme --check reports drift without writing the
+file. Existing file permissions are preserved; malformed or duplicate markers and
+symlink paths are rejected. The generated section lists configured check names, never
+private command arguments or historical pass claims.
+
 ## Recorded evidence
 
 `summary` returns one sentence, unresolved checks, a proceed/wait indicator, and the
@@ -243,3 +251,39 @@ tests. Live Codex validation is reported separately; a fake-provider test is not
 account access or model quality.
 
 MIT license.
+
+<!-- ai-pilled:commands:start -->
+## ai-pilled command reference
+
+Generated from the installed CLI and project check configuration.
+
+Quality profile: **normal**. Configured commands: benchmark, coverage, deadcode, lint, test, typecheck.
+Configuration is not proof that checks passed; use quality to run them.
+
+~~~text
+usage: ai-pilled [-h] [--repo REPO]
+                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,update-readme,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+
+positional arguments:
+  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,update-readme,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+    scan                Scan the Git index or working tree for credentials
+    check               Run a configured quality command
+    review              Review the staged snapshot with Codex
+    dependency-audit    Audit npm lockfile vulnerabilities
+    coverage            Check line coverage from coverage.py JSON
+    bundle              Check built artifacts against a byte budget
+    benchmark           Compare median process time against a local baseline
+    dependency-health   Check installed npm tree and available versions
+    licenses            Match lockfile licenses against an explicit allowlist
+    release-plan        Generate changelog and semantic-version proposal
+    update-readme       Refresh a generated README command reference
+    quality             Run the configured quality profile
+    ready               Validate a clean proposal branch and its quality checks
+    summary             Summarize recorded checks and next steps
+    dashboard           Build an offline check-history dashboard
+
+options:
+  -h, --help            show this help message and exit
+  --repo REPO
+~~~
+<!-- ai-pilled:commands:end -->

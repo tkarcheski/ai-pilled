@@ -50,13 +50,19 @@ def history(repo):
         return [json.loads(line) for line in stream if line.strip()]
 
 
-def atomic_json(path, data):
+
+def atomic_text(path, text, mode=0o600):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        json.dump(data, stream, indent=2)
-        stream.write('\n')
+    fd, name = tempfile.mkstemp(dir=path.parent)
+    temporary = Path(name)
     try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(text)
+            os.fchmod(stream.fileno(), mode)
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def atomic_json(path, data):
+    atomic_text(path, json.dumps(data, indent=2) + '\n')

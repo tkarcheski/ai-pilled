@@ -19,9 +19,10 @@ from .metrics import bundle, coverage
 from .performance import benchmark
 from .pipeline import quality
 from .releases import release_plan
+from .documentation import update_readme
 
 
-def main(argv=None):
+def build_parser():
     parser = argparse.ArgumentParser(prog='ai-pilled')
     parser.add_argument('--repo', type=Path, default=Path.cwd())
     commands = parser.add_subparsers(dest='command', required=True)
@@ -50,6 +51,9 @@ def main(argv=None):
     release = commands.add_parser('release-plan', help='Generate changelog and semantic-version proposal')
     release.add_argument('--current', required=True)
     release.add_argument('--since')
+    readme = commands.add_parser('update-readme', help='Refresh a generated README command reference')
+    readme.add_argument('--path', default='README.md')
+    readme.add_argument('--check', action='store_true')
     commands.add_parser('quality', help='Run the configured quality profile')
     commands.add_parser('ready', help='Validate a clean proposal branch and its quality checks')
     commands.add_parser('summary', help='Summarize recorded checks and next steps')
@@ -62,7 +66,11 @@ def main(argv=None):
     hook = commands.add_parser('hook')
     hook.add_argument('event', choices=['pre-commit', 'commit-msg', 'pre-push'])
     hook.add_argument('arguments', nargs='*')
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
     try:
         if args.command == 'summary':
             print(json.dumps(summarize(args.repo), indent=2))
@@ -75,6 +83,8 @@ def main(argv=None):
             return 0
         if args.command == 'review':
             report = review(args.repo, args.codex)
+        elif args.command == 'update-readme':
+            report = update_readme(args.repo, args.path, args.check)
         elif args.command == 'release-plan':
             report = release_plan(args.repo, args.current, args.since)
         elif args.command == 'dependency-health':
