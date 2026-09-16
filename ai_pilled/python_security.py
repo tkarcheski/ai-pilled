@@ -19,9 +19,13 @@ STANDARD_OUTPUT_CALLS = {
     for method in ('write', 'writelines')
 } | {'sys.displayhook', 'warnings.warn_explicit'}
 
+JWT_DECODE_CALLS = {module + '.' + method
+                    for module in ('jwt', 'jwt.api_jwt', 'jwt.api_jws')
+                    for method in ('decode', 'decode_complete')}
+
 SHELL_KEYWORD_CALLS = {'subprocess.run', 'subprocess.Popen', 'subprocess.call',
                        'subprocess.check_call', 'subprocess.check_output'}
-KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | SHELL_KEYWORD_CALLS | {
+KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | SHELL_KEYWORD_CALLS | JWT_DECODE_CALLS | {
     'yaml.load', 'yaml.load_all', 'hashlib.new', 'hashlib.md5', 'hashlib.sha1'}
 
 SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
@@ -106,26 +110,32 @@ def import_scopes(tree):
     return scopes, bindings, parents
 
 
+def mapping_keywords(value):
+    """Expand one literal mapping; preserve unknown entries and last-key wins."""
+    if not isinstance(value, ast.Dict):
+        return [ast.keyword(arg=None, value=value)]
+    values = {}
+    unknown = []
+    pending = list(reversed(list(zip(value.keys, value.values, strict=True))))
+    while pending:
+        key, item = pending.pop()
+        if key is None and isinstance(item, ast.Dict):
+            pending.extend(reversed(list(zip(item.keys, item.values, strict=True))))
+        elif isinstance(key, ast.Constant) and isinstance(key.value, str):
+            values[key.value] = item
+        else:
+            unknown.append(ast.keyword(arg=None, value=item))
+    return [*(ast.keyword(arg=key, value=item) for key, item in values.items()), *unknown]
+
+
 def call_keywords(node):
     """Expand literal mappings without evaluating source; preserve unknown entries."""
     result = []
     for keyword in node.keywords:
-        if keyword.arg is not None or not isinstance(keyword.value, ast.Dict):
+        if keyword.arg is not None:
             result.append(keyword)
-            continue
-        values = {}
-        unknown = []
-        pending = list(reversed(list(zip(keyword.value.keys, keyword.value.values, strict=True))))
-        while pending:
-            key, value = pending.pop()
-            if key is None and isinstance(value, ast.Dict):
-                pending.extend(reversed(list(zip(value.keys, value.values, strict=True))))
-            elif isinstance(key, ast.Constant) and isinstance(key.value, str):
-                values[key.value] = value
-            else:
-                unknown.append(ast.keyword(arg=None, value=value))
-        result.extend(ast.keyword(arg=key, value=value) for key, value in values.items())
-        result.extend(unknown)
+        else:
+            result.extend(mapping_keywords(keyword.value))
     return result
 
 
@@ -283,6 +293,23 @@ def inspect_python(report, path, content, *, tree=None):
         severity = 'error'
         if name in ('eval', 'exec', 'builtins.eval', 'builtins.exec'):
             rule, message = 'dynamic-code', 'Dynamic code execution requires review; use a constrained parser.'
+        elif name == 'tempfile.mktemp':
+            rule, message = 'insecure-temporary-name', (
+                'Temporary names can be claimed before use; create the file atomically with mkstemp or NamedTemporaryFile.')
+        elif name in JWT_DECODE_CALLS:
+            options = next((keyword.value for keyword in keywords if keyword.arg == 'options'),
+                           node.args[3] if len(node.args) > 3 else None)
+            if options is not None and not (isinstance(options, ast.Constant) and options.value is None):
+                settings = mapping_keywords(options)
+                if any(setting.arg is None or setting.arg == 'verify_signature'
+                       and not isinstance(setting.value, ast.Constant) for setting in settings):
+                    report.add('jwt-options-unresolved',
+                               'JWT signature settings cannot be fully inspected; make verification explicit.',
+                               path=path, line=node.lineno, severity='warning')
+                if any(setting.arg == 'verify_signature' and isinstance(setting.value, ast.Constant)
+                       and not setting.value.value for setting in settings):
+                    rule, message = 'jwt-signature-disabled', (
+                        'JWT signature verification is disabled; do not trust these claims for authorization.')
         elif name in ('pickle.load', 'pickle.loads', '_pickle.load', '_pickle.loads', 'dill.load', 'dill.loads',
                       'pickle.Unpickler.load', '_pickle.Unpickler.load', 'dill.Unpickler.load'):
             rule, message = 'unsafe-deserialization', 'Object deserialization can execute code; do not accept untrusted input.'

@@ -548,3 +548,52 @@ class PythonPatternTests(unittest.TestCase):
                        'import sys, os\nsys.stdout.writelines("public" for _ in items if os.getenv("TOKEN"))'):
             with self.subTest(source=source):
                 self.assertFalse(self.inspect(source).findings)
+
+    def test_insecure_temporary_names_and_aliases_require_review(self):
+        for source in ('import tempfile\ntempfile.mktemp()',
+                       'from tempfile import mktemp as name\nname(suffix=".txt")',
+                       'import tempfile as files\ngetattr(files, "mktemp")()'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('insecure-temporary-name', 2)])
+        for source in ('import tempfile\ntempfile.mkstemp()',
+                       'import tempfile\ntempfile.NamedTemporaryFile(delete=False)',
+                       'from . import tempfile\ntempfile.mktemp()',
+                       'import tempfile\ndef custom(tempfile): return tempfile.mktemp()'):
+            self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_jwt_signature_bypass_calls_and_aliases(self):
+        for source in ('import jwt\njwt.decode(token, options={"verify_signature": False})',
+                       'from jwt import decode_complete as decode\ndecode(token, options={"verify_signature": False})',
+                       'import jwt.api_jws as jwt\njwt.decode(token, key, algorithms, {"verify_signature": False})',
+                       'import jwt\ngetattr(jwt, "decode")(token, **{"options": {**{"verify_signature": False}}})'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('jwt-signature-disabled', 2)])
+        for value in ('0', 'None', '""'):
+            result = self.inspect('import jwt\njwt.decode(token, options={"verify_signature": ' + value + '})')
+            self.assertEqual(result.findings[0].rule, 'jwt-signature-disabled')
+
+    def test_jwt_verified_defaults_literal_overrides_and_unrelated_apis_are_allowed(self):
+        for source in ('import jwt\njwt.decode(token, key, algorithms=["RS256"])',
+                       'import jwt\njwt.decode(token, options=None)',
+                       'import jwt\njwt.decode(token, options={})',
+                       'import jwt\njwt.decode(token, options={"verify_signature": False, **{"verify_signature": True}})',
+                       'from .vendor import jwt\njwt.decode(token, options={"verify_signature": False})',
+                       'import jwt\ndef local(jwt): return jwt.decode(token, options={"verify_signature": False})',
+                       'import jwt\njwt.encode(claims, key)'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_jwt_dynamic_options_produce_incomplete_evidence(self):
+        for options in ('settings', '{**settings}', '{key: False}', '{"verify_signature": enabled}'):
+            with self.subTest(options=options):
+                result = self.inspect('import jwt\njwt.decode(token, options=' + options + ')')
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.findings[0].rule, 'jwt-options-unresolved')
+        result = self.inspect('import jwt\njwt.decode(token, **settings)')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.findings[0].rule, 'python-keywords-unresolved')
+        result = self.inspect('import jwt\njwt.decode(token, options={"verify_signature": False, **settings})')
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual({f.rule for f in result.findings}, {'jwt-options-unresolved', 'jwt-signature-disabled'})

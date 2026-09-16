@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `941aca6`: 535 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `f1167e9`
-passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `941aca6` also passed all seven gates with zero
+The verification baseline is `fdef209`: 557 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `4f1bbab`
+passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `fdef209` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -102,6 +102,14 @@ PRIVATE_KEY, plus AWS access/secret key names, are review signals; ordinary HOME
 and metadata names remain allowed. Lookup fallbacks, conditional result branches,
 boolean results, and assignment expressions are inspected; condition-only credential
 checks do not expose their value. This does not trace separate assignments or arbitrary data flow.
+Temporary-name checks reject `tempfile.mktemp()` and import/getattr aliases while
+allowing atomic temporary-file constructors. PyJWT `decode`/`decode_complete` module
+calls reject literal falsey `options.verify_signature`, including positional options,
+expanded mappings, and aliases. Unknown supplied options or verification expressions
+produce incomplete evidence; literal dictionary overrides retain last-key semantics.
+These checks do not trace separately stored decoder instances or certify claim policy.
+References: [Python temporary-file warning](https://docs.python.org/3/library/tempfile.html#tempfile.mktemp)
+and [PyJWT signature options](https://pyjwt.readthedocs.io/en/latest/usage.html).
 Argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Other referenced conflicting imports
 in one scope are incomplete. Verified defaults/custom CA bundles remain allowed.
 General assignment/rebinding, global/nonlocal mutation, and session-instance data flow
@@ -341,7 +349,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `f1167e9`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.03% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `4f1bbab`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.15% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
