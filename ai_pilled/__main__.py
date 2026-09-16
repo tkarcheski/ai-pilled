@@ -14,6 +14,7 @@ from .runtime import CommandError
 from .security import scan
 from .reporting import dashboard, summarize
 from .state import record
+from .metrics import bundle, coverage
 
 
 def main(argv=None):
@@ -28,6 +29,12 @@ def main(argv=None):
     review_parser.add_argument('--codex', default='codex', help='Codex executable path or command name')
     dependency = commands.add_parser('dependency-audit', help='Audit npm lockfile vulnerabilities')
     dependency.add_argument('--npm', default='npm', help='npm executable path or command name')
+    coverage_parser = commands.add_parser('coverage', help='Check line coverage from coverage.py JSON')
+    coverage_parser.add_argument('--report', required=True)
+    coverage_parser.add_argument('--minimum', type=float, required=True)
+    bundle_parser = commands.add_parser('bundle', help='Check built artifacts against a byte budget')
+    bundle_parser.add_argument('--path', required=True)
+    bundle_parser.add_argument('--maximum', type=int, required=True)
     commands.add_parser('summary', help='Summarize recorded checks and next steps')
     commands.add_parser('dashboard', help='Build an offline check-history dashboard')
     commands.add_parser('lifecycle')
@@ -51,6 +58,10 @@ def main(argv=None):
             return 0
         if args.command == 'review':
             report = review(args.repo, args.codex)
+        elif args.command == 'coverage':
+            report = coverage(args.repo, args.report, args.minimum)
+        elif args.command == 'bundle':
+            report = bundle(args.repo, args.path, args.maximum)
         elif args.command == 'dependency-audit':
             report = audit(args.repo, args.npm)
         elif args.command == 'install-codex-hooks':

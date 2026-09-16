@@ -107,10 +107,28 @@ scan, not a clean bill of health.
 
 Credential matching is a limited deterministic check, not a complete security audit.
 Semantic code review is currently explicit; automatic model review on every commit,
-coverage thresholds, performance baselines, release
+performance baselines, release
 workflows, notifications, and other backlog items are still being implemented.
 The aggressiveness setting is validated but does not yet select different pipelines.
 Claude Code, OpenCode, and Pi integrations are not verified.
+
+## Coverage and artifact budgets
+
+~~~sh
+python -m ai_pilled coverage --report coverage.json --minimum 80
+python -m ai_pilled bundle --path dist --maximum 250000
+~~~
+
+Coverage reads [coverage.py JSON](https://coverage.readthedocs.io/en/latest/commands/cmd_json.html)
+and computes line coverage from covered/total counts, without trusting rounded
+percentages. Generate the report from the current code first; this command evaluates
+the supplied report and does not run tests or prove freshness. Empty or invalid
+reports are incomplete. Branch coverage is not evaluated yet.
+
+Bundle checks measure the raw bytes of a built file or directory, hash its contents,
+and compare the total against the explicit byte budget. Build first. Missing/empty
+artifacts, symlinks, or inputs above the 100 MB measurement limit are incomplete.
+These commands record actual measurements alongside their pass/fail results.
 
 ## Recorded evidence
 

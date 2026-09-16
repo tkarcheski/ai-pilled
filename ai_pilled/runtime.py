@@ -24,6 +24,7 @@ class Report:
     status: str = 'pass'
     findings: list[Finding] = field(default_factory=list)
     snapshot: str = ''
+    metrics: dict[str, float] = field(default_factory=dict)
 
     def add(self, rule, message, *, path='', line=0, severity='error'):
         self.findings.append(Finding(rule, severity, message, path, line))
