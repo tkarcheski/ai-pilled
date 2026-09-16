@@ -142,6 +142,10 @@ analysis; other languages currently receive credential checks. Literal `**{...}`
 mappings are inspected for TLS, shell, YAML-loader, and hash settings, including nested
 mappings and later-key overrides. Opaque keyword expansions at those security-sensitive
 calls report incomplete evidence; they are never evaluated to discover runtime values.
+Literal `getattr` names retain the same checks, including imported built-in aliases;
+parameter-shadowed or unrelated functions are not treated as the built-in. Wildcard
+imports produce incomplete binding evidence instead of a false clean review. Arbitrary
+attribute expressions and general assignment data flow remain outside this analysis.
 Dictionary overwrite semantics follow the [Python language reference](https://docs.python.org/3.10/reference/expressions.html#dictionary-displays). An after-tool hook
 can report a problem but cannot undo an already completed edit or external action.
 

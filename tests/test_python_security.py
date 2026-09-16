@@ -427,3 +427,42 @@ class PythonPatternTests(unittest.TestCase):
             with self.subTest(expression=expression):
                 self.assertEqual(self.inspect('import os\nprint(' + expression + ')').status, 'fail')
         self.assertFalse(self.inspect('import os\nprint(os.getenv(**{"key": "HOME"}))').findings)
+
+    def test_literal_getattr_retains_security_call_and_environment_checks(self):
+        cases = (
+            ('import pickle\ngetattr(pickle, "loads")(data)', 'unsafe-deserialization'),
+            ('import requests\ngetattr(requests, "get")(url, verify=False)', 'tls-verification-disabled'),
+            ('import subprocess\ngetattr(subprocess, "run")(command, shell=True)', 'shell-execution'),
+            ('import os\nprint(getattr(os, "environ"))', 'environment-dump'),
+            ('import os\nprint(getattr(os, "getenv")("TOKEN"))', 'environment-secret-log'),
+            ('import yaml\ngetattr(yaml, "load")(data)', 'unsafe-yaml'),
+            ('import hashlib\ngetattr(hashlib, "md5")(data)', 'weak-hash-review'))
+        for source, rule in cases:
+            with self.subTest(rule=rule):
+                result = self.inspect(source)
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [(rule, 2)])
+
+    def test_getattr_aliases_nested_attributes_and_safe_calls(self):
+        source = ('from builtins import getattr as lookup\nimport requests\n'
+                  'lookup(lookup(requests, "api"), "get")(url, verify=False)')
+        self.assertEqual([f.rule for f in self.inspect(source).findings], ['tls-verification-disabled'])
+        for source in ('import json\ngetattr(json, "loads")(data)',
+                       'import requests\ngetattr(requests, "get")(url, verify=True)',
+                       'import yaml\nyaml.load(data, Loader=getattr(yaml, "SafeLoader"))',
+                       'import pickle\ndef f(getattr):\n return getattr(pickle, "loads")(data)',
+                       'from .builtins import getattr\nimport pickle\ngetattr(pickle, "loads")(data)'):
+            with self.subTest(source=source):
+                self.assertFalse(self.inspect(source).findings)
+
+    def test_wildcard_imports_never_produce_complete_review_evidence(self):
+        for source in ('from pickle import *\nloads(data)',
+                       'from os import *\nprint(getenv("TOKEN"))',
+                       'from math import *\nvalue = sqrt(4)',
+                       'from .helpers import *'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('python-wildcard-import', 1)])
+        result = self.inspect('from helpers import *\nimport pickle\npickle.loads(data)')
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual({f.rule for f in result.findings}, {'python-wildcard-import', 'unsafe-deserialization'})

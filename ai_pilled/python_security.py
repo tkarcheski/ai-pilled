@@ -135,11 +135,19 @@ def inspect_python(report, path, content, *, tree=None):
     scopes, bindings, parents = import_scopes(tree)
     ambiguous = set()
 
-    def qualified(node, accepted=()):
+    def qualified(node, accepted=(), *, resolve_getattr=True):
         attributes = []
-        while isinstance(node, ast.Attribute):
-            attributes.append(node.attr)
-            node = node.value
+        while True:
+            if isinstance(node, ast.Attribute):
+                attributes.append(node.attr)
+                node = node.value
+            elif (resolve_getattr and isinstance(node, ast.Call) and len(node.args) in (2, 3) and not node.keywords
+                  and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)
+                  and qualified(node.func, resolve_getattr=False) in ('getattr', 'builtins.getattr')):
+                attributes.append(node.args[1].value)
+                node = node.args[0]
+            else:
+                break
         if not isinstance(node, ast.Name):
             return ''
         base = node.id
@@ -227,6 +235,10 @@ def inspect_python(report, path, content, *, tree=None):
         return None
 
     for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and any(alias.name == '*' for alias in node.names):
+            report.add('python-wildcard-import',
+                       'Wildcard imports prevent reliable binding inspection; use explicit imports.',
+                       path=path, line=node.lineno, severity='warning')
         if not isinstance(node, ast.Call):
             continue
         name = qualified(node.func)
