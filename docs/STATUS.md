@@ -96,6 +96,8 @@ history, tip security patterns, configured tests, and a stable clean snapshot.
 Raw commit headers, author identities, tag chains, and destination names are scanned.
 New refs exclude ancestry only after verifying advertisements from the actual destination;
 forged local tracking refs cannot hide unpublished commits. Tips retain security scans.
+Traversal parents must match raw outgoing commit parents: unverified shallow boundaries
+are incomplete, while verified published boundaries can delimit a complete new range.
 History traversal, object caching, and tag depth have explicit bounds.
 
 **Evidence:** `test_pre_push.py` plus actual local bare-remote E2E pushes. Protected

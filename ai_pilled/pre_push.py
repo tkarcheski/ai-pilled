@@ -36,13 +36,19 @@ def blob_findings(repo, oid, path, patterns, cache):
     return findings
 
 
-def scan_revision(repo, revision, patterns=False, cache=None, conventions=False):
+def scan_revision(repo, revision, patterns=False, cache=None, conventions=False, expected_parents=None):
     report = Report('history-security', snapshot=revision)
     cache = {} if cache is None else cache
     metadata = run(['git', 'cat-file', 'commit', revision], repo, limit=128_000)
     headers, separator, message = metadata.partition(b'\n\n')
     if not separator:
         raise CommandError('Cannot read complete commit metadata')
+    raw_parents = [line[7:].decode('ascii', errors='replace')
+                   for line in headers.splitlines() if line.startswith(b'parent ')]
+    if expected_parents is not None and sorted(raw_parents) != sorted(expected_parents):
+        report.add('history-incomplete',
+                   'Outgoing ancestry is truncated; obtain complete history for this range and rerun.',
+                   path='(commit ancestry)', severity='warning')
     identity: list[bytes] = []
     other: list[bytes] = []
     for line in headers.splitlines():
@@ -123,6 +129,7 @@ def pre_push(repo, updates, destination=None):
     commits = set()
     tips = set()
     published = None
+    traversed_parents: dict[str, list[str]] = {}
     for line in updates.splitlines():
         fields = line.split()
         if len(fields) != 4:
@@ -149,7 +156,7 @@ def pre_push(repo, updates, destination=None):
                            severity=finding.severity)
             tip = run(['git', 'rev-parse', '--verify', local_oid + '^{commit}'], repo).decode().strip()
             tips.add(tip)
-            args = ['git', 'rev-list', f'--max-count={MAX_COMMITS + 1}', tip]
+            args = ['git', 'rev-list', '--parents', f'--max-count={MAX_COMMITS + 1}', tip]
             if set(remote_oid) != {'0'}:
                 try:
                     old = run(['git', 'rev-parse', '--verify', remote_oid + '^{commit}'], repo).decode().strip()
@@ -161,7 +168,14 @@ def pre_push(repo, updates, destination=None):
                 if published is None:
                     published = published_commits(repo, destination)
                 args += ['^' + oid for oid in sorted(published)]
-            outgoing = run(args, repo).decode().splitlines()
+            rows = run(args, repo).decode().splitlines()
+            outgoing = []
+            for row in rows:
+                fields = row.split()
+                if not fields or any(not OID.fullmatch(oid) for oid in fields):
+                    raise CommandError('Cannot parse outgoing parent evidence')
+                outgoing.append(fields[0])
+                traversed_parents[fields[0]] = fields[1:]
             if len(outgoing) > MAX_COMMITS:
                 report.add('history-limit', 'Push exceeds the 2000-commit audit limit; audit a smaller range.')
             else:
@@ -175,7 +189,8 @@ def pre_push(repo, updates, destination=None):
     blob_cache: dict = {}
     for commit in sorted(commits | tips):
         result = scan_revision(repo, commit, patterns=config.aggressiveness == 'strict' and commit in tips,
-                               cache=blob_cache, conventions=commit in commits)
+                               cache=blob_cache, conventions=commit in commits,
+                               expected_parents=traversed_parents.get(commit))
         for finding in result.findings:
             report.add(finding.rule, f'{commit[:12]}: {finding.message}', path=finding.path,
                        line=finding.line, severity=finding.severity)

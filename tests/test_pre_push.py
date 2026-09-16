@@ -348,3 +348,35 @@ class PrePushTests(unittest.TestCase):
             self.assertEqual(os.environ['GIT_GRAFT_FILE'], str(graft))
         self.assertEqual(result.status, 'fail')
         self.assertTrue(any(f.rule == 'github-token' for f in result.findings))
+
+    def test_shallow_boundary_cannot_claim_complete_outgoing_history(self):
+        (self.repo / 'credential').write_text('ghp_' + 'Z' * 36)
+        self.commit()
+        (self.repo / 'credential').unlink()
+        self.commit()
+        head = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        shallow = self.repo / '.git/shallow'
+        shallow.write_text(head + '\n')
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'incomplete', result.to_dict())
+        self.assertTrue(any(f.rule == 'history-incomplete' for f in result.findings))
+        self.assertEqual(shallow.read_text(), head + '\n')
+
+    def test_shallow_published_boundary_allows_complete_new_range(self):
+        self.git('commit', '--allow-empty', '-qm', 'legacy published boundary')
+        boundary = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        self.git('push', 'origin', 'HEAD:existing')
+        (self.repo / '.git/shallow').write_text(boundary + '\n')
+        self.git('commit', '--allow-empty', '-qm', 'feat: complete new range')
+        self.assertEqual(pre_push(self.repo, self.update(old=boundary)).status, 'pass')
+        self.assertEqual(pre_push(self.repo, self.update(), destination=str(self.remote)).status, 'pass')
+
+    def test_merge_parent_evidence_is_complete(self):
+        self.git('checkout', '-qb', 'side')
+        (self.repo / 'side.txt').write_text('side\n')
+        self.commit()
+        self.git('checkout', '-q', 'feature')
+        (self.repo / 'main.txt').write_text('main\n')
+        self.commit()
+        self.git('merge', '--no-ff', 'side', '-m', 'test: merge fixture')
+        self.assertEqual(pre_push(self.repo, self.update()).status, 'pass')

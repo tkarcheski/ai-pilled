@@ -381,7 +381,10 @@ reachable from the known remote tip is excluded. For new refs, the hook queries 
 actual destination's advertised heads/tags and excludes their locally available ancestry.
 Local remote-tracking refs are never used as proof of publication. An unavailable or
 malformed advertisement blocks the check, and advertisements are capped at 2,000 refs.
-The pushed tips still receive security checks even when already published. Standalone
+The pushed tips still receive security checks even when already published. Outgoing
+parent links are compared with raw commit metadata: a shallow boundary that conceals
+unverified ancestry is incomplete. A verified published boundary can still delimit
+a complete new range; no automatic fetch or history rewrite is performed. Standalone
 calls without a destination conservatively scan all history for a new ref.
 Pre-push tests require a clean working
 tree and the pushed commit checked out at HEAD.
