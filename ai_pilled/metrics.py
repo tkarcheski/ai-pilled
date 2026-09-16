@@ -6,7 +6,7 @@ import os
 import stat
 from pathlib import Path
 
-from .file_io import open_regular, read_regular
+from .file_io import file_identity, open_regular, read_regular
 from .runtime import CommandError, Report
 from .state import record
 
@@ -56,12 +56,15 @@ def coverage(repo, source, minimum):
 
 
 def artifact_files(path):
-    """Bound traversal and propagate every directory-read failure."""
+    """Return files and all entry identities; bound traversal and propagate failures."""
     pending, files = [path], []
+    identities = {}
     count = 1  # Include the selected root, even when it is an empty directory.
     while pending:
         item = pending.pop()
-        mode = item.lstat().st_mode
+        metadata = item.lstat()
+        identities[item] = file_identity(metadata)
+        mode = metadata.st_mode
         if stat.S_ISLNK(mode):
             raise CommandError('Build artifact contains a symlink')
         if stat.S_ISDIR(mode):
@@ -73,7 +76,7 @@ def artifact_files(path):
                     pending.append(item / child.name)
         else:
             files.append(item)
-    return sorted(files)
+    return sorted(files), identities
 
 
 def bundle(repo, source, maximum):
@@ -84,7 +87,7 @@ def bundle(repo, source, maximum):
         path = local_path(repo, source)
         if not path.exists():
             raise CommandError('Build artifact is missing; build before measuring')
-        paths = artifact_files(path)
+        paths, identities = artifact_files(path)
         digest = hashlib.sha256()
         total = files = 0
         for item in paths:
@@ -93,12 +96,19 @@ def bundle(repo, source, maximum):
             files += 1
             digest.update(str(item.relative_to(Path(repo).resolve())).encode(errors='surrogateescape') + b'\0')
             with open_regular(item) as stream:
-                digest.update(str(os.fstat(stream.fileno()).st_size).encode() + b'\0')
+                metadata = os.fstat(stream.fileno())
+                if file_identity(metadata) != identities[item]:
+                    raise CommandError('Build artifact changed before reading; finish the build and rerun')
+                digest.update(str(metadata.st_size).encode() + b'\0')
                 while chunk := stream.read(65536):
                     total += len(chunk)
                     if total > 100_000_000:
                         raise CommandError('Build artifacts exceed the 100 MB measurement limit')
                     digest.update(chunk)
+                if file_identity(os.fstat(stream.fileno())) != identities[item]:
+                    raise CommandError('Build artifact changed during reading; finish the build and rerun')
+        if artifact_files(path) != (paths, identities):
+            raise CommandError('Build artifact inventory changed during measurement; finish the build and rerun')
         if not files:
             raise CommandError('Build artifact directory is empty')
         report.metrics = {'bytes': total, 'files': files, 'maximum_bytes': maximum}

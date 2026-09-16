@@ -395,6 +395,11 @@ errors for both pre-push and lifecycle input. Existing commit/history bounds sti
 Bundle measurement rejects unreadable or interrupted directory listings instead of
 silently omitting their files. Traversal is capped at 10,000 entries including the
 selected root and empty directories, in addition to the existing 100 MB read limit.
+Entry identities are captured during traversal and compared with each open descriptor
+before and after reading. A second bounded inventory rejects added, removed, replaced,
+modified, or permission-changed entries before publishing byte metrics. A fixture that
+previously passed with 1 byte while a concurrent build added another 100 bytes is now
+incomplete. These checks detect observed build changes, not every hostile filesystem race.
 Partial traversal never publishes byte metrics. Filesystem filename bytes are retained
 in the fingerprint, including non-UTF-8 names; measurements do not rename input files.
 

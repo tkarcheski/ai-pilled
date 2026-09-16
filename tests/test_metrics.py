@@ -153,3 +153,81 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result.metrics, {'bytes': 3, 'files': 1, 'maximum_bytes': 3})
         artifact.rename(dist / os.fsdecode(b'asset-\xfe.bin'))
         self.assertNotEqual(bundle(self.repo, 'dist', 3).snapshot, result.snapshot)
+
+    def test_concurrent_bundle_addition_removal_edit_and_replacement_are_incomplete(self):
+        from contextlib import contextmanager
+        from ai_pilled.file_io import open_regular
+        dist = self.repo / 'dist'
+        dist.mkdir()
+        artifact = dist / 'small'
+        for change in ('add', 'remove', 'edit', 'replace', 'mode', 'directory'):
+            with self.subTest(change=change):
+                for item in dist.iterdir():
+                    item.rmdir() if item.is_dir() else item.unlink()
+                artifact.write_bytes(b'x')
+                @contextmanager
+                def changed(path, change=change):
+                    with open_regular(path) as stream:
+                        yield stream
+                    if change == 'add':
+                        (dist / 'late').write_bytes(b'x' * 100)
+                    elif change == 'remove':
+                        artifact.unlink()
+                    elif change == 'edit':
+                        artifact.write_bytes(b'y')
+                    elif change == 'replace':
+                        replacement = dist / 'replacement'
+                        replacement.write_bytes(b'x')
+                        replacement.replace(artifact)
+                    elif change == 'mode':
+                        artifact.chmod(0o700)
+                    else:
+                        (dist / 'new-directory').mkdir()
+                with patch('ai_pilled.metrics.open_regular', side_effect=changed):
+                    result = bundle(self.repo, 'dist', 10)
+                self.assertEqual(result.status, 'incomplete', result.to_dict())
+                self.assertEqual(result.metrics, {})
+                self.assertEqual(result.snapshot, '')
+
+    def test_bundle_replacement_after_listing_before_open_is_rejected(self):
+        from contextlib import contextmanager
+        from ai_pilled.file_io import open_regular
+        artifact = self.repo / 'app.js'
+        artifact.write_bytes(b'original')
+        @contextmanager
+        def changed(path):
+            artifact.write_bytes(b'x')
+            with open_regular(path) as stream:
+                yield stream
+        with patch('ai_pilled.metrics.open_regular', side_effect=changed):
+            result = bundle(self.repo, artifact.name, 2)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.metrics, {})
+        self.assertEqual(artifact.read_bytes(), b'x')
+
+    def test_bundle_detects_mutation_during_descriptor_read(self):
+        from contextlib import contextmanager
+        from ai_pilled.file_io import open_regular
+        artifact = self.repo / 'app.js'
+        artifact.write_bytes(b'original')
+        class MutatingReader:
+            def __init__(self, stream):
+                self.stream = stream
+                self.changed = False
+            def fileno(self):
+                return self.stream.fileno()
+            def read(self, size):
+                data = self.stream.read(size)
+                if not self.changed:
+                    self.changed = True
+                    artifact.write_bytes(b'replaced')
+                return data
+        @contextmanager
+        def changed(path):
+            with open_regular(path) as stream:
+                yield MutatingReader(stream)
+        with patch('ai_pilled.metrics.open_regular', side_effect=changed):
+            result = bundle(self.repo, artifact.name, 100)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.metrics, {})
+        self.assertIn('during reading', result.findings[0].message)
