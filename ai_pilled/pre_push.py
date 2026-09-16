@@ -13,6 +13,8 @@ MAX_COMMITS = 2000
 
 def scan_revision(repo, revision):
     report = Report('history-security', snapshot=revision)
+    message = run(['git', 'log', '-1', '--format=%B', revision], repo, limit=64_000)
+    scan_text(report, '(commit message)', message.decode('latin-1'))
     records = run(['git', 'ls-tree', '-rz', '--full-tree', revision], repo).split(b'\0')
     for record in filter(None, records):
         metadata, raw_path = record.split(b'\t', 1)

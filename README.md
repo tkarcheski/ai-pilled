@@ -65,6 +65,20 @@ lockfiles produce incomplete results. This checks known vulnerabilities only;
 license policy, outdated packages, version conflicts, other package managers, and
 automatic install-event auditing are separate pending features.
 
+## Review commits with Codex
+
+Set review_on_commit to true in .ai-pilled.json to require a passing structured Codex
+review from the commit-msg hook. Set codex_executable to an installed executable path
+when your PATH command is an auto-update wrapper. The default is opt-out; enabling
+this uses your Codex subscription on commits and may block on timeout or unavailable
+login. Explicit review also honors codex_executable; --codex overrides it.
+
+The reviewer receives the staged diff and proposed message to check correctness and
+message alignment. A conventional-message or credential failure blocks before model
+inference. Commit bodies are scanned locally, and outgoing commit messages are also
+scanned before push. Empty staged diffs do not invoke the model; amendment semantics
+for existing changes are not inferred. Hooks do not grant permissions or bypass trust.
+
 ## Install hooks
 
 ~~~sh
@@ -94,7 +108,7 @@ Local reports live in .ai-pilled/; add that directory to the target's .gitignore
 | Trigger | Behavior |
 | --- | --- |
 | Git pre-commit | Scan the exact staged blobs for recognizable credential patterns |
-| Git commit-msg | Validate conventional subject format and a 72-character limit |
+| Git commit-msg | Validate subject format, message credentials, and optional Codex review |
 | Git pre-push | Protect destination branches, scan outgoing commit snapshots, run required tests |
 | Codex session start | Load branch and working-tree status |
 | Codex post-tool | Scan working-tree credentials and report findings |
@@ -107,8 +121,7 @@ commits requires a smaller audited range. Files larger than 2 MB produce an inco
 scan, not a clean bill of health.
 
 Credential matching is a limited deterministic check, not a complete security audit.
-Semantic code review is currently explicit; automatic model review on every commit,
-release
+Semantic review examines staged diffs; release
 workflows, notifications, and other backlog items are still being implemented.
 Claude Code, OpenCode, and Pi integrations are not verified.
 

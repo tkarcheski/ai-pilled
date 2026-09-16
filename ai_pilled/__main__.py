@@ -28,7 +28,7 @@ def main(argv=None):
     check = commands.add_parser('check', help='Run a configured quality command')
     check.add_argument('name', choices=['test', 'lint', 'typecheck', 'deadcode', 'coverage', 'dependency'])
     review_parser = commands.add_parser('review', help='Review the staged snapshot with Codex')
-    review_parser.add_argument('--codex', default='codex', help='Codex executable path or command name')
+    review_parser.add_argument('--codex', help='Codex executable path or command name')
     dependency = commands.add_parser('dependency-audit', help='Audit npm lockfile vulnerabilities')
     dependency.add_argument('--npm', default='npm', help='npm executable path or command name')
     coverage_parser = commands.add_parser('coverage', help='Check line coverage from coverage.py JSON')

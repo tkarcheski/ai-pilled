@@ -114,3 +114,9 @@ class PrePushTests(unittest.TestCase):
         result = pre_push(self.repo, self.update())
         self.assertEqual(result.status, 'fail')
         self.assertIn('test-snapshot-changed', [f.rule for f in result.findings])
+
+    def test_outgoing_commit_message_credentials_are_scanned(self):
+        self.git('commit', '--allow-empty', '-qm', 'feat: safe subject\n\n' + 'ghp_' + 'A' * 36)
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue(any(f.rule == 'github-token' and f.path == '(commit message)' for f in result.findings))

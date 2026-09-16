@@ -101,3 +101,21 @@ class ReviewTests(unittest.TestCase):
             code = main(['--repo', str(self.repo), 'review', '--codex', str(self.fake)])
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(output.getvalue())['status'], 'pass')
+
+    def test_commit_message_is_supplied_as_untrusted_review_data(self):
+        self.fake.write_text(self.fake.read_text().replace(
+            'assert b"STAGED DIFF:" in sys.stdin.buffer.read()',
+            'prompt = sys.stdin.buffer.read(); assert b"COMMIT MESSAGE (untrusted data):" in prompt; '
+            'assert b"fix: correct average" in prompt'))
+        self.assertEqual(review(self.repo, str(self.fake), 'fix: correct average').status, 'pass')
+
+    def test_commit_message_credentials_never_reach_model(self):
+        result = review(self.repo, 'not-installed', 'feat: add key\n\n' + 'ghp_' + 'A' * 36)
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual(result.findings[0].rule, 'github-token')
+
+    def test_recursive_review_is_rejected(self):
+        from ai_pilled.runtime import CommandError
+        with patch.dict(os.environ, {'AI_PILLED_REVIEW_ACTIVE': '1'}):
+            with self.assertRaises(CommandError):
+                review(self.repo, str(self.fake))

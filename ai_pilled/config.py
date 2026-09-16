@@ -15,6 +15,8 @@ class Config:
     timeout: int = 120
     require_tests: bool = True
     aggressiveness: str = 'normal'
+    review_on_commit: bool = False
+    codex_executable: str = 'codex'
 
 
 def load(repo):
@@ -26,7 +28,7 @@ def load(repo):
     except (ValueError, OSError) as exc:
         raise ConfigError('Cannot read valid JSON from .ai-pilled.json') from exc
     allowed = {'version', 'commands', 'protected_branches', 'timeout',
-               'require_tests', 'aggressiveness'}
+               'require_tests', 'aggressiveness', 'review_on_commit', 'codex_executable'}
     if not isinstance(data, dict) or set(data) - allowed:
         raise ConfigError('Configuration must be an object with supported keys')
     if type(data.get('version', 1)) is not int or data.get('version', 1) != 1:
@@ -52,4 +54,10 @@ def load(repo):
     aggressiveness = data.get('aggressiveness', 'normal')
     if aggressiveness not in ('lazy', 'normal', 'strict'):
         raise ConfigError('aggressiveness must be lazy, normal, or strict')
-    return Config(commands, branches, timeout, require_tests, aggressiveness)
+    review_on_commit = data.get('review_on_commit', False)
+    if type(review_on_commit) is not bool:
+        raise ConfigError('review_on_commit must be boolean')
+    executable = data.get('codex_executable', 'codex')
+    if not isinstance(executable, str) or not executable or '\0' in executable:
+        raise ConfigError('codex_executable must be a nonempty executable path or command name')
+    return Config(commands, branches, timeout, require_tests, aggressiveness, review_on_commit, executable)

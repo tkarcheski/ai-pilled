@@ -8,12 +8,19 @@ import shlex
 import sys
 
 from .runtime import CommandError, Report, run
-from .security import scan
+from .security import scan, scan_text
 
 
 def commit_message(path):
     report = Report('commit-message')
-    lines = Path(path).read_text().splitlines()
+    with Path(path).open('rb') as stream:
+        raw = stream.read(64_001)
+    if len(raw) > 64_000:
+        report.add('message-size', 'Commit message exceeds the 64 KB limit.')
+        return report
+    text = raw.decode('utf-8', errors='replace')
+    scan_text(report, '(commit message)', text)
+    lines = text.splitlines()
     subject = next((line for line in lines if line and not line.startswith('#')), '')
     if not re.fullmatch(r'(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)'
                         r'(\([^()\r\n]+\))?!?: \S.*', subject):
@@ -177,5 +184,14 @@ def dispatch(repo, event, arguments):
     if event == 'pre-commit':
         return scan(repo)
     if event == 'commit-msg' and len(arguments) == 1:
-        return commit_message(arguments[0])
+        report = commit_message(arguments[0])
+        if report.status != 'pass':
+            return report
+        from .config import load
+        config = load(repo)
+        if config.review_on_commit:
+            from .codex_review import review
+            return review(repo, config.codex_executable,
+                          Path(arguments[0]).read_text(errors='replace'))
+        return report
     raise CommandError('Invalid Git hook arguments')

@@ -135,3 +135,33 @@ class GitHookTests(unittest.TestCase):
         self.assertFalse((self.repo / '.ai-pilled' / 'hooks').exists())
         self.assertFalse((self.repo / '.ai-pilled' / 'installation.json').exists())
         install(self.repo)
+
+    def test_commit_hook_runs_opted_in_model_review_and_blocks_missing_cli(self):
+        import json
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({
+            'review_on_commit': True, 'codex_executable': 'missing-ai-pilled-codex'}))
+        self.git('add', '.ai-pilled.json')
+        install(self.repo)
+        result = self.git('commit', '-m', 'feat: enforce reviews', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'review-unavailable', result.stdout + result.stderr)
+
+    def test_commit_body_credentials_are_rejected(self):
+        install(self.repo)
+        result = self.git('commit', '-m', 'feat: safe subject', '-m', 'ghp_' + 'A' * 36, success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'github-token', result.stdout + result.stderr)
+
+    def test_commit_hook_accepts_a_structured_review_of_the_message(self):
+        import json
+        import sys
+        install(self.repo)
+        provider = self.repo / '.ai-pilled' / 'fake-reviewer'
+        provider.write_text(f'#!{sys.executable}\nimport sys\nfrom pathlib import Path\n'
+                            'assert b"feat: reviewed change" in sys.stdin.buffer.read()\n'
+                            'Path(sys.argv[sys.argv.index("--output-last-message")+1]).write_text(\'{"findings": []}\')\n')
+        provider.chmod(0o755)
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({
+            'review_on_commit': True, 'codex_executable': str(provider)}))
+        self.git('add', '.ai-pilled.json')
+        self.git('commit', '-m', 'feat: reviewed change')
