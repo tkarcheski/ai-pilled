@@ -399,7 +399,9 @@ Performance evidence rejects invalid numeric budgets, nonpositive/nonfinite timi
 and overflowed medians or comparisons. Extreme finite baselines cannot create infinite
 report values, and failed measurements do not replace the saved baseline. History
 serialization independently rejects nonfinite numbers before opening its file, so
-invalid nested metrics cannot poison otherwise readable history.
+invalid nested metrics cannot poison otherwise readable history. Serialized records
+also pass the reader's nesting and unique-key validation before append; encoding-time
+key collisions and excessive nesting leave existing history untouched.
 
 ## Known gaps and prioritized follow-ups
 

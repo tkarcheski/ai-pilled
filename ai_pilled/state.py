@@ -32,6 +32,10 @@ def record(repo, report, event):
         raise CommandError('Check records require finite JSON numbers') from exc
     if len(encoded) > MAX_HISTORY_BYTES:
         raise CommandError('Check record exceeds the local history size limit')
+    try:
+        loads(encoded)
+    except ValueError as exc:
+        raise CommandError('Check record exceeds history JSON constraints') from exc
     path = directory(repo) / 'events.jsonl'
     flags = os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK
     fd = os.open(path, flags, 0o600)

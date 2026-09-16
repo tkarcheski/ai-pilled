@@ -235,3 +235,33 @@ class ReportingTests(unittest.TestCase):
                 record(self.repo, report, 'fixture')
             self.assertEqual(path.read_bytes(), before)
             self.assertEqual(len(history(self.repo)), 1)
+
+    def test_history_nesting_boundary_is_checked_before_append(self):
+        from ai_pilled.json_data import MAX_NESTING
+        for levels, accepted in ((MAX_NESTING - 3, True), (MAX_NESTING - 2, False)):
+            value = 0
+            for _ in range(levels):
+                value = [value]
+            report = Report('nested')
+            report.metrics = {'value': value}
+            if accepted:
+                record(self.repo, report, 'fixture')
+                self.assertEqual(len(history(self.repo)), 1)
+            else:
+                path = self.repo / '.ai-pilled/events.jsonl'
+                before = path.read_bytes()
+                with self.assertRaisesRegex(CommandError, 'history JSON constraints'):
+                    record(self.repo, report, 'fixture')
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(len(history(self.repo)), 1)
+
+    def test_keys_that_collide_after_json_encoding_cannot_poison_history(self):
+        record(self.repo, Report('valid'), 'fixture')
+        path = self.repo / '.ai-pilled/events.jsonl'
+        before = path.read_bytes()
+        report = Report('collision')
+        report.metrics = {1: 2, '1': 3}
+        with self.assertRaisesRegex(CommandError, 'history JSON constraints'):
+            record(self.repo, report, 'fixture')
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(len(history(self.repo)), 1)
