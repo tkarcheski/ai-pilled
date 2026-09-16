@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import warnings
 from unittest.mock import patch
 
 from ai_pilled.__main__ import main
@@ -160,3 +161,21 @@ class RedactionTests(unittest.TestCase):
         value = 'aws_secret_access_key = "' + secret + '"'
         self.assertNotIn(secret, redact(value))
         self.assertIn('[REDACTED]', redact(value))
+
+    def test_python_parser_warnings_cannot_echo_credential_source_lines(self):
+        from ai_pilled.python_security import inspect_python
+        from ai_pilled.security import scan_bytes
+        path = self.repo / 'warning.py'
+        source = ('value = ' + repr(self.token) + '; other = "' + chr(92) + 'q"\n').encode()
+        path.write_bytes(source)
+        for inspect in (scan_bytes, inspect_python):
+            with self.subTest(inspect=inspect.__name__):
+                output = io.StringIO()
+                with warnings.catch_warnings(), contextlib.redirect_stderr(output):
+                    warnings.simplefilter('always')
+                    inspect(Report('probe'), str(path), source)
+                self.assertNotIn(self.token, output.getvalue())
+                self.assertEqual(output.getvalue(), '')
+        result = Report('probe')
+        inspect_python(result, str(path), b'def broken(')
+        self.assertEqual(result.status, 'incomplete')

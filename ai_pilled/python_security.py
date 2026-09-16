@@ -1,5 +1,6 @@
 """Conservative Python AST patterns; these are review signals, not exploit proofs."""
 import ast
+import warnings
 
 
 TLS_VERIFY_CALLS = {
@@ -10,6 +11,14 @@ TLS_VERIFY_CALLS = {
 IMPLICIT_SHELL_CALLS = {'os.system', 'os.popen', 'subprocess.getoutput',
                         'subprocess.getstatusoutput', 'asyncio.create_subprocess_shell',
                         'asyncio.subprocess.create_subprocess_shell'}
+
+
+def parse_python(content, path):
+    # Compiler warnings can print the original source line, including credentials.
+    # Syntax failures still propagate to the caller's incomplete-evidence handling.
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        return ast.parse(content, filename=path)
 
 
 def import_scopes(tree):
@@ -86,7 +95,7 @@ def inspect_python(report, path, content):
     if not path.endswith('.py'):
         return
     try:
-        tree = ast.parse(content, filename=path)
+        tree = parse_python(content, path)
     except (SyntaxError, ValueError, RecursionError):
         report.add('python-unparsed', 'Python syntax could not be inspected by this interpreter.',
                    path=path, severity='warning')

@@ -6,7 +6,7 @@ import stat
 
 from .git_blobs import read_blobs
 from .runtime import CommandError, Report, run, git_path
-from .python_security import inspect_python
+from .python_security import inspect_python, parse_python
 from .credentials import PATTERNS, json_secret_literals
 
 
@@ -49,7 +49,7 @@ def scan_bytes(report, path, content):
     scan_text(report, path, text)
     if path.endswith('.py'):
         try:
-            tree = ast.parse(content, filename=path)
+            tree = parse_python(content, path)
         except (SyntaxError, ValueError, RecursionError):
             report.add('python-literals-unparsed', 'Python string literals could not be inspected by this interpreter.',
                        path=path, severity='warning')

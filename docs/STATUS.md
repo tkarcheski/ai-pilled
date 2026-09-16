@@ -54,7 +54,8 @@ PyPI publishing tokens follow the provider’s documented prefix and minimum
 payload length; the shared pattern also redacts reports/history and blocks credential-like
 package identities before registry queries. Python string/byte constants are parsed without
 execution, including adjacent literals and Python escapes; findings cite the start of
-the source literal. Unparseable Python yields incomplete evidence. Runtime string
+the source literal. Parser warnings are suppressed because Python can echo an
+unredacted source line; syntax failures still yield incomplete evidence. Runtime string
 computations and arbitrary encodings are not evaluated. History caches separate
 Python interpretation from identical non-Python blobs. Strict Python AST checks flag environment dumps, unsafe parsing, shell
 execution (including implicit shell APIs and literal truthy shell flags), unsafe YAML
