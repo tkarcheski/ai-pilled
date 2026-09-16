@@ -7,7 +7,7 @@ import os
 import stat
 from pathlib import Path
 
-from .file_io import file_identity, open_regular, read_regular
+from .file_io import file_identity, open_regular, read_beneath
 from .runtime import CommandError, Report
 from .state import record
 
@@ -33,8 +33,9 @@ def coverage(repo, source, minimum):
     try:
         if type(minimum) not in (int, float) or not 0 <= minimum <= 100 or not math.isfinite(minimum):
             raise CommandError('Coverage minimum must be between 0 and 100')
-        path = local_path(repo, source)
-        content = read_regular(path, 2_000_000)
+        root = Path(repo).resolve()
+        path = local_path(root, source)
+        content = read_beneath(root, path.relative_to(root), 2_000_000)
         data = loads(content)
         if not isinstance(data, dict) or not isinstance(data.get('totals'), dict):
             raise CommandError('Expected a coverage.py JSON report with totals')

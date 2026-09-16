@@ -53,6 +53,22 @@ def file_identity(metadata):
             metadata.st_mtime_ns, metadata.st_ctime_ns, metadata.st_mode)
 
 
+def read_beneath(root, name, maximum):
+    """Read bounded root-relative evidence, rejecting observed identity changes."""
+    with open_beneath(root, name) as stream:
+        before = file_identity(os.fstat(stream.fileno()))
+        content = stream.read(maximum + 1)
+        after = file_identity(os.fstat(stream.fileno()))
+    if len(content) > maximum:
+        raise CommandError('Input exceeds the configured size limit')
+    if before != after:
+        raise CommandError('Input changed while reading; rerun after reviewing edits')
+    with open_beneath(root, name) as current:
+        if file_identity(os.fstat(current.fileno())) != before:
+            raise CommandError('Input was replaced after reading; rerun after reviewing edits')
+    return content
+
+
 def read_snapshot(path, maximum):
     """Read bounded bytes plus descriptor identity, distinguishing an absent file."""
     try:

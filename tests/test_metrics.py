@@ -257,3 +257,83 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual(result.metrics, {})
         self.assertIn('during reading', result.findings[0].message)
+
+    def test_parent_swap_cannot_substitute_external_passing_coverage(self):
+        from ai_pilled.metrics import local_path
+        reports = self.repo / 'reports'
+        reports.mkdir()
+        failing = {'totals': {'covered_lines': 0, 'num_statements': 1}}
+        (reports / 'coverage.json').write_text(json.dumps(failing))
+        with tempfile.TemporaryDirectory() as directory:
+            outside = Path(directory)
+            (outside / 'coverage.json').write_text(json.dumps({'totals': {'covered_lines': 1, 'num_statements': 1}}))
+            def replaced(*args):
+                path = local_path(*args)
+                reports.rename(self.repo / 'saved')
+                reports.symlink_to(outside, target_is_directory=True)
+                return path
+            with patch('ai_pilled.metrics.local_path', side_effect=replaced), patch('ai_pilled.metrics.loads') as decoded:
+                result = coverage(self.repo, 'reports/coverage.json', 100)
+            self.assertEqual(result.status, 'incomplete')
+            self.assertEqual(result.metrics, {})
+            self.assertEqual(result.snapshot, '')
+            decoded.assert_not_called()
+            self.assertEqual(json.loads((self.repo / 'saved/coverage.json').read_text()), failing)
+
+    def test_coverage_rejects_evidence_mutated_during_descriptor_read(self):
+        from contextlib import contextmanager
+        self.coverage_file(1, 1)
+        from ai_pilled.file_io import open_beneath
+        original = open_beneath
+        parent = self
+        class MutatingReader:
+            def __init__(self, stream):
+                self.stream = stream
+            def fileno(self):
+                return self.stream.fileno()
+            def read(self, size):
+                data = self.stream.read(size)
+                parent.coverage_file(0, 1)
+                return data
+        @contextmanager
+        def changed(root, *args, **kwargs):
+            with original(root, *args, **kwargs) as stream:
+                yield MutatingReader(stream)
+        with patch('ai_pilled.file_io.open_beneath', side_effect=changed):
+            result = coverage(self.repo, 'coverage.json', 100)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.metrics, {})
+        self.assertEqual(result.snapshot, '')
+
+    def test_coverage_rechecks_current_file_after_reading(self):
+        from contextlib import contextmanager
+        from ai_pilled.file_io import open_beneath
+        original = open_beneath
+        path = self.repo / 'coverage.json'
+        for change in ('replace', 'delete', 'symlink'):
+            with self.subTest(change=change):
+                if path.is_symlink():
+                    path.unlink()
+                self.coverage_file(1, 1)
+                state = {'changed': False}
+                @contextmanager
+                def changed(root, *args, change=change, state=state, **kwargs):
+                    with original(root, *args, **kwargs) as stream:
+                        yield stream
+                    if state['changed']:
+                        return
+                    state['changed'] = True
+                    if change == 'replace':
+                        replacement = self.repo / 'replacement.json'
+                        replacement.write_text(json.dumps({'totals': {'covered_lines': 0, 'num_statements': 1}}))
+                        replacement.replace(path)
+                    elif change == 'delete':
+                        path.unlink()
+                    else:
+                        path.unlink()
+                        path.symlink_to('/dev/null')
+                with patch('ai_pilled.file_io.open_beneath', side_effect=changed):
+                    result = coverage(self.repo, 'coverage.json', 100)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.metrics, {})
+                self.assertEqual(result.snapshot, '')
