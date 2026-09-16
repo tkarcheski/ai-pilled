@@ -7,7 +7,7 @@ import os
 import stat
 from pathlib import Path
 
-from .file_io import file_identity, open_regular, read_beneath
+from .file_io import file_identity, open_beneath, read_beneath
 from .runtime import CommandError, Report
 from .state import record
 
@@ -89,7 +89,8 @@ def bundle(repo, source, maximum):
     try:
         if type(maximum) is not int or maximum < 0:
             raise CommandError('Bundle maximum must be a nonnegative byte count')
-        path = local_path(repo, source)
+        root = Path(repo).resolve()
+        path = local_path(root, source)
         if not path.exists():
             raise CommandError('Build artifact is missing; build before measuring')
         paths, identities = artifact_files(path)
@@ -99,8 +100,9 @@ def bundle(repo, source, maximum):
             if item.is_symlink():
                 raise CommandError('Build artifact contains a symlink')
             files += 1
-            digest.update(str(item.relative_to(Path(repo).resolve())).encode(errors='surrogateescape') + b'\0')
-            with open_regular(item) as stream:
+            relative = item.relative_to(root)
+            digest.update(str(relative).encode(errors='surrogateescape') + b'\0')
+            with open_beneath(root, relative) as stream:
                 metadata = os.fstat(stream.fileno())
                 if file_identity(metadata) != identities[item]:
                     raise CommandError('Build artifact changed before reading; finish the build and rerun')

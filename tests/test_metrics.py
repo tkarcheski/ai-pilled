@@ -182,7 +182,7 @@ class MetricsTests(unittest.TestCase):
 
     def test_concurrent_bundle_addition_removal_edit_and_replacement_are_incomplete(self):
         from contextlib import contextmanager
-        from ai_pilled.file_io import open_regular
+        from ai_pilled.file_io import open_beneath
         dist = self.repo / 'dist'
         dist.mkdir()
         artifact = dist / 'small'
@@ -192,8 +192,8 @@ class MetricsTests(unittest.TestCase):
                     item.rmdir() if item.is_dir() else item.unlink()
                 artifact.write_bytes(b'x')
                 @contextmanager
-                def changed(path, change=change):
-                    with open_regular(path) as stream:
+                def changed(root, path, change=change):
+                    with open_beneath(root, path) as stream:
                         yield stream
                     if change == 'add':
                         (dist / 'late').write_bytes(b'x' * 100)
@@ -209,7 +209,7 @@ class MetricsTests(unittest.TestCase):
                         artifact.chmod(0o700)
                     else:
                         (dist / 'new-directory').mkdir()
-                with patch('ai_pilled.metrics.open_regular', side_effect=changed):
+                with patch('ai_pilled.metrics.open_beneath', side_effect=changed):
                     result = bundle(self.repo, 'dist', 10)
                 self.assertEqual(result.status, 'incomplete', result.to_dict())
                 self.assertEqual(result.metrics, {})
@@ -217,15 +217,15 @@ class MetricsTests(unittest.TestCase):
 
     def test_bundle_replacement_after_listing_before_open_is_rejected(self):
         from contextlib import contextmanager
-        from ai_pilled.file_io import open_regular
+        from ai_pilled.file_io import open_beneath
         artifact = self.repo / 'app.js'
         artifact.write_bytes(b'original')
         @contextmanager
-        def changed(path):
+        def changed(root, path):
             artifact.write_bytes(b'x')
-            with open_regular(path) as stream:
+            with open_beneath(root, path) as stream:
                 yield stream
-        with patch('ai_pilled.metrics.open_regular', side_effect=changed):
+        with patch('ai_pilled.metrics.open_beneath', side_effect=changed):
             result = bundle(self.repo, artifact.name, 2)
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual(result.metrics, {})
@@ -233,7 +233,7 @@ class MetricsTests(unittest.TestCase):
 
     def test_bundle_detects_mutation_during_descriptor_read(self):
         from contextlib import contextmanager
-        from ai_pilled.file_io import open_regular
+        from ai_pilled.file_io import open_beneath
         artifact = self.repo / 'app.js'
         artifact.write_bytes(b'original')
         class MutatingReader:
@@ -249,10 +249,10 @@ class MetricsTests(unittest.TestCase):
                     artifact.write_bytes(b'replaced')
                 return data
         @contextmanager
-        def changed(path):
-            with open_regular(path) as stream:
+        def changed(root, path):
+            with open_beneath(root, path) as stream:
                 yield MutatingReader(stream)
-        with patch('ai_pilled.metrics.open_regular', side_effect=changed):
+        with patch('ai_pilled.metrics.open_beneath', side_effect=changed):
             result = bundle(self.repo, artifact.name, 100)
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual(result.metrics, {})
@@ -337,3 +337,45 @@ class MetricsTests(unittest.TestCase):
                 self.assertEqual(result.status, 'incomplete')
                 self.assertEqual(result.metrics, {})
                 self.assertEqual(result.snapshot, '')
+
+    def test_bundle_parent_swap_during_inventory_never_reads_outside_content(self):
+        from contextlib import contextmanager
+        from ai_pilled.file_io import open_beneath
+        dist = self.repo / 'dist'
+        dist.mkdir()
+        (dist / 'public').write_bytes(b'public')
+        original = os.scandir
+        reads = []
+        with tempfile.TemporaryDirectory() as directory:
+            outside = Path(directory)
+            (outside / 'private').write_bytes(b'outside-fixture')
+            swapped = False
+            def replaced(path):
+                nonlocal swapped
+                if Path(path) == dist and not swapped:
+                    swapped = True
+                    dist.rename(self.repo / 'saved')
+                    dist.symlink_to(outside, target_is_directory=True)
+                return original(path)
+            class ObservedReader:
+                def __init__(self, stream):
+                    self.stream = stream
+                def fileno(self):
+                    return self.stream.fileno()
+                def read(self, size):
+                    data = self.stream.read(size)
+                    reads.append(data)
+                    return data
+            @contextmanager
+            def observed(root, name):
+                with open_beneath(root, name) as stream:
+                    yield ObservedReader(stream)
+            with patch('ai_pilled.metrics.os.scandir', side_effect=replaced), \
+                    patch('ai_pilled.metrics.open_beneath', side_effect=observed):
+                result = bundle(self.repo, 'dist', 100)
+            self.assertTrue(swapped)
+            self.assertEqual(result.status, 'incomplete')
+            self.assertEqual(result.metrics, {})
+            self.assertEqual(result.snapshot, '')
+            self.assertEqual(reads, [])
+            self.assertEqual((outside / 'private').read_bytes(), b'outside-fixture')
