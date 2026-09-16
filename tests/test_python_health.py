@@ -90,7 +90,8 @@ class PythonHealthTests(unittest.TestCase):
     def test_real_environment_ignores_repository_pip_module_and_checks_license(self):
         import venv
         environment = self.repo / 'environment'
-        venv.EnvBuilder(with_pip=True).create(environment)
+        # Preserve the library location of relocatable Python builds inside a venv.
+        venv.EnvBuilder(with_pip=True, symlinks=True).create(environment)
         (self.repo / 'pip.py').write_text('from pathlib import Path\nPath("shadow-executed").touch()\nraise RuntimeError("shadowed")\n')
         executable = str(environment / 'bin' / 'python')
         result = health_python(self.repo, executable)
