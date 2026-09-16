@@ -631,3 +631,19 @@ class SecurityTests(unittest.TestCase):
                 for fd in opened:
                     with self.assertRaises(OSError):
                         os.fstat(fd)
+
+    def test_long_whitespace_cannot_stall_credential_scanning_or_redaction(self):
+        code = (
+            'from ai_pilled.credentials import redact\n'
+            'from ai_pilled.runtime import Report\n'
+            'from ai_pilled.security import scan_text\n'
+            'for suffix in ("!", "|" + " " * 100_000 + "!", ">- # comment", "ordinary"):\n'
+            ' source = "aws_secret_access_key=" + " " * 100_000 + suffix\n'
+            ' report = Report("fixture")\n'
+            ' scan_text(report, "fixture", source)\n'
+            ' assert report.status == "pass"\n'
+            ' assert redact(source) == source\n')
+        result = subprocess.run([sys.executable, '-c', code],
+                                cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)

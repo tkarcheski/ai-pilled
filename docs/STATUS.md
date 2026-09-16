@@ -95,6 +95,10 @@ YAML literal/folded block scalars (including header comments, indentation, and
 chomping indicators) and triple-quoted configuration strings, reporting the value's
 source line. This is a credential heuristic, not a complete YAML/TOML parser;
 alias resolution and arbitrary split/escaped configuration values are not evaluated.
+A stress test caught overlapping whitespace repetition in the initial multiline
+matcher; the fix scopes whitespace to the optional block header. A timeout-bounded
+regression scans and redacts 100,000-character whitespace inputs and malformed headers.
+This protects review responsiveness while retaining the existing positive cases.
 See [YAML block headers](https://yaml.org/spec/1.2.2/#811-block-scalar-headers)
 and [TOML strings](https://toml.io/en/v1.0.0#string).
 Direct AWS secret fields are also paired with literal values in

@@ -9,7 +9,7 @@ PATTERNS = (
     ('aws-secret-key', re.compile(
         r"(?ai)\b(?:aws_secret_access_key|secretaccesskey)[\"']?[ \t]*"
         r"(?::[ \t]*(?:str|bytes)[ \t]*)?(?::=|[:=])"
-        r"[ \t]*(?:[|>](?:[1-9][+-]?|[+-][1-9]?)?[ \t]*(?:#[^\r\n]*)?(?:\r\n|\r|\n))?"
+        r"(?:[ \t]*[|>](?:[1-9][+-]?|[+-][1-9]?)?[ \t]*(?:#[^\r\n]*)?(?:\r\n|\r|\n))?"
         r"[\s()\\]*(?:[rubf]{0,2}(?:\"{3}|'{3})\s*|[rubf]{0,2}[\"'])?"
         r"(?P<secret>[A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])")),
     ('github-token', re.compile(r'(?a)\bgh[pousr]_[A-Za-z0-9]{36,}\b')),
