@@ -44,7 +44,9 @@ relative imports are not treated as public packages. Referenced conflicting impo
 in one scope are incomplete. Verified defaults/custom CA bundles remain allowed.
 General assignment/rebinding, global/nonlocal mutation, and session-instance data flow
 are not modeled; these patterns do not certify runtime behavior.
-Deep expression traversal is iterative. Scanning is bounded and reports unreadable,
+Shared JSON input parsing rejects duplicate object keys (including escaped aliases)
+and nonfinite numbers, so later fields cannot erase earlier findings or safety settings.
+Parser errors do not echo keys or provider payloads. Deep expression traversal is iterative. Scanning is bounded and reports unreadable,
 oversized, unresolved, and unsupported content as incomplete.
 
 **Evidence:** `test_security.py`, `test_python_security.py`, `test_redaction.py`,
@@ -130,7 +132,7 @@ required hosted checks are separate controls and have not been configured or cla
 | Python environment health | `python-health --python PATH`; `pip inspect` plus `pip check` | `test_python_health.py`; isolated interpreter prevents repository `pip.py` shadowing. Environment fingerprint must remain stable. Interpreter/startup environment must be trusted. |
 | Python updates | Optional `python-health --outdated`, confirmed per-package PyPI queries | Failed/unknown lookups remain incomplete. A reproduced `pip list --outdated` empty-success case motivated explicit index queries. Private/unpublished versions require manual comparison. |
 | Python licenses | `python-licenses --python PATH --allow EXPRESSION` | Exact declared expression matching. Missing, unknown, or prose-only metadata remains incomplete. No inferred SPDX evaluation or legal analysis. |
-| Automatic auditing | `python_requirements` and `python_audit_executable` in quality; `audit_dependencies_on_change` in PostToolUse | Enabled here for `requirements-dev.txt` and `requirements-audit.txt` (36 distinct pins). Quality obtains fresh results; lifecycle may reuse complete matching evidence for at most one hour. Failures stay blocking; incomplete checks are retried with a 30-second provider limit. Older cache entries without validated status evidence are refreshed. |
+| Automatic auditing | `python_requirements` and `python_audit_executable` in quality; `audit_dependencies_on_change` in PostToolUse | Enabled here for `requirements-dev.txt` and `requirements-audit.txt` (36 distinct pins). Quality obtains fresh results; lifecycle may reuse complete matching evidence for at most one hour. Failures stay blocking; incomplete checks are retried with a 30-second provider limit. Older cache entries without current strict-JSON and status evidence are refreshed. |
 
 **Live dogfood evidence:** both development (ten packages) and audit-tool (28 packages)
 locks install from hash-verified wheels in fresh Python 3.10 and 3.14 environments,

@@ -51,6 +51,13 @@ class ReviewTests(unittest.TestCase):
         self.response('not JSON', raw=True)
         self.assertEqual(review(self.repo, str(self.fake)).status, 'incomplete')
 
+    def test_duplicate_findings_cannot_erase_a_blocking_review(self):
+        self.response('{"findings":[{"path":"code.py","line":1,"message":"blocking defect"}],'
+                      '"findings":[]}', raw=True)
+        result = review(self.repo, str(self.fake))
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.findings[0].rule, 'review-unavailable')
+
     def test_unknown_cli_is_incomplete(self):
         self.assertEqual(review(self.repo, 'missing-ai-pilled-codex').status, 'incomplete')
 

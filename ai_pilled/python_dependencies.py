@@ -18,7 +18,7 @@ VERSION = r'[0-9][A-Za-z0-9.!+_-]{0,99}'
 PIN = re.compile(r'(' + NAME + r')==(' + VERSION + r')')
 HASH = re.compile(r'--hash=sha256:[a-fA-F0-9]{64}')
 COMMENT = re.compile(r'(^|\s+)#.*$')
-EVIDENCE_VERSION = 1
+EVIDENCE_VERSION = 2
 
 
 def canonical(name):

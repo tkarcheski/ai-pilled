@@ -26,13 +26,14 @@ class DependencyTests(unittest.TestCase):
         self.fake = self.repo / 'npm-fake'
         self.provider(response())
 
-    def provider(self, payload, code=0, extra=''):
+    def provider(self, payload, code=0, extra='', raw=False):
+        payload = payload if raw else json.dumps(payload)
         self.fake.write_text(f'#!{sys.executable}\nimport sys,os\nfrom pathlib import Path\n'
                             'assert sys.argv[1] == "audit"\n'
                             'assert "--ignore-scripts" in sys.argv\n'
                             'assert "--package-lock-only" in sys.argv\n'
                             'assert not any(k.startswith("GIT_") for k in os.environ)\n'
-                            f'{extra}\nprint({json.dumps(payload)!r})\nsys.exit({code})\n')
+                            f'{extra}\nprint({payload!r})\nsys.exit({code})\n')
         self.fake.chmod(0o755)
 
     def test_clean_structured_audit(self):
@@ -71,13 +72,21 @@ class DependencyTests(unittest.TestCase):
         original = audit(self.repo, str(self.fake))
         path = self.repo / '.ai-pilled/events.jsonl'
         entry = json.loads(path.read_text())
-        entry['report']['metrics'].pop('evidence_version')
+        entry['report']['metrics']['evidence_version'] = 1
         path.write_text(json.dumps(entry) + '\n')
         with patch('ai_pilled.dependencies.audit', return_value=original) as provider:
             result, reused = audit_changed(self.repo)
         self.assertFalse(reused)
         self.assertEqual(result.status, 'pass')
         provider.assert_called_once_with(self.repo, timeout=30)
+
+    def test_duplicate_provider_keys_cannot_hide_vulnerability_evidence(self):
+        raw = json.dumps(response())
+        hidden = '"vulnerabilities":{"example":{"severity":"high","fixAvailable":true}},'
+        self.provider('{' + hidden + raw[1:], raw=True)
+        result = audit(self.repo, str(self.fake))
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.findings[0].rule, 'dependency-audit-unavailable')
 
     def test_registry_error_does_not_leak_response(self):
         self.provider({'error': {'summary': 'private registry credential'}}, 1)

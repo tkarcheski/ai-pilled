@@ -11,7 +11,7 @@ from .runtime import CommandError, Report, run_completed
 from .state import record
 
 SEVERITIES = ('info', 'low', 'moderate', 'high', 'critical')
-EVIDENCE_VERSION = 1
+EVIDENCE_VERSION = 2
 
 
 def read_input(path):

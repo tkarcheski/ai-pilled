@@ -44,6 +44,11 @@ class ConfigTests(unittest.TestCase):
         self.configure({'commands': {'test': ['ai-pilled-nonexistent-executable']}})
         self.assertEqual(command_check(self.repo, 'test').status, 'incomplete')
 
+    def test_duplicate_safety_settings_are_rejected(self):
+        (self.repo / '.ai-pilled.json').write_text('{"require_tests":true,"require_tests":false}')
+        with self.assertRaises(ConfigError):
+            load(self.repo)
+
     def test_invalid_configs_rejected(self):
         for value in [[], {'typo': True}, {'version': True}, {'timeout': True},
                       {'commands': {'test': 'npm test'}},

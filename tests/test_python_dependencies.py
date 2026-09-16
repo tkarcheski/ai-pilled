@@ -114,7 +114,7 @@ class PythonDependencyTests(unittest.TestCase):
             audit_python(self.repo)
         path = self.repo / '.ai-pilled/events.jsonl'
         entry = json.loads(path.read_text())
-        for metrics in ({}, [], {'evidence_version': True}):
+        for metrics in ({}, [], {'evidence_version': True}, {'evidence_version': 1}):
             with self.subTest(metrics=metrics):
                 entry['report']['metrics'] = metrics
                 path.write_text(json.dumps(entry) + '\n')
@@ -123,6 +123,12 @@ class PythonDependencyTests(unittest.TestCase):
                 self.assertFalse(reused)
                 self.assertEqual(result.status, 'pass')
                 provider.assert_called_once()
+
+    def test_duplicate_vulnerability_keys_are_incomplete(self):
+        raw = json.dumps({'dependencies': [self.row]})
+        raw = raw.replace('"vulns": []', '"vulns":[{"id":"hidden","fix_versions":[]}],"vulns":[]')
+        with patch('ai_pilled.python_dependencies.run_completed', return_value=CompletedCommand(raw.encode(), 0)):
+            self.assertEqual(audit_python(self.repo).status, 'incomplete')
 
     def test_vulnerability_blocks_and_reports_fixed_versions(self):
         self.row['vulns'] = [{'id': 'PYSEC-2026-1', 'fix_versions': ['1.2.4']}]
