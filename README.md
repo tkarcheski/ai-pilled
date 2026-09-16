@@ -61,6 +61,26 @@ The benchmark command uses a separate commands.benchmark argument array.
 These commands report the configured tool's result; they do not invent coverage numbers
 or dependency vulnerability data.
 
+## Python dependency vulnerability audits
+
+Run `python -m ai_pilled python-audit --requirements requirements-dev.txt --pip-audit /path/to/pip-audit`.
+Repeat --requirements to audit multiple repository-relative files. The default is
+requirements.txt. Install pip-audit separately in a virtual environment; the ai-pilled
+runtime still has no third-party dependencies. This integration is tested with pip-audit 2.10.1.
+
+Inputs must contain exact name==version pins, comments, and blank lines. Export a complete
+resolved dependency set first: only the listed packages are audited, and missing transitive
+pins cannot be inferred. URLs, editable installs, nested requirement files, options, extras,
+markers, and version ranges are rejected explicitly. Requirements are bounded regular files;
+recognizable credentials block before a provider is called.
+
+The adapter supplies a sanitized snapshot to pip-audit with --no-deps, --disable-pip, and
+--strict. It never installs, executes package build code, or applies fixes. Package names
+and versions are queried against PyPI's advisory service. Every selected package must
+appear exactly once in the returned evidence; skipped/missing packages, malformed results,
+timeouts, and changed inputs make the audit incomplete. Known advisories block and report
+available fixed versions. See the [official pip-audit documentation](https://github.com/pypa/pip-audit).
+
 ## Publish verified release metadata
 
 After preparing and committing VERSION/CHANGELOG.md, create and push the intended tag
@@ -469,14 +489,16 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,python-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,python-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,publish-release,update-readme,nightly-refactor,refactor,auto-merge,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
     dependency-audit    Audit npm lockfile vulnerabilities
+    python-audit        Audit fully pinned Python requirements without installing
+                        packages
     coverage            Check line coverage from coverage.py JSON
     bundle              Check built artifacts against a byte budget
     benchmark           Compare median process time against a local baseline
