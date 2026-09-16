@@ -7,8 +7,10 @@ import re
 PATTERNS = (
     ('aws-access-key', re.compile(r'(?a)\b(?:AKIA|ASIA)[A-Z0-9]{16}\b')),
     ('aws-secret-key', re.compile(
-        r"(?ai)\b(?:aws_secret_access_key|secretaccesskey)[\"']?[ \t]*[:=][ \t]*[\"']?"
-        r"[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])")),
+        r"(?ai)\b(?:aws_secret_access_key|secretaccesskey)[\"']?[ \t]*"
+        r"(?::[ \t]*(?:str|bytes)[ \t]*)?(?::=|[:=])"
+        r"[\s()\\]*(?:[rubf]{0,2}[\"'])?"
+        r"(?P<secret>[A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])")),
     ('github-token', re.compile(r'(?a)\bgh[pousr]_[A-Za-z0-9]{36,}\b')),
     ('github-fine-grained-token', re.compile(r'(?a)\bgithub_pat_[A-Za-z0-9_]{40,}\b')),
     ('gitlab-access-token', re.compile(r'(?a)\bglpat-[A-Za-z0-9_-]{20,}')),

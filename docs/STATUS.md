@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `9ef8f71`: 571 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `cfd06e3`
-passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `fdef209` also passed all seven gates with zero
+The verification baseline is `0e2e5a1`: 588 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `475aed7`
+passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `0e2e5a1` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -55,6 +55,9 @@ permission changes, and symlink swaps. This prevents stale-descriptor false pass
 it does not claim an atomic repository-wide snapshot. ASCII token boundaries prevent non-ASCII neighboring bytes or text from
 hiding recognizable credentials in scans or redacted output. Quoted JSON strings are decoded once for Unicode/slash escapes, including
 values hidden by duplicate keys; malformed literals do not suppress raw scanning.
+Plaintext AWS assignments span whitespace/parentheses and support simple str/bytes
+annotations, named-expression operators, and literal string prefixes. Scans locate
+the credential's value line; shared redaction masks these forms in messages/output.
 AWS secret-key field names are paired with their decoded JSON values, including
 escaped keys and duplicate entries. The shared redactor handles nested dictionary fields
 and masks those values while retaining JSON keys/quoting and unrelated data. Complete

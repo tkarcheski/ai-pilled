@@ -195,3 +195,14 @@ class RedactionTests(unittest.TestCase):
                 encoded = json.dumps(token).replace(token[0], r'\u%04x' % ord(token[0]), 1)
                 self.assertEqual(json.loads(redact(encoded)), '[REDACTED]')
                 self.assertEqual(redact(chr(255) + token + chr(255)), chr(255) + '[REDACTED]' + chr(255))
+
+    def test_multiline_and_annotated_aws_assignments_are_redacted(self):
+        secret = 'aB3/+' * 8
+        for source in ('aws_secret_access_key = (\n' + repr(secret) + '\n)',
+                       'aws_secret_access_key: str = ' + repr(secret),
+                       'aws_secret_access_key: bytes = b' + repr(secret),
+                       'SecretAccessKey := ' + repr(secret),
+                       'aws_secret_access_key = r' + repr(secret)):
+            with self.subTest(source=source[:30]):
+                self.assertNotIn(secret, redact(source))
+                self.assertIn('[REDACTED]', redact(source))

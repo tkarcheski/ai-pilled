@@ -472,3 +472,14 @@ class PrePushTests(unittest.TestCase):
         self.assertTrue({'gitlab-access-token', 'stripe-secret-key'} <= {f.rule for f in result.findings})
         for token in tokens:
             self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_multiline_aws_commit_message_blocks_actual_push_without_echoing(self):
+        secret = 'aB3/+' * 8
+        message = 'test: fixture\n\naws_secret_access_key = (\n' + repr(secret) + '\n)'
+        self.git('commit', '--allow-empty', '-qm', message)
+        install(self.repo)
+        result = self.git('push', 'origin', 'HEAD:feature', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'aws-secret-key', result.stdout + result.stderr)
+        self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote), 'for-each-ref']), b'')

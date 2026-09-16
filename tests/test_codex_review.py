@@ -293,3 +293,12 @@ class ReviewTests(unittest.TestCase):
                 result = review(self.repo, str(self.fake))
             self.assertEqual(result.status, 'pass', result.to_dict())
             invoke.assert_called_once()
+
+    def test_multiline_commit_message_secret_blocks_model_call(self):
+        secret = 'aB3/+' * 8
+        message = 'fix: rotate credentials\n\naws_secret_access_key = (\n' + repr(secret) + '\n)'
+        with patch('ai_pilled.codex_review.invoke_review') as invoke:
+            result = review(self.repo, str(self.fake), message)
+        self.assertEqual(result.status, 'fail')
+        invoke.assert_not_called()
+        self.assertNotIn(secret, json.dumps(result.to_dict()))

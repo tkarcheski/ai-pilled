@@ -483,3 +483,31 @@ class SecurityTests(unittest.TestCase):
                        'client(ordinary=' + repr(secret) + ')'):
             self.write('fields.py', source)
             self.assertEqual(scan(self.repo).status, 'pass', source[:40])
+
+    def test_plaintext_multiline_aws_assignments_report_the_value_line(self):
+        secret = 'aB3/+' * 8
+        for newline in ('\n', '\r\n', '\r', '\v'):
+            with self.subTest(newline=repr(newline)):
+                report = Report('text')
+                scan_text(report, 'message', 'intro' + newline + 'aws_secret_access_key = (' +
+                          newline + repr(secret) + newline + ')')
+                self.assertEqual([(f.rule, f.line) for f in report.findings], [('aws-secret-key', 3)])
+        for expression in ('aws_secret_access_key: str = ', 'aws_secret_access_key: bytes = b',
+                           'SecretAccessKey := ', 'aws_secret_access_key = r'):
+            report = Report('text')
+            scan_text(report, 'message', expression + repr(secret))
+            self.assertEqual([(f.rule, f.line) for f in report.findings], [('aws-secret-key', 1)])
+
+    def test_multiline_aws_matching_preserves_lengths_and_one_finding_per_line(self):
+        secret = 'A' * 40
+        for source in ('aws_secret_access_key = (\n' + repr('A' * 39) + '\n)',
+                       'aws_secret_access_key = (\n' + repr('A' * 41) + '\n)',
+                       'aws_secret_access_key = None\nother = ' + repr(secret),
+                       'unrelated = (\n' + repr(secret) + '\n)'):
+            report = Report('text')
+            scan_text(report, 'message', source)
+            self.assertEqual(report.status, 'pass')
+        report = Report('text')
+        scan_text(report, 'message', 'aws_secret_access_key=' + repr(secret) +
+                  '; SecretAccessKey=' + repr(secret))
+        self.assertEqual(len(report.findings), 1)

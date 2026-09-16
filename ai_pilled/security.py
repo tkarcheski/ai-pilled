@@ -8,18 +8,27 @@ from .file_io import file_identity
 from .git_blobs import read_blobs
 from .runtime import CommandError, Report, run, git_path
 from .python_security import inspect_python, parse_python
-from .credentials import PATTERNS, aws_secret_field, json_secret_literals
+from .credentials import AWS_SECRET_ASSIGNMENT, PATTERNS, aws_secret_field, json_secret_literals
 
 
 MAX_FILE_BYTES = 2_000_000
 
 
 def scan_text(report, path, text):
-    for number, line in enumerate(text.splitlines(), 1):
+    aws_matches = iter(AWS_SECRET_ASSIGNMENT.finditer(text))
+    aws_match = next(aws_matches, None)
+    offset = 0
+    for number, line in enumerate(text.splitlines(keepends=True), 1):
+        end = offset + len(line)
+        aws_here = False
+        while aws_match is not None and aws_match.start('secret') < end:
+            aws_here = True
+            aws_match = next(aws_matches, None)
         for rule, pattern in PATTERNS:
-            if pattern.search(line):
+            if (aws_here if pattern is AWS_SECRET_ASSIGNMENT else pattern.search(line)):
                 report.add(rule, 'Potential credential detected; remove and rotate if genuine.',
                            path=path, line=number)
+        offset = end
 
     seen = {(finding.rule, finding.path, finding.line) for finding in report.findings}
     for _, _, number, decoded, secret_field in json_secret_literals(text):
