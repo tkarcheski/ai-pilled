@@ -1,4 +1,6 @@
 """Git gates and reversible hook installation."""
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import json
 import os
@@ -6,10 +8,12 @@ from pathlib import Path
 import re
 import shlex
 import sys
+import stat
 
 from .runtime import CommandError, Report, run
 from .config import load
 from .security import scan, scan_text
+from .state import directory as state_directory
 
 
 def commit_message(path):
@@ -64,8 +68,24 @@ def hook_contents(repo):
             for event in ('pre-commit', 'commit-msg', 'pre-push')}
 
 
+@contextmanager
+def locked(repo):
+    root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    state = state_directory(root)
+    fd = os.open(state / 'git-install.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    with os.fdopen(fd, 'r+') as lock:
+        if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
+            raise CommandError('Git installation lock must be a regular file')
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield root
+
+
 def install(repo):
-    repo = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    with locked(repo) as root:
+        return _install(root)
+
+
+def _install(repo):
     directory = repo / '.ai-pilled' / 'hooks'
     manifest = repo / '.ai-pilled' / 'installation.json'
     if (repo / '.ai-pilled').is_symlink() or directory.is_symlink() or manifest.is_symlink():
@@ -154,7 +174,11 @@ def read_manifest(manifest, expected):
 
 
 def uninstall(repo):
-    repo = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+    with locked(repo) as root:
+        return _uninstall(root)
+
+
+def _uninstall(repo):
     manifest = repo / '.ai-pilled' / 'installation.json'
     if not manifest.exists():
         return Report('uninstall-git-hooks')

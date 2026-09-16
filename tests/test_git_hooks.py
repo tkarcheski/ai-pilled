@@ -239,3 +239,25 @@ class GitHookTests(unittest.TestCase):
         refs = subprocess.check_output(['git', '--git-dir', str(remote),
                                         'for-each-ref', '--format=%(refname)'])
         self.assertEqual(refs, b'')
+
+
+    def test_concurrent_installers_leave_one_complete_owned_installation(self):
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            results = list(pool.map(lambda _: install(self.repo), range(6)))
+        self.assertTrue(all(result.status == 'pass' for result in results))
+        hooks = self.repo / '.ai-pilled' / 'hooks'
+        self.assertTrue(all((hooks / event).is_file() for event in ('pre-commit', 'commit-msg', 'pre-push')))
+        self.git('commit', '-m', 'test: concurrent setup remains usable')
+        uninstall(self.repo)
+        self.assertFalse(hooks.exists())
+
+
+    def test_concurrent_uninstallers_preserve_consistent_configuration(self):
+        from concurrent.futures import ThreadPoolExecutor
+        install(self.repo)
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            results = list(pool.map(lambda _: uninstall(self.repo), range(6)))
+        self.assertTrue(all(result.status == 'pass' for result in results))
+        self.assertFalse((self.repo / '.ai-pilled' / 'hooks').exists())
+        self.assertEqual(self.git('config', '--get', 'core.hooksPath', success=False).returncode, 1)
