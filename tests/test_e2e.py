@@ -165,3 +165,36 @@ class EndToEndTests(unittest.TestCase):
         result = self.cli('lifecycle', input_data=payload)
         self.assertEqual(result['decision'], 'block')
         self.assertIn('"python_dependency_result_reused": false', result['hookSpecificOutput']['additionalContext'])
+
+    def test_audit_planning_previews_and_artifact_budgets(self):
+        self.git('commit', '-m', 'feat: audited fixture')
+        head = self.git('rev-parse', 'HEAD')
+        audit = self.cli('full-audit')
+        self.assertEqual(audit['status'], 'pass')
+        self.assertEqual(audit['metrics']['model_reviews_run'], 0)
+        self.assertEqual({check['check'] for check in audit['checks'][0]['checks']},
+                         {'security', 'test', 'lint', 'typecheck', 'deadcode', 'coverage'})
+        plan = self.cli('release-plan', '--current', '1.0.0')
+        self.assertEqual(plan['next_version'], '1.1.0')
+        self.assertFalse((self.repo / 'VERSION').exists())
+        for arguments in (['slack'], ['github', '--github-repo', 'fixture/example', '--issue', '1'],
+                          ['linear', '--team', '00000000-0000-0000-0000-000000000001'],
+                          ['email', '--sender', 'sender@example.invalid', '--recipient', 'to@example.invalid']):
+            with self.subTest(provider=arguments[0]):
+                result = self.cli('notify', *arguments)
+                self.assertEqual(result['status'], 'pass')
+                self.assertEqual(result['delivery'], 'preview')
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual(self.git('tag', '--list'), b'')
+        self.assertEqual(self.git('status', '--porcelain'), b'')
+        self.assertEqual(self.git('ls-remote', 'origin'), b'')
+        coverage = self.repo / '.ai-pilled/coverage-input.json'
+        coverage.write_text(json.dumps({'totals': {'covered_lines': 9, 'num_statements': 10}}))
+        self.assertEqual(self.cli('coverage', '--report', '.ai-pilled/coverage-input.json',
+                                  '--minimum', '80')['metrics']['line_percent'], 90)
+        self.assertEqual(self.cli('coverage', '--report', '.ai-pilled/coverage-input.json',
+                                  '--minimum', '95', codes=(1,))['status'], 'fail')
+        (self.repo / '.ai-pilled/artifact.bin').write_bytes(b'abc')
+        self.assertEqual(self.cli('bundle', '--path', '.ai-pilled/artifact.bin', '--maximum', '3')['status'], 'pass')
+        self.assertEqual(self.cli('bundle', '--path', '.ai-pilled/artifact.bin', '--maximum', '2', codes=(1,))['status'], 'fail')
+        self.assertTrue({'coverage-budget', 'bundle-budget'} <= set(self.cli('summary')['unresolved']))

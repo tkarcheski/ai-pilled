@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `1ad8ac4`: 480 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `44e1270`
-passed the same quality profile and all four E2E scenarios on Python 3.10. An actual full-audit of `5844cd2` also passed all seven gates with zero
+The verification baseline is `21d7d26`: 488 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `56ba0e1`
+passed the same quality profile and all four E2E scenarios on Python 3.10. An actual full-audit of `21d7d26` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -275,7 +275,7 @@ that local run, not a latency guarantee for future snapshots or larger repositor
 
 ## CI and end-to-end evidence
 
-`python scripts/run_e2e.py` runs four multi-step scenarios through the real CLI:
+`python scripts/run_e2e.py` runs five multi-step scenarios through the real CLI:
 
 1. Install hooks, commit, push to a local bare remote, consume lifecycle events,
    summarize results, and generate the offline dashboard.
@@ -285,8 +285,11 @@ that local run, not a latency guarantee for future snapshots or larger repositor
 3. Reject hidden worktree changes, a protected destination, and a failing-test push; confirm remote refs do not move.
 4. Run Python audit/lifecycle through a fixture provider; preserve vulnerability and
    incomplete statuses, including cache behavior.
+5. Run a full audit without model workers, plan a release, preview all four notification
+   providers without credentials, and enforce coverage/artifact budgets through the CLI.
+   Confirm HEAD, tags, working files, and remote refs remain unchanged by previews.
 
-All four passed on Python 3.10 and 3.14. The runner produces private
+All five passed on Python 3.10 and 3.14. The runner produces private
 `.ai-pilled/e2e.json` and `.ai-pilled/e2e.xml` with every test outcome. Exported artifacts
 contain named outcomes rather than raw process transcripts. The E2E repository uses
 small configured lint/type/deadcode/coverage fixture commands; the actual development
@@ -296,7 +299,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `44e1270`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.58% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `56ba0e1`; publication blocked | Current 3.10 seven-gate/E2E evidence, 91.80% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
