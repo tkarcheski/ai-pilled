@@ -58,7 +58,14 @@ private-key block redaction still precedes individual quoted-string handling.
 This is direct string-escape handling, not arbitrary encoding or runtime data-flow analysis.
 PyPI publishing tokens follow the provider’s documented prefix and minimum
 payload length; the shared pattern also redacts reports/history and blocks credential-like
-package identities before registry queries. Python string/byte constants are parsed without
+package identities before registry queries. Recognizable GitLab `glpat-` access tokens
+and Stripe secret/restricted live/test keys plus organization keys are also scanned
+and redacted across reports, history, and dashboards. These patterns use conservative
+minimum payload lengths (20 for GitLab, 24 for Stripe), not online validity checks;
+custom token formats remain outside their coverage. Stripe publishable keys are allowed.
+Provider distinctions: [GitLab token overview](https://docs.gitlab.com/security/tokens/)
+and [Stripe key types](https://docs.stripe.com/keys).
+Python string/byte constants are parsed without
 execution, including adjacent literals and Python escapes; findings cite the start of
 the source literal. Parser warnings are suppressed because Python can echo an
 unredacted source line; syntax failures still yield incomplete evidence. Runtime string

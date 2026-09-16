@@ -344,3 +344,41 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual([(f.rule, f.path) for f in result.findings], [('github-token', 'z.py')])
         self.assertEqual(scan_revision(self.repo, 'HEAD', cache=cache).to_dict(), result.to_dict())
         self.assertNotIn('A' * 36, repr(cache))
+
+    def test_gitlab_and_stripe_server_keys_cover_contents_and_names(self):
+        tokens = [('glpat-' + 'Ab0_-' * 4, 'gitlab-access-token')]
+        tokens.extend((prefix + 'Ab01' * 6, 'stripe-secret-key')
+                      for prefix in ('sk_live_', 'sk_test_', 'rk_live_', 'rk_test_', 'sk_org_'))
+        for index, (token, _) in enumerate(tokens):
+            self.write(str(index) + '.txt', token)
+            self.write(token + '.txt', 'ordinary')
+        for scope in ('staged', 'worktree'):
+            result = scan(self.repo, scope)
+            self.assertEqual(result.status, 'fail')
+            self.assertEqual(len(result.findings), 2 * len(tokens))
+            self.assertEqual({f.rule for f in result.findings}, {'gitlab-access-token', 'stripe-secret-key'})
+            for token, _ in tokens:
+                self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_gitlab_and_stripe_encoded_literals_keep_credential_checks(self):
+        from ai_pilled.security import scan_bytes
+        for prefix, length, rule in (('glpat-', 20, 'gitlab-access-token'),
+                                     ('rk_live_', 24, 'stripe-secret-key'),
+                                     ('sk_org_', 24, 'stripe-secret-key')):
+            token = prefix + 'A' * length
+            cases = [('encoded.json', json.dumps(token).replace(prefix[0], r'\u%04x' % ord(prefix[0]), 1).encode()),
+                     ('encoded.py', ('value = ' + repr(prefix) + ' ' + repr('A' * length)).encode()),
+                     ('binary.bin', bytes([255]) + token.encode() + bytes([255]))]
+            for path, content in cases:
+                with self.subTest(prefix=prefix, path=path):
+                    result = Report('security')
+                    scan_bytes(result, path, content)
+                    self.assertEqual([f.rule for f in result.findings], [rule])
+                    self.assertNotIn(token, json.dumps(result.to_dict()))
+
+    def test_public_stripe_keys_and_short_prefix_examples_remain_allowed(self):
+        values = ['pk_live_' + 'A' * 100, 'pk_test_' + 'A' * 100,
+                  'glpat-' + 'A' * 19, 'sk_live_' + 'A' * 23,
+                  'rk_test_example', 'sk_org_example', 'prefixglpat-' + 'A' * 20]
+        self.write('ordinary.txt', '\n'.join(values))
+        self.assertEqual(scan(self.repo).status, 'pass')

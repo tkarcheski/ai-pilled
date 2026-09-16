@@ -11,6 +11,8 @@ PATTERNS = (
         r"[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])")),
     ('github-token', re.compile(r'(?a)\bgh[pousr]_[A-Za-z0-9]{36,}\b')),
     ('github-fine-grained-token', re.compile(r'(?a)\bgithub_pat_[A-Za-z0-9_]{40,}\b')),
+    ('gitlab-access-token', re.compile(r'(?a)\bglpat-[A-Za-z0-9_-]{20,}')),
+    ('stripe-secret-key', re.compile(r'(?a)\b(?:[sr]k_(?:live|test)_|sk_org_)[A-Za-z0-9]{24,}')),
     ('pypi-token', re.compile(r'(?a)\bpypi-[A-Za-z0-9_-]{85,}')),
     ('private-key', re.compile(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----')),
     ('openai-token', re.compile(r'(?a)\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}\b')),

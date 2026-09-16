@@ -459,3 +459,16 @@ class PrePushTests(unittest.TestCase):
                 self.assertNotIn(b'x' * 20, result.stdout + result.stderr)
                 self.assertNotIn(b'Traceback', result.stderr)
                 self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote), 'for-each-ref']), b'')
+
+    def test_gitlab_and_stripe_credentials_removed_later_still_block_history(self):
+        tokens = ['glpat-' + 'A' * 20, 'rk_live_' + 'B' * 24]
+        path = self.repo / 'credentials.txt'
+        path.write_text('\n'.join(tokens))
+        self.commit()
+        path.unlink()
+        self.commit()
+        result = pre_push(self.repo, self.update())
+        self.assertEqual(result.status, 'fail')
+        self.assertTrue({'gitlab-access-token', 'stripe-secret-key'} <= {f.rule for f in result.findings})
+        for token in tokens:
+            self.assertNotIn(token, json.dumps(result.to_dict()))

@@ -179,3 +179,19 @@ class RedactionTests(unittest.TestCase):
         result = Report('probe')
         inspect_python(result, str(path), b'def broken(')
         self.assertEqual(result.status, 'incomplete')
+
+    def test_gitlab_and_stripe_credentials_are_redacted_from_all_local_outputs(self):
+        for token in ('glpat-' + 'Ab0_-' * 4, 'sk_live_' + 'A' * 24,
+                      'rk_test_' + 'B' * 24, 'sk_org_' + 'C' * 24):
+            with self.subTest(prefix=token[:6]):
+                self.token = token
+                result = Report('security')
+                result.add('credential', token, path=token + '.txt')
+                self.assert_redacted(result.to_dict())
+                record(self.repo, result, 'scan')
+                self.assertNotIn(token, (self.repo / '.ai-pilled/events.jsonl').read_text())
+                self.assert_redacted(summarize(self.repo))
+                self.assertNotIn(token, dashboard(self.repo).read_text())
+                encoded = json.dumps(token).replace(token[0], r'\u%04x' % ord(token[0]), 1)
+                self.assertEqual(json.loads(redact(encoded)), '[REDACTED]')
+                self.assertEqual(redact(chr(255) + token + chr(255)), chr(255) + '[REDACTED]' + chr(255))
