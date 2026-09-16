@@ -93,6 +93,18 @@ class EndToEndTests(unittest.TestCase):
         self.assertIn(b'tls-verification-disabled', output)
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         self.git('add', 'transport.py')
+        for source, fixed, rule in (
+                ('import subprocess\nsubprocess.getoutput(command)\n',
+                 'import subprocess\nsubprocess.run(["echo", value], check=True)\n', b'shell-execution'),
+                ('import yaml\nyaml.unsafe_load(data)\n',
+                 'import yaml\nyaml.safe_load(data)\n', b'unsafe-yaml')):
+            (self.repo / 'example.py').write_text(source)
+            self.git('add', 'example.py')
+            (self.repo / 'example.py').write_text(fixed)
+            output = self.git('commit', '-m', 'feat: rejected unsafe API', codes=(1,))
+            self.assertIn(rule, output)
+            self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+            self.git('add', 'example.py')
         (self.repo / 'value.txt').write_text('broken\n')
         self.git('add', 'note.txt', 'value.txt')
         (self.repo / 'value.txt').write_text('correct\n')

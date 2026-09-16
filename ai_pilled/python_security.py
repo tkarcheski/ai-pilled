@@ -7,6 +7,9 @@ TLS_VERIFY_CALLS = {
     for module in ('requests', 'requests.api', 'httpx')
     for method in ('request', 'get', 'post', 'put', 'patch', 'delete', 'head', 'options')
 } | {'httpx.Client', 'httpx.AsyncClient', 'httpx.stream'}
+IMPLICIT_SHELL_CALLS = {'os.system', 'os.popen', 'subprocess.getoutput',
+                        'subprocess.getstatusoutput', 'asyncio.create_subprocess_shell',
+                        'asyncio.subprocess.create_subprocess_shell'}
 
 
 def import_scopes(tree):
@@ -142,16 +145,18 @@ def inspect_python(report, path, content):
         elif name == 'ssl._create_unverified_context':
             rule, message = 'unverified-tls-context', (
                 'Unverified SSL context factory requires review; prefer ssl.create_default_context.')
-        elif name == 'yaml.load':
+        elif name in ('yaml.unsafe_load', 'yaml.unsafe_load_all'):
+            rule, message = 'unsafe-yaml', 'Use safe_load or safe_load_all for untrusted YAML.'
+        elif name in ('yaml.load', 'yaml.load_all'):
             loader = next((k.value for k in node.keywords if k.arg == 'Loader'), None)
             if loader is None and len(node.args) > 1:
                 loader = node.args[1]
             if qualified(loader) not in ('yaml.SafeLoader', 'yaml.CSafeLoader'):
                 rule, message = 'unsafe-yaml', 'Use safe_load or an explicit SafeLoader for untrusted YAML.'
-        elif name == 'os.system' or (name in ('subprocess.run', 'subprocess.Popen', 'subprocess.call',
+        elif name in IMPLICIT_SHELL_CALLS or (name in ('subprocess.run', 'subprocess.Popen', 'subprocess.call',
                                              'subprocess.check_call', 'subprocess.check_output') and
                                      any(k.arg == 'shell' and isinstance(k.value, ast.Constant)
-                                         and k.value.value is True for k in node.keywords)):
+                                         and bool(k.value.value) for k in node.keywords)):
             rule, message = 'shell-execution', 'Shell execution requires review; prefer argument arrays without shell=True.'
         elif (name == 'print' or name.rsplit('.', 1)[-1] in
               ('debug', 'info', 'warning', 'error', 'critical', 'exception', 'log')):

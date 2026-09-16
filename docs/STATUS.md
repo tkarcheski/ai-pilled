@@ -36,11 +36,15 @@ also exit 2. Historical summaries describe recorded evidence, not the current fi
 
 Credential scanning covers file contents, names, UTF-16/32 BOM encodings, and staged
 Git blobs. Strict Python AST checks flag environment dumps, unsafe parsing, shell
-execution, weak cryptographic patterns, and explicit TLS-verification bypasses in
+execution (including implicit shell APIs and literal truthy shell flags), unsafe YAML
+single/multiple-document loaders, weak cryptographic patterns, and explicit TLS-verification bypasses in
 Requests/HTTPX APIs or the unverified SSL context factory, including import aliases.
 Import lookup separates module, function, class, and lambda bodies, including aliases
 in defaults and enclosing closures. Unrelated nested imports cannot hide outer calls;
-relative imports are not treated as public packages. Referenced conflicting imports
+relative imports are not treated as public packages. Shell rules include `os.popen`,
+`subprocess.getoutput/getstatusoutput`, and `asyncio.create_subprocess_shell`; YAML
+rules include `unsafe_load`, `unsafe_load_all`, and `load_all` without an explicit safe loader.
+Argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Referenced conflicting imports
 in one scope are incomplete. Verified defaults/custom CA bundles remain allowed.
 General assignment/rebinding, global/nonlocal mutation, and session-instance data flow
 are not modeled; these patterns do not certify runtime behavior.
@@ -216,7 +220,7 @@ older child results; priority, bounds, redaction, and no-execution tests are in
 1. Install hooks, commit, push to a local bare remote, consume lifecycle events,
    summarize results, and generate the offline dashboard.
 2. Reject a bad subject, a staged credential, a TLS bypass hidden by an unstaged fix,
-   and a failing test hidden by partial staging;
+   implicit shell/unsafe YAML APIs hidden by unstaged fixes, and a failing test hidden by partial staging;
    confirm HEAD does not move.
 3. Reject hidden worktree changes, a protected destination, and a failing-test push; confirm remote refs do not move.
 4. Run Python audit/lifecycle through a fixture provider; preserve vulnerability and

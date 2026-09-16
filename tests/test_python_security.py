@@ -91,6 +91,45 @@ class PythonPatternTests(unittest.TestCase):
         result = self.inspect('import subprocess as s\ns.run(value, shell=True)')
         self.assertEqual(result.findings[0].rule, 'shell-execution')
 
+    def test_implicit_shell_entry_points_are_blocked_through_aliases(self):
+        for source in ('import subprocess\nsubprocess.getoutput(command)',
+                       'from subprocess import getstatusoutput as output\noutput(command)',
+                       'import os as system\nsystem.popen(command)',
+                       'import asyncio\nasyncio.create_subprocess_shell(command)',
+                       'from asyncio.subprocess import create_subprocess_shell as launch\nlaunch(command)'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('shell-execution', 2)])
+
+    def test_literal_truthy_shell_flags_cannot_hide_shell_execution(self):
+        for value in ('True', '1', '"enabled"'):
+            result = self.inspect('import subprocess\nsubprocess.run(command, shell=' + value + ')')
+            self.assertEqual(result.status, 'fail')
+        for source in ('import subprocess\nsubprocess.run(["echo", value], shell=False)',
+                       'import subprocess\nsubprocess.run(["echo", value], shell=0)',
+                       'import asyncio\nasyncio.create_subprocess_exec("echo", value)',
+                       'custom.getoutput(command)'):
+            self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_unsafe_yaml_variants_and_missing_safe_multi_document_loader_are_blocked(self):
+        for source in ('import yaml\nyaml.unsafe_load(data)',
+                       'from yaml import unsafe_load_all as load\nload(data)',
+                       'import yaml\nyaml.load_all(data)',
+                       'from yaml import load_all, UnsafeLoader\nload_all(data, Loader=UnsafeLoader)'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-yaml', 2)])
+
+    def test_safe_yaml_multi_document_and_unrelated_loaders_are_allowed(self):
+        for source in ('import yaml\nyaml.safe_load_all(data)',
+                       'from yaml import load_all, SafeLoader\nload_all(data, Loader=SafeLoader)',
+                       'import yaml\nyaml.load_all(data, yaml.CSafeLoader)',
+                       'from . import yaml\nyaml.unsafe_load(data)',
+                       'custom.unsafe_load(data)',
+                       '# yaml.unsafe_load(data)\nexample = "subprocess.getoutput(command)"'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')
+
     def test_whole_environment_dump_without_flagging_single_nonsecret_lookup(self):
         self.assertEqual(self.inspect('import os\nprint(os.environ.get("HOME"))').status, 'pass')
         for expression in ('os.environ', 'dict(os.environ)', 'os.environ.copy()'):
