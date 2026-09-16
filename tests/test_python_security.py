@@ -466,3 +466,44 @@ class PythonPatternTests(unittest.TestCase):
         result = self.inspect('from helpers import *\nimport pickle\npickle.loads(data)')
         self.assertEqual(result.status, 'fail')
         self.assertEqual({f.rule for f in result.findings}, {'python-wildcard-import', 'unsafe-deserialization'})
+
+    def test_eager_comprehensions_expose_secret_result_values(self):
+        for expression in ('[os.getenv("TOKEN") for _ in items]',
+                           '{os.getenv("API_KEY") for _ in items}',
+                           '{name: os.getenv("PASSWORD") for name in names}',
+                           '{os.getenv("PRIVATE_KEY"): name for name in names}',
+                           '[{"value": os.environ.copy()} for _ in items]'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import os\nprint(' + expression + ')')
+                self.assertEqual(result.status, 'fail')
+                self.assertIn(result.findings[0].rule, ('environment-secret-log', 'environment-dump'))
+
+    def test_comprehension_controls_and_shadowed_names_are_not_result_values(self):
+        for expression in ('[0 for _ in os.environ.values()]',
+                           '[0 for _ in items if os.getenv("TOKEN")]',
+                           '[os.getenv("HOME") for _ in items]',
+                           '[os.getenv("TOKEN") for os in custom_providers]',
+                           '{name: os.getenv("HOME") for name in names}'):
+            with self.subTest(expression=expression):
+                self.assertFalse(self.inspect('import os\nprint(' + expression + ')').findings)
+
+    def test_materialized_generators_and_joined_values_keep_leak_checks(self):
+        generator = '(os.getenv("TOKEN") for _ in items)'
+        for expression in ('list(' + generator + ')', 'tuple(' + generator + ')',
+                           'set(' + generator + ')', '" ".join(' + generator + ')',
+                           'str.join(" ", ' + generator + ')',
+                           'dict((name, os.getenv("TOKEN")) for name in names)',
+                           '" ".join([os.getenv("TOKEN") for _ in items])'):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.inspect('import os\nprint(' + expression + ')').status, 'fail')
+        self.assertEqual(self.inspect('import os\nprint(*' + generator + ')').status, 'fail')
+        source = 'from builtins import list as consume\nimport os\nprint(consume(' + generator + '))'
+        self.assertEqual(self.inspect(source).status, 'fail')
+
+    def test_generator_objects_and_safe_joined_values_do_not_claim_secret_disclosure(self):
+        generator = '(os.getenv("TOKEN") for _ in items)'
+        for expression in (generator, 'str(' + generator + ')', 'repr(' + generator + ')',
+                           '"{}".format(' + generator + ')', '{"iterator": ' + generator + '}',
+                           '" ".join(os.getenv("HOME") for _ in items)'):
+            with self.subTest(expression=expression):
+                self.assertFalse(self.inspect('import os\nprint(' + expression + ')').findings)

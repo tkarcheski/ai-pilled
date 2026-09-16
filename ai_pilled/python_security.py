@@ -191,8 +191,10 @@ def inspect_python(report, path, content, *, tree=None):
             value = pending.pop()
             if isinstance(value, ast.JoinedStr):
                 pending.extend(value.values)
-            elif isinstance(value, (ast.FormattedValue, ast.Starred)):
+            elif isinstance(value, ast.FormattedValue):
                 pending.append(value.value)
+            elif isinstance(value, ast.Starred):
+                pending.append(value.value.elt if isinstance(value.value, ast.GeneratorExp) else value.value)
             elif isinstance(value, ast.IfExp):
                 pending.extend((value.body, value.orelse))
             elif isinstance(value, ast.BoolOp):
@@ -201,6 +203,10 @@ def inspect_python(report, path, content, *, tree=None):
                 pending.append(value.value)
             elif isinstance(value, ast.BinOp):
                 pending.extend((value.left, value.right))
+            elif isinstance(value, (ast.ListComp, ast.SetComp)):
+                pending.append(value.elt)
+            elif isinstance(value, ast.DictComp):
+                pending.extend((value.key, value.value))
             elif isinstance(value, (ast.List, ast.Tuple, ast.Set)):
                 pending.extend(value.elts)
             elif isinstance(value, ast.Dict):
@@ -214,6 +220,8 @@ def inspect_python(report, path, content, *, tree=None):
                 return 'environment-secret-log'
             elif isinstance(value, ast.Call):
                 function = qualified(value.func)
+                if function.startswith('builtins.'):
+                    function = function[len('builtins.'):]
                 if function in tuple(prefix + '.' + method for prefix in ('os.environ', 'os.environb')
                                      for method in ('copy', 'items', 'values')):
                     return 'environment-dump'
@@ -225,12 +233,15 @@ def inspect_python(report, path, content, *, tree=None):
                         return 'environment-secret-log'
                     pending.extend(value.args[1:])
                     pending.extend(keyword.value for keyword in lookup_keywords if keyword.arg == 'default')
-                literal_format = (isinstance(value.func, ast.Attribute)
+                literal_method = (value.func.attr if isinstance(value.func, ast.Attribute)
                                   and isinstance(value.func.value, ast.Constant)
-                                  and isinstance(value.func.value.value, str)
-                                  and value.func.attr in ('format', 'format_map'))
-                if function in ('dict', 'str', 'repr', 'list', 'tuple', 'set', 'json.dumps') or literal_format:
-                    pending.extend(value.args)
+                                  and isinstance(value.func.value.value, str) else '')
+                if (function in ('dict', 'str', 'repr', 'list', 'tuple', 'set', 'json.dumps', 'str.join')
+                        or literal_method in ('format', 'format_map', 'join')):
+                    consumes = (function in ('dict', 'list', 'tuple', 'set', 'str.join')
+                                or literal_method == 'join')
+                    pending.extend(arg.elt if consumes and isinstance(arg, ast.GeneratorExp) else arg
+                                   for arg in value.args)
                     pending.extend(keyword.value for keyword in value.keywords)
         return None
 

@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `1ce2ee3`: 510 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `86ba489`
-passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `1ce2ee3` also passed all seven gates with zero
+The verification baseline is `941aca6`: 535 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `f1167e9`
+passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `941aca6` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -153,6 +153,10 @@ Literal `getattr` names retain the same checks, including imported built-in alia
 parameter-shadowed or unrelated functions are not treated as the built-in. Wildcard
 imports produce incomplete binding evidence instead of a false clean review. Arbitrary
 attribute expressions and general assignment data flow remain outside this analysis.
+Leak checks inspect eager comprehension result values and generators consumed by
+list/tuple/set/dict, starred print arguments, or string joining. Import aliases retain
+these checks. Merely logging a generator object, a comprehension filter condition, or
+an iterable whose values are not returned is not treated as exposing its secret values.
 Dictionary overwrite semantics follow the [Python language reference](https://docs.python.org/3.10/reference/expressions.html#dictionary-displays). An after-tool hook
 can report a problem but cannot undo an already completed edit or external action.
 
@@ -333,7 +337,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `86ba489`; publication blocked | Current 3.10 seven-gate/E2E evidence, 91.90% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `f1167e9`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.03% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
