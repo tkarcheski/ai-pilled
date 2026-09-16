@@ -6,7 +6,8 @@ import tempfile
 
 from .config import load
 from .runtime import CommandError, Report, run
-from .security import PATTERNS, scan, scan_text
+from .security import scan, scan_text
+from .credentials import redact
 from .state import record
 
 SCHEMA = {
@@ -33,10 +34,7 @@ def validated_findings(data):
             raise CommandError('Codex returned an invalid finding path')
         if type(line) is not int or line < 1 or not isinstance(message, str) or not 1 <= len(message) <= 4000:
             raise CommandError('Codex returned an invalid finding location or message')
-        for _, pattern in PATTERNS:
-            message = pattern.sub('[REDACTED]', message)
-            path = pattern.sub('[REDACTED]', path)
-        yield path, line, message
+        yield redact(path), line, redact(message)
 
 
 def review_environment():

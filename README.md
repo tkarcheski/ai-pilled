@@ -31,7 +31,9 @@ regular files plus the diff; missing results and timeouts are incomplete.
 Commands emit JSON. Exit codes: **0** passed, **1** found blockers, **2** incomplete or
 unable to run. Missing tools and missing configuration do not count as passing.
 Reports retain up to 100 findings plus a truncation notice, prioritizing errors over
-informational notices. Truncated reports remain blocking.
+informational notices. Truncated reports remain blocking. Recognizable credentials
+are redacted from reports, command errors, hook context, and legacy history views;
+private-key redaction removes the body as well as its header.
 
 Configure the target repository in .ai-pilled.json:
 

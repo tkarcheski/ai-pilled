@@ -5,6 +5,7 @@ import json
 import os
 
 from .runtime import CommandError
+from .credentials import redact_data
 from .state import directory, history
 
 STATUSES = ('pass', 'fail', 'incomplete')
@@ -22,7 +23,7 @@ def entries(repo):
                 or not isinstance(report.get('findings'), list)
                 or not isinstance(entry.get('at'), str)):
             raise CommandError('Local history contains an invalid check record')
-    return records
+    return redact_data(records)
 
 
 def summarize(repo):

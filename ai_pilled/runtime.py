@@ -8,6 +8,8 @@ import time
 import subprocess
 import tempfile
 
+from .credentials import redact_data
+
 
 MAX_FINDINGS = 100
 SEVERITY_PRIORITY = {'info': 0, 'warning': 1, 'error': 2}
@@ -52,7 +54,7 @@ class Report:
         self.findings.append(Finding(rule, severity, message, path, line))
 
     def to_dict(self):
-        return asdict(self)
+        return redact_data(asdict(self))
 
 
 class CommandError(RuntimeError):

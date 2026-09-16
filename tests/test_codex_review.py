@@ -119,3 +119,11 @@ class ReviewTests(unittest.TestCase):
         with patch.dict(os.environ, {'AI_PILLED_REVIEW_ACTIVE': '1'}):
             with self.assertRaises(CommandError):
                 review(self.repo, str(self.fake))
+
+    def test_model_private_key_body_is_redacted_with_its_header(self):
+        body = 'synthetic-sensitive-private-key-body'
+        key = '-----BEGIN ' + 'PRIVATE KEY-----\n' + body + '\n-----END ' + 'PRIVATE KEY-----'
+        self.response({'findings': [{'path': 'code.py', 'line': 1, 'message': key}]})
+        result = review(self.repo, str(self.fake)).to_dict()
+        self.assertFalse(body in json.dumps(result))
+        self.assertIn('[REDACTED PRIVATE KEY]', json.dumps(result))

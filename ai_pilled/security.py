@@ -1,21 +1,12 @@
 """Deterministic secret checks; semantic vulnerability review is a separate check."""
 import hashlib
 from pathlib import Path
-import re
 
 from .runtime import CommandError, Report, run
 from .python_security import inspect_python
+from .credentials import PATTERNS
 
 
-PATTERNS = (
-    ('aws-access-key', re.compile(r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b')),
-    ('github-token', re.compile(r'\bgh[pousr]_[A-Za-z0-9]{36,}\b')),
-    ('github-fine-grained-token', re.compile(r'\bgithub_pat_[A-Za-z0-9_]{40,}\b')),
-    ('private-key', re.compile(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----')),
-    ('openai-token', re.compile(r'\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}\b')),
-    ('slack-webhook', re.compile(r'https://hooks\.slack\.com/services/[A-Za-z0-9_-]{8,}/[A-Za-z0-9_-]{8,}/[A-Za-z0-9_-]{16,}')),
-    ('slack-token', re.compile(r'\bxox[baprs]-[A-Za-z0-9-]{20,}\b')),
-)
 MAX_FILE_BYTES = 2_000_000
 
 

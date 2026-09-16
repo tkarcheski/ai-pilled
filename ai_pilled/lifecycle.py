@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from .checks import command_check
+from .credentials import redact_data
 from .config import load
 from .dependencies import audit_changed
 from .runtime import CommandError, Report, run
@@ -16,6 +17,10 @@ def context(event, text):
 
 
 def handle(repo, payload):
+    return redact_data(_handle(repo, payload))
+
+
+def _handle(repo, payload):
     if not isinstance(payload, dict):
         raise CommandError('Hook input must be a JSON object')
     event = payload.get('hook_event_name')

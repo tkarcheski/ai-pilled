@@ -11,6 +11,7 @@ from .lifecycle import handle, read_payload
 from .checks import command_check
 from .git_hooks import dispatch, install, uninstall
 from .config import ConfigError
+from .credentials import redact, redact_data
 from .runtime import CommandError
 from .security import scan
 from .reporting import dashboard, summarize
@@ -122,7 +123,7 @@ def main(argv=None):
             print(json.dumps(summarize(args.repo), indent=2))
             return 0
         if args.command == 'dashboard':
-            print(json.dumps({'dashboard': str(dashboard(args.repo).resolve())}))
+            print(json.dumps(redact_data({'dashboard': str(dashboard(args.repo).resolve())})))
             return 0
         if args.command == 'lifecycle':
             print(json.dumps(handle(args.repo, read_payload(sys.stdin))))
@@ -184,7 +185,7 @@ def main(argv=None):
         if args.command in ('scan', 'check', 'hook'):
             record(args.repo, report, args.command)
     except (CommandError, ConfigError, OSError) as exc:
-        print(json.dumps({'check': args.command, 'status': 'error', 'message': str(exc)}))
+        print(json.dumps({'check': args.command, 'status': 'error', 'message': redact(str(exc))}))
         return 2
     print(json.dumps(report.to_dict(), indent=2))
     return {'pass': 0, 'fail': 1, 'incomplete': 2}[report.status]
