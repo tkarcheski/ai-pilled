@@ -12,6 +12,9 @@ IMPLICIT_SHELL_CALLS = {'os.system', 'os.popen', 'subprocess.getoutput',
                         'subprocess.getstatusoutput', 'asyncio.create_subprocess_shell',
                         'asyncio.subprocess.create_subprocess_shell'}
 
+SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
+                     'yaml.loader.SafeLoader', 'yaml.cyaml.CSafeLoader'}
+
 
 def parse_python(content, path):
     # Compiler warnings can print the original source line, including credentials.
@@ -103,7 +106,7 @@ def inspect_python(report, path, content):
     scopes, bindings, parents = import_scopes(tree)
     ambiguous = set()
 
-    def qualified(node):
+    def qualified(node, accepted=()):
         attributes = []
         while isinstance(node, ast.Attribute):
             attributes.append(node.attr)
@@ -116,6 +119,10 @@ def inspect_python(report, path, content):
             if base in bindings[scope]:
                 candidates = bindings[scope][base]
                 if len(candidates) != 1:
+                    alternatives = {'.'.join([candidate, *reversed(attributes)]) if candidate else ''
+                                    for candidate in candidates}
+                    if accepted and all(target in accepted for target in alternatives):
+                        return min(alternatives)
                     key = (scope, base)
                     if key not in ambiguous:
                         ambiguous.add(key)
@@ -195,10 +202,17 @@ def inspect_python(report, path, content):
         name = qualified(node.func)
         if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Call):
             constructor = qualified(node.func.value.func)
-            if constructor in ('requests.Session', 'requests.sessions.Session'):
+            if constructor in ('requests.Session', 'requests.sessions.Session',
+                               'requests.session', 'requests.sessions.session'):
                 name = 'requests.' + node.func.attr
             elif constructor in ('pickle.Unpickler', '_pickle.Unpickler', 'dill.Unpickler') and node.func.attr == 'load':
                 name = 'pickle.load'
+        if name == 'hashlib.new':
+            algorithm = node.args[0] if node.args else next(
+                (keyword.value for keyword in node.keywords if keyword.arg == 'name'), None)
+            if (isinstance(algorithm, ast.Constant) and isinstance(algorithm.value, str)
+                    and algorithm.value.lower() in ('md5', 'sha1')):
+                name = 'hashlib.' + algorithm.value.lower()
         rule = message = None
         severity = 'error'
         if name in ('eval', 'exec', 'builtins.eval', 'builtins.exec'):
@@ -222,7 +236,7 @@ def inspect_python(report, path, content):
             loader = next((k.value for k in node.keywords if k.arg == 'Loader'), None)
             if loader is None and len(node.args) > 1:
                 loader = node.args[1]
-            if qualified(loader) not in ('yaml.SafeLoader', 'yaml.CSafeLoader'):
+            if qualified(loader, SAFE_YAML_LOADERS) not in SAFE_YAML_LOADERS:
                 rule, message = 'unsafe-yaml', 'Use safe_load or an explicit SafeLoader for untrusted YAML.'
         elif name in IMPLICIT_SHELL_CALLS or (name in ('subprocess.run', 'subprocess.Popen', 'subprocess.call',
                                              'subprocess.check_call', 'subprocess.check_output') and
@@ -237,9 +251,7 @@ def inspect_python(report, path, content):
                 message = 'Do not log the complete environment; it can contain credentials.'
             elif rule:
                 message = 'Do not log credential-named environment values; redact them before logging.'
-        elif name in ('hashlib.md5', 'hashlib.sha1') or (
-                name == 'hashlib.new' and node.args and isinstance(node.args[0], ast.Constant)
-                and isinstance(node.args[0].value, str) and node.args[0].value.lower() in ('md5', 'sha1')):
+        elif name in ('hashlib.md5', 'hashlib.sha1'):
             if not any(k.arg == 'usedforsecurity' and isinstance(k.value, ast.Constant)
                        and k.value.value is False for k in node.keywords):
                 rule, message = 'weak-hash-review', 'Confirm this weak hash is not used for security-sensitive decisions.'

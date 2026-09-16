@@ -77,6 +77,11 @@ module-level forms, including imported aliases. This does not resolve instances 
 in variables or infer whether a custom unpickler subclass is safe. Shell rules include `os.popen`,
 `subprocess.getoutput/getstatusoutput`, and `asyncio.create_subprocess_shell`; YAML
 rules include `unsafe_load`, `unsafe_load_all`, and `load_all` without an explicit safe loader.
+Explicit `yaml.loader.SafeLoader` and `yaml.cyaml.CSafeLoader` imports are recognized;
+fallback imports are accepted only when every alternative is a recognized safe loader.
+Mixed or unsafe loader aliases remain blocked. Requests' lowercase `session()` factory also
+receives TLS checks. Weak-hash notices cover keyword `hashlib.new(name=...)` calls
+and retain the explicit `usedforsecurity=False` exemption.
 Environment-dump checks include literal string formatting, serialization keyword arguments,
 and environment value/item views, including starred arguments and byte environments.
 Credential-named literal lookups through `environ`, `environb`, `getenv`, and `getenvb`
@@ -85,7 +90,7 @@ PRIVATE_KEY, plus AWS access/secret key names, are review signals; ordinary HOME
 and metadata names remain allowed. Lookup fallbacks, conditional result branches,
 boolean results, and assignment expressions are inspected; condition-only credential
 checks do not expose their value. This does not trace separate assignments or arbitrary data flow.
-Argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Referenced conflicting imports
+Argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Other referenced conflicting imports
 in one scope are incomplete. Verified defaults/custom CA bundles remain allowed.
 General assignment/rebinding, global/nonlocal mutation, and session-instance data flow
 are not modeled; these patterns do not certify runtime behavior.

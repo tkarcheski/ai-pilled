@@ -320,3 +320,45 @@ class PythonPatternTests(unittest.TestCase):
                        'from . import requests\nrequests.Session().get(url, verify=False)'):
             with self.subTest(source=source):
                 self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_safe_yaml_loader_import_paths_are_recognized(self):
+        for source in ('from yaml.loader import SafeLoader as Loader\nimport yaml\nyaml.load(data, Loader=Loader)',
+                       'from yaml.cyaml import CSafeLoader\nfrom yaml import load_all\nload_all(data, CSafeLoader)',
+                       'import yaml.loader\nimport yaml\nyaml.load_all(data, Loader=yaml.loader.SafeLoader)'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_unsafe_or_unrelated_yaml_loader_imports_still_require_review(self):
+        for source in ('from yaml.loader import UnsafeLoader as SafeLoader\nimport yaml\nyaml.load(data, Loader=SafeLoader)',
+                       'from yaml.cyaml import CLoader\nimport yaml\nyaml.load(data, Loader=CLoader)',
+                       'from .yaml.loader import SafeLoader\nimport yaml\nyaml.load(data, Loader=SafeLoader)'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).findings[0].rule, 'unsafe-yaml')
+
+    def test_keyword_hash_algorithm_retains_review_and_nonsecurity_opt_out(self):
+        for algorithm in ('md5', 'SHA1'):
+            source = 'from hashlib import new as create\ncreate(name=' + repr(algorithm) + ')'
+            with self.subTest(algorithm=algorithm):
+                result = self.inspect(source)
+                self.assertEqual([(f.rule, f.severity) for f in result.findings], [('weak-hash-review', 'info')])
+                self.assertEqual(result.status, 'pass')
+                self.assertFalse(self.inspect(source[:-1] + ', usedforsecurity=False)').findings)
+        self.assertFalse(self.inspect('import hashlib\nhashlib.new(name="sha256")').findings)
+
+    def test_requests_session_factory_retains_tls_checks(self):
+        for prefix, constructor in (('import requests', 'requests.session'),
+                                    ('import requests.sessions', 'requests.sessions.session'),
+                                    ('from requests import session as connect', 'connect')):
+            with self.subTest(constructor=constructor):
+                self.assertEqual(self.inspect(prefix + '\n' + constructor + '().get(url, verify=False)').findings[0].rule,
+                                 'tls-verification-disabled')
+                self.assertEqual(self.inspect(prefix + '\n' + constructor + '().get(url, verify=True)').status, 'pass')
+
+    def test_yaml_fallback_imports_require_every_alternative_to_be_safe(self):
+        template = ('import yaml\ntry:\n from yaml import CSafeLoader as Loader\n'
+                    'except ImportError:\n from yaml import {fallback} as Loader\n'
+                    'yaml.load(data, Loader=Loader)')
+        self.assertFalse(self.inspect(template.format(fallback='SafeLoader')).findings)
+        result = self.inspect(template.format(fallback='Loader'))
+        self.assertEqual(result.status, 'fail')
+        self.assertIn('unsafe-yaml', [finding.rule for finding in result.findings])

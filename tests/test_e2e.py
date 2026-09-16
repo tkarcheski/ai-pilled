@@ -87,7 +87,7 @@ class EndToEndTests(unittest.TestCase):
             self.assertIn(rule, output)
             self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         (self.repo / 'note.txt').write_text('safe note\n')
-        (self.repo / 'transport.py').write_text('import requests as http\nhttp.Session().get(url, verify=False)\n'
+        (self.repo / 'transport.py').write_text('import requests as http\nhttp.session().get(url, verify=False)\n'
                                               'def unrelated():\n import json as http\n return http.dumps({})\n')
         self.git('add', 'note.txt', 'transport.py')
         (self.repo / 'transport.py').write_text('import requests\nrequests.get(url)\n')
@@ -101,7 +101,7 @@ class EndToEndTests(unittest.TestCase):
                 ('import pickle\npickle.Unpickler(stream).load()\n',
                  'import json\njson.load(stream)\n', b'unsafe-deserialization'),
                 ('import yaml\nyaml.unsafe_load(data)\n',
-                 'import yaml\nyaml.safe_load(data)\n', b'unsafe-yaml'),
+                 'import yaml\nfrom yaml.loader import SafeLoader\nyaml.load(data, Loader=SafeLoader)\n', b'unsafe-yaml'),
                 ("value = 'ghp_' '" + 'A' * 36 + "'\n",
                  'value = "ordinary"\n', b'github-token'),
                 ('from os import getenv\nprint(getenv("API_KEY"))\n',
