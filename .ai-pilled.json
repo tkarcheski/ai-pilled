@@ -75,5 +75,6 @@
   ],
   "require_tests": true,
   "timeout": 120,
-  "aggressiveness": "strict"
+  "aggressiveness": "strict",
+  "review_checks_on_commit": true
 }

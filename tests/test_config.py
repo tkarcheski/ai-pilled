@@ -49,7 +49,7 @@ class ConfigTests(unittest.TestCase):
                       {'commands': {'test': 'npm test'}},
                       {'commands': {'test': []}}, {'commands': {'nonsense': ['true']}},
                       {'require_tests': 'false'}, {'protected_branches': 'main'},
-                      {'aggressiveness': 'reckless'}, {'review_on_commit': 'true'}, {'codex_executable': []}, {'audit_dependencies_on_change': 'yes'}]:
+                      {'aggressiveness': 'reckless'}, {'review_on_commit': 'true'}, {'codex_executable': []}, {'audit_dependencies_on_change': 'yes'}, {'review_checks_on_commit': 'yes'}]:
             with self.subTest(value=value):
                 self.configure(value)
                 with self.assertRaises(ConfigError):

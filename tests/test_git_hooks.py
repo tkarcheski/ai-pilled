@@ -216,3 +216,22 @@ class GitHookTests(unittest.TestCase):
         self.assertTrue(all(result.status == 'pass' for result in results))
         self.assertFalse((self.repo / '.ai-pilled' / 'hooks').exists())
         self.assertEqual(self.git('config', '--get', 'core.hooksPath', success=False).returncode, 1)
+
+    def test_comprehensive_commit_checks_block_partially_staged_defect(self):
+        import json
+        import sys
+        commands = {name: [sys.executable, '-c', 'pass']
+                    for name in ('lint', 'typecheck', 'deadcode', 'coverage')}
+        commands['test'] = [sys.executable, 'check.py']
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({
+            'review_checks_on_commit': True, 'commands': commands}))
+        (self.repo / 'check.py').write_text('raise SystemExit(1)\n')
+        self.git('add', '.ai-pilled.json', 'check.py')
+        (self.repo / 'check.py').write_text('pass\n')
+        install(self.repo)
+        result = self.git('commit', '-m', 'feat: broken staged test', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'command-failed', result.stdout + result.stderr)
+        self.assertNotEqual(self.git('rev-parse', '--verify', 'HEAD', success=False).returncode, 0)
+        self.git('add', 'check.py')
+        self.git('commit', '-m', 'feat: fixed staged test')

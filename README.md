@@ -32,7 +32,9 @@ trusted: this disposable copy is not an operating-system security sandbox.
 
 `review --comprehensive` requires those checks to pass before invoking the model and
 verifies that both stages reviewed the same index. `review-checks` runs without a model
-or subscription call. Stage the intended files before using either command.
+or subscription call. Stage the intended files before using either command. Set
+`"review_checks_on_commit": true` to require these checks in the pre-commit hook.
+This repository enables it for dogfooding; model review remains a separate opt-in.
 
 Use `review --codex /absolute/path/to/codex` to select an installed binary explicitly.
 This avoids PATH wrappers that install or update the CLI before each invocation. The

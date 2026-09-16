@@ -20,6 +20,7 @@ class Config:
     review_on_commit: bool = False
     codex_executable: str = 'codex'
     audit_dependencies_on_change: bool = False
+    review_checks_on_commit: bool = False
 
 
 def load(repo):
@@ -45,7 +46,7 @@ def load(repo):
     except (ValueError, OSError) as exc:
         raise ConfigError('Cannot read valid JSON from .ai-pilled.json') from exc
     allowed = {'version', 'commands', 'protected_branches', 'timeout',
-               'require_tests', 'aggressiveness', 'review_on_commit', 'codex_executable', 'audit_dependencies_on_change'}
+               'require_tests', 'aggressiveness', 'review_on_commit', 'codex_executable', 'audit_dependencies_on_change', 'review_checks_on_commit'}
     if not isinstance(data, dict) or set(data) - allowed:
         raise ConfigError('Configuration must be an object with supported keys')
     if type(data.get('version', 1)) is not int or data.get('version', 1) != 1:
@@ -80,5 +81,8 @@ def load(repo):
     dependency_changes = data.get('audit_dependencies_on_change', False)
     if type(dependency_changes) is not bool:
         raise ConfigError('audit_dependencies_on_change must be boolean')
+    review_checks = data.get('review_checks_on_commit', False)
+    if type(review_checks) is not bool:
+        raise ConfigError('review_checks_on_commit must be boolean')
     return Config(commands, branches, timeout, require_tests, aggressiveness,
-                  review_on_commit, executable, dependency_changes)
+                  review_on_commit, executable, dependency_changes, review_checks)

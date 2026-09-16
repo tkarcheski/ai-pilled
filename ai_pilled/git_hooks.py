@@ -212,6 +212,9 @@ def dispatch(repo, event, arguments):
         from .pre_push import pre_push
         return pre_push(repo, sys.stdin.read())
     if event == 'pre-commit':
+        if load(repo).review_checks_on_commit:
+            from .staged_review import review_checks
+            return review_checks(repo)
         return scan(repo, patterns=load(repo).aggressiveness == 'strict')
     if event == 'commit-msg' and len(arguments) == 1:
         report = commit_message(arguments[0])
