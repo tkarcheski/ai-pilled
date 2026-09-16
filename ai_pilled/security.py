@@ -61,6 +61,8 @@ def scan_bytes(report, path, content):
             if isinstance(node, ast.Name):
                 continue  # Identifier/context fields cannot contain literal child nodes.
             if not isinstance(node, ast.Constant):
+                if not node._fields:
+                    continue  # Context/operator leaves have no literals to inspect.
                 pending.extend(ast.iter_child_nodes(node))
                 continue
             if not isinstance(node.value, (str, bytes)):
@@ -76,6 +78,8 @@ def scan_bytes(report, path, content):
                     report.add(finding.rule, 'Potential credential in a Python literal; remove and rotate if genuine.',
                                path=path, line=node.lineno, severity=finding.severity)
                     seen.add(key)
+
+        return tree
 
 
 def scan(repo, scope='staged', patterns=False):
@@ -110,9 +114,9 @@ def scan(repo, scope='staged', patterns=False):
             if error is not None:
                 report.add('scan-incomplete', error, path=path, severity='warning')
             else:
-                scan_bytes(report, path, content)
+                tree = scan_bytes(report, path, content)
                 if patterns:
-                    inspect_python(report, path, content)
+                    inspect_python(report, path, content, tree=tree)
         report.snapshot = digest.hexdigest()
         return report
     for path, _ in sources:
@@ -135,9 +139,9 @@ def scan(repo, scope='staged', patterns=False):
             digest.update(path.encode(errors='surrogateescape') + b'\0')
             digest.update(str(stat.S_IMODE(mode)).encode() + b'\0')
             digest.update(hashlib.sha256(content).digest())
-            scan_bytes(report, path, content)
+            tree = scan_bytes(report, path, content)
             if patterns:
-                inspect_python(report, path, content)
+                inspect_python(report, path, content, tree=tree)
         except (CommandError, OSError) as exc:
             message = str(exc) if isinstance(exc, CommandError) else 'Unable to read file'
             report.add('scan-incomplete', message, path=path, severity='warning')

@@ -122,11 +122,12 @@ def call_keywords(node):
     return result
 
 
-def inspect_python(report, path, content):
+def inspect_python(report, path, content, *, tree=None):
     if not path.endswith('.py'):
         return
     try:
-        tree = parse_python(content, path)
+        if tree is None:
+            tree = parse_python(content, path)
     except (SyntaxError, ValueError, RecursionError):
         report.add('python-unparsed', 'Python syntax could not be inspected by this interpreter.',
                    path=path, severity='warning')

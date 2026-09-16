@@ -18,8 +18,11 @@ at `1ad8ac4` caught a performance-budget failure: 0.273 seconds median versus th
 work to parsing/traversing Python source. Security coverage is retained; performance
 acceptance remains open, and the saved baseline has not been raised. Loading only the
 selected CLI command and skipping literal-free AST identifier leaves reduced the
-follow-up median to 0.211 seconds (27.5% over baseline). This remains above budget;
-the measured improvement does not turn it into a passing check.
+follow-up median to 0.211 seconds (27.5% over baseline). The latest cold-start rerun
+measured 0.216 seconds (30.3% over baseline); the budget still fails. Separately, reusing
+the same per-file AST for credential and pattern checks reduced five-run in-process
+comprehensive-scan medians from 0.384 to 0.322 seconds with identical reports. That
+improves comprehensive scans but does not turn the cold-start budget into a passing check.
 
 ## What the statuses mean
 

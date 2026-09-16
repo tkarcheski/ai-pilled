@@ -36,9 +36,9 @@ def blob_findings(repo, oid, path, patterns, cache):
         if int(run(['git', 'cat-file', '-s', oid], repo)) > MAX_FILE_BYTES:
             raise CommandError('File exceeds scan size limit')
         content = run(['git', 'cat-file', 'blob', oid], repo, limit=MAX_FILE_BYTES)
-        scan_bytes(result, path, content)
+        tree = scan_bytes(result, path, content)
         if patterns:
-            inspect_python(result, path, content)
+            inspect_python(result, path, content, tree=tree)
     except CommandError as exc:
         result.add('scan-incomplete', str(exc), severity='warning')
     # Cache only location-independent findings, never credential-bearing source bytes.
