@@ -77,3 +77,10 @@ class RedactionTests(unittest.TestCase):
             self.assertNotIn(body.strip(), result)
             self.assertIn('[REDACTED PRIVATE KEY]', result)
             self.assertTrue(result.startswith('Before'))
+
+
+    def test_aws_secret_key_assignment_is_redacted(self):
+        secret = 'aB3/+' * 8
+        value = 'aws_secret_access_key = "' + secret + '"'
+        self.assertNotIn(secret, redact(value))
+        self.assertIn('[REDACTED]', redact(value))

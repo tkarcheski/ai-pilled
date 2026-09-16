@@ -195,3 +195,23 @@ class SecurityTests(unittest.TestCase):
             result = scan(self.repo)
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual(result.findings[0].rule, 'scan-incomplete')
+
+
+    def test_aws_secret_key_assignments_are_detected_without_access_key_id(self):
+        secret = 'aB3/+' * 8
+        for prefix, suffix in (('AWS_SECRET_ACCESS_KEY=', ''),
+                               ('aws_secret_access_key = "', '"'),
+                               ('"SecretAccessKey": "', '"'),
+                               ("secretAccessKey: '", "'")):
+            with self.subTest(prefix=prefix):
+                self.write('credentials.txt', prefix + secret + suffix)
+                result = scan(self.repo)
+                self.assertEqual(result.status, 'fail')
+                self.assertEqual(result.findings[0].rule, 'aws-secret-key')
+                self.assertNotIn(secret, json.dumps(result.to_dict()))
+
+    def test_aws_environment_references_and_unrelated_values_are_not_secrets(self):
+        self.write('settings.txt', 'AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}\n'
+                   'secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY\n'
+                   'unrelated_value=' + 'aB3/+' * 8)
+        self.assertEqual(scan(self.repo).status, 'pass')

@@ -4,6 +4,9 @@ import re
 
 PATTERNS = (
     ('aws-access-key', re.compile(r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b')),
+    ('aws-secret-key', re.compile(
+        r"(?i)\b(?:aws_secret_access_key|secretaccesskey)[\"']?[ \t]*[:=][ \t]*[\"']?"
+        r"[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])")),
     ('github-token', re.compile(r'\bgh[pousr]_[A-Za-z0-9]{36,}\b')),
     ('github-fine-grained-token', re.compile(r'\bgithub_pat_[A-Za-z0-9_]{40,}\b')),
     ('private-key', re.compile(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----')),

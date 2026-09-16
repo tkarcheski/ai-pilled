@@ -301,6 +301,11 @@ A secret removed in a later outgoing commit is still caught. More than 2,000 out
 commits requires a smaller audited range. Files larger than 2 MB produce an incomplete
 scan, not a clean bill of health.
 
+Credential matching recognizes AWS access-key IDs and same-line, 40-character secret-key
+assignments named AWS_SECRET_ACCESS_KEY, aws_secret_access_key, or SecretAccessKey.
+It also recognizes GitHub, OpenAI, Slack, and private-key patterns. AWS field names
+follow the [credential settings reference](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html);
+the secret-key length follows the [AWS access-key description](https://docs.aws.amazon.com/AmazonS3/latest/developerguide/MakingRequests.html).
 Credential matching is a limited deterministic check, not a complete security audit.
 Use scan --patterns to also inspect Python ASTs for dynamic execution, unsafe object/YAML
 parsing, shell=True, and complete environment dumps. Strict quality/Git/lifecycle checks
