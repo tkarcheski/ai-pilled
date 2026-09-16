@@ -1,3 +1,5 @@
+import os
+from unittest.mock import patch
 import json
 from pathlib import Path
 import sys
@@ -51,3 +53,10 @@ class ConfigTests(unittest.TestCase):
                 self.configure(value)
                 with self.assertRaises(ConfigError):
                     load(self.repo)
+
+    def test_parent_git_environment_is_not_passed_to_checks(self):
+        self.configure({'commands': {'test': [sys.executable, '-c',
+                       'import os; assert not any(k.startswith("GIT_") for k in os.environ)']}})
+        with patch.dict(os.environ, {'GIT_DIR': '/not-the-test-repo', 'GIT_CONFIG_COUNT': '1',
+                                     'GIT_CONFIG_KEY_0': 'core.bare', 'GIT_CONFIG_VALUE_0': 'true'}):
+            self.assertEqual(command_check(self.repo, 'test').status, 'pass')

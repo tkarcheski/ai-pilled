@@ -38,12 +38,12 @@ class CommandError(RuntimeError):
     pass
 
 
-def run(argv, cwd, *, timeout=30, limit=2_000_000):
+def run(argv, cwd, *, timeout=30, limit=2_000_000, env=None):
     """Never invoke a shell; kill the process group on timeout; cap captured data."""
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
         try:
             child = subprocess.Popen(argv, cwd=cwd, stdout=stdout, stderr=stderr,
-                                     stdin=subprocess.DEVNULL, start_new_session=True)
+                                     stdin=subprocess.DEVNULL, start_new_session=True, env=env)
         except OSError as exc:
             raise CommandError(f'Cannot start {Path(argv[0]).name}: {exc.strerror}') from exc
         try:

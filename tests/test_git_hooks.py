@@ -1,3 +1,5 @@
+import os
+from unittest.mock import patch
 from pathlib import Path
 import subprocess
 import tempfile
@@ -9,6 +11,9 @@ from ai_pilled.runtime import CommandError
 
 class GitHookTests(unittest.TestCase):
     def setUp(self):
+        environment = patch.dict(os.environ, {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}, clear=True)
+        environment.start()
+        self.addCleanup(environment.stop)
         self.temp = tempfile.TemporaryDirectory(prefix='ai-pilled hooks ')
         self.addCleanup(self.temp.cleanup)
         self.repo = Path(self.temp.name)
