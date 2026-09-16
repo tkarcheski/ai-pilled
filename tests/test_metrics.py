@@ -1,7 +1,9 @@
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ai_pilled.metrics import bundle, coverage
 
@@ -59,3 +61,30 @@ class MetricsTests(unittest.TestCase):
         (self.repo / 'dist' / 'external').symlink_to('/etc')
         self.assertEqual(bundle(self.repo, 'dist', 100).status, 'incomplete')
         self.assertEqual(coverage(self.repo, 'dist/external/passwd', 80).status, 'incomplete')
+
+    def test_replaced_coverage_path_cannot_follow_external_evidence(self):
+        from ai_pilled.metrics import local_path
+        self.coverage_file(0, 10)
+        with tempfile.TemporaryDirectory() as other:
+            outside = Path(other) / 'outside.json'
+            outside.write_text(json.dumps({'totals': {'covered_lines': 10, 'num_statements': 10}}))
+            def replaced(*args):
+                path = local_path(*args)
+                path.unlink()
+                path.symlink_to(outside)
+                return path
+            with patch('ai_pilled.metrics.local_path', side_effect=replaced):
+                result = coverage(self.repo, 'coverage.json', 90)
+            self.assertEqual(result.status, 'incomplete')
+            self.assertEqual(result.metrics, {})
+            self.assertTrue((self.repo / 'coverage.json').is_symlink())
+
+    def test_special_and_oversized_evidence_remains_incomplete(self):
+        path = self.repo / 'coverage.json'
+        os.mkfifo(path)
+        self.assertEqual(coverage(self.repo, path.name, 90).status, 'incomplete')
+        self.assertEqual(bundle(self.repo, path.name, 100).status, 'incomplete')
+        self.assertTrue(path.is_fifo())
+        path.unlink()
+        path.write_bytes(b' ' * 2_000_001)
+        self.assertEqual(coverage(self.repo, path.name, 90).status, 'incomplete')

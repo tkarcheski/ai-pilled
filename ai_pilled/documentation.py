@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 
+from .file_io import read_regular
 from .config import ConfigError, load
 from .metrics import local_path
 from .runtime import CommandError, Report
@@ -40,9 +41,10 @@ def update_readme(repo, name='README.md', check=False):
                            'Configuration is not proof that checks passed; use quality to run them.', '',
                            '~~~text', help_text, '~~~', END))
         path = local_path(repo, name)
-        if path.exists() and (not path.is_file() or path.stat().st_size > 2_000_000):
-            raise CommandError('README must be a bounded regular file')
-        original = path.read_text() if path.exists() else ''
+        try:
+            original = read_regular(path, 2_000_000).decode('utf-8')
+        except FileNotFoundError:
+            original = ''
         rendered = replace_block(original, block)
         report.snapshot = hashlib.sha256(rendered.encode()).hexdigest()
         changed = rendered != original

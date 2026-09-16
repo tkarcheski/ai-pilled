@@ -2,8 +2,10 @@
 import hashlib
 from .json_data import loads
 import math
+import os
 from pathlib import Path
 
+from .file_io import open_regular, read_regular
 from .runtime import CommandError, Report
 from .state import record
 
@@ -27,12 +29,7 @@ def coverage(repo, source, minimum):
         if not math.isfinite(minimum) or not 0 <= minimum <= 100:
             raise CommandError('Coverage minimum must be between 0 and 100')
         path = local_path(repo, source)
-        if not path.is_file():
-            raise CommandError('Coverage report must be a regular file')
-        with path.open('rb') as stream:
-            content = stream.read(2_000_001)
-        if len(content) > 2_000_000:
-            raise CommandError('Coverage report exceeds size limit')
+        content = read_regular(path, 2_000_000)
         data = loads(content)
         if not isinstance(data, dict) or not isinstance(data.get('totals'), dict):
             raise CommandError('Expected a coverage.py JSON report with totals')
@@ -70,12 +67,10 @@ def bundle(repo, source, maximum):
                 raise CommandError('Build artifact contains a symlink')
             if item.is_dir():
                 continue
-            if not item.is_file():
-                raise CommandError('Build artifact contains a non-regular file')
             files += 1
             digest.update(str(item.relative_to(Path(repo).resolve())).encode() + b'\0')
-            digest.update(str(item.stat().st_size).encode() + b'\0')
-            with item.open('rb') as stream:
+            with open_regular(item) as stream:
+                digest.update(str(os.fstat(stream.fileno()).st_size).encode() + b'\0')
                 while chunk := stream.read(65536):
                     total += len(chunk)
                     if total > 100_000_000:

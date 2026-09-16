@@ -67,3 +67,19 @@ class PerformanceTests(unittest.TestCase):
         self.assertEqual(benchmark(self.repo).status, 'incomplete')
         for kwargs in ({'runs': 0}, {'runs': 11}, {'maximum_regression': float('nan')}):
             self.assertEqual(benchmark(self.repo, **kwargs).status, 'incomplete')
+
+    def test_baseline_special_and_oversized_files_do_not_run_commands(self):
+        self.measure(1, save=True)
+        path = self.repo / '.ai-pilled/benchmark.json'
+        for kind in ('fifo', 'symlink', 'oversized'):
+            with self.subTest(kind=kind):
+                path.unlink()
+                if kind == 'fifo':
+                    os.mkfifo(path)
+                elif kind == 'symlink':
+                    path.symlink_to(self.repo / '.ai-pilled.json')
+                else:
+                    path.write_bytes(b' ' * 10_001)
+                with patch('ai_pilled.performance.run') as command:
+                    self.assertEqual(benchmark(self.repo).status, 'incomplete')
+                command.assert_not_called()

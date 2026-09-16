@@ -88,7 +88,8 @@ in the working tree. Changed source, permissions, index, or HEAD invalidate evid
 The commit-msg hook checks conventional subjects, length, and credentials. Optional
 model review checks message alignment and concrete correctness/security defects. It
 uses the existing Codex subscription login, a bounded staged snapshot, read-only mode,
-disabled hooks, a restricted environment, and validated structured source locations.
+disabled hooks, a restricted environment, and validated structured source locations. Model output and cited source use bounded
+regular-file reads without following final symlinks.
 `review --comprehensive` requires deterministic evidence and model findings to refer
 to the same index.
 
@@ -239,6 +240,11 @@ a patch or changing the source checkout. The real repository refactor preview at
 Scheduler state and lock files must be regular files opened without following symlinks.
 Records are read through a 16 KB bound; FIFO, symlink, and oversized-state regressions
 return incomplete without running refactor or replacing the original file.
+
+Coverage reports, streamed bundle files, performance baselines, and README inputs
+also validate the opened descriptor as a regular file. Coverage/README replacement
+symlinks are rejected; no external content is accepted as local evidence or copied
+into generated documentation. These checks retain their explicit read-size limits.
 
 ## Known gaps and prioritized follow-ups
 

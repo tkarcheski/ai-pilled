@@ -58,6 +58,16 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertEqual(result.findings[0].rule, 'review-unavailable')
 
+    def test_special_and_oversized_model_outputs_are_incomplete(self):
+        for replacement in ('output.unlink(); os.mkfifo(output)',
+                            'output.unlink(); output.symlink_to(Path.cwd() / "code.py")',
+                            'output.write_bytes(b" " * 100_001)'):
+            with self.subTest(replacement=replacement):
+                self.response({'findings': []}, extra=replacement + '\n')
+                result = review(self.repo, str(self.fake))
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.findings[0].rule, 'review-unavailable')
+
     def test_unknown_cli_is_incomplete(self):
         self.assertEqual(review(self.repo, 'missing-ai-pilled-codex').status, 'incomplete')
 

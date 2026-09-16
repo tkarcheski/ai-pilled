@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 
+from .file_io import read_regular
 from .config import load
 from .runtime import CommandError, Report, run
 from .security import scan, scan_text, scan_bytes, scan_path
@@ -41,9 +42,12 @@ def validated_findings(data):
 def validate_locations(snapshot, findings):
     for path, line, _ in findings:
         source = snapshot / path
-        if (not source.resolve().is_relative_to(snapshot.resolve())
-                or not source.is_file() or source.is_symlink()
-                or line > len(source.read_bytes().splitlines())):
+        try:
+            valid = (source.resolve().is_relative_to(snapshot.resolve())
+                     and line <= len(read_regular(source, 2_000_000).splitlines()))
+        except OSError as exc:
+            raise CommandError('Reviewer cited a location outside the supplied source') from exc
+        if not valid:
             raise CommandError('Reviewer cited a location outside the supplied source')
 
 
@@ -94,9 +98,7 @@ def invoke_review(snapshot, prompt, executable, timeout):
              '--output-schema', str(schema), '--output-last-message', str(output),
              '--color', 'never', '-'], snapshot, timeout=timeout,
             env=env, input_data=prompt)
-        if not output.is_file() or output.is_symlink() or output.stat().st_size > 100_000:
-            raise CommandError('Codex did not return a bounded review result')
-        data = loads(output.read_text())
+        data = loads(read_regular(output, 100_000))
         findings = list(validated_findings(data))
         return findings
 

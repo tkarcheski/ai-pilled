@@ -10,19 +10,17 @@ import platform
 import statistics
 import time
 
+from .file_io import read_regular
 from .config import load
 from .runtime import CommandError, Report, run
 from .state import atomic_json, directory, record
 
 
 def baseline_data(path):
-    if path.is_symlink():
-        raise CommandError('Refusing symlink performance baseline')
-    if not path.exists():
+    try:
+        data = loads(read_regular(path, 10_000))
+    except FileNotFoundError:
         return None
-    if not path.is_file() or path.stat().st_size > 10_000:
-        raise CommandError('Invalid performance baseline file')
-    data = loads(path.read_text())
     if (not isinstance(data, dict) or data.get('version') != 1
             or type(data.get('median_seconds')) not in (int, float)
             or not math.isfinite(data['median_seconds']) or data['median_seconds'] <= 0

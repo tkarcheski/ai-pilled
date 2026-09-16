@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ai_pilled.documentation import END, START, update_readme
 
@@ -55,3 +56,19 @@ class DocumentationTests(unittest.TestCase):
         self.assertEqual(update_readme(self.repo).status, 'incomplete')
         self.assertEqual(target.read_text(), 'keep')
         self.assertEqual(update_readme(self.repo, '../outside.md').status, 'incomplete')
+
+    def test_replaced_path_cannot_copy_external_text_into_readme(self):
+        from ai_pilled.metrics import local_path
+        self.path.write_text('# Original\n')
+        target = self.repo / 'untouched'
+        target.write_text('private unrelated content')
+        def replaced(*args):
+            path = local_path(*args)
+            path.unlink()
+            path.symlink_to(target)
+            return path
+        with patch('ai_pilled.documentation.local_path', side_effect=replaced):
+            result = update_readme(self.repo)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertTrue(self.path.is_symlink())
+        self.assertEqual(target.read_text(), 'private unrelated content')
