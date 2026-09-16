@@ -1,5 +1,6 @@
 import contextlib
 import io
+from itertools import product
 import json
 import os
 from pathlib import Path
@@ -10,7 +11,7 @@ import warnings
 from unittest.mock import patch
 
 from ai_pilled.__main__ import main
-from ai_pilled.credentials import redact, redact_data
+from ai_pilled.credentials import json_string_literals, redact, redact_data
 from ai_pilled.lifecycle import handle
 from ai_pilled.reporting import dashboard, summarize
 from ai_pilled.runtime import Report
@@ -206,3 +207,18 @@ class RedactionTests(unittest.TestCase):
             with self.subTest(source=source[:30]):
                 self.assertNotIn(secret, redact(source))
                 self.assertIn('[REDACTED]', redact(source))
+
+    def test_json_literal_boundaries_roundtrip_escape_combinations_and_locations(self):
+        values = [''.join(parts) for parts in product(('a', '\\', '"', '\n', '\r', '\t', 'é'), repeat=3)]
+        source = 'header\n' + '\n'.join(json.dumps(value) for value in values)
+        literals = list(json_string_literals(source))
+        self.assertEqual([item[3] for item in literals], values)
+        for number, (start, end, line, value) in enumerate(literals, 2):
+            self.assertEqual(line, number)
+            self.assertEqual(source[start:end], json.dumps(value))
+
+    def test_json_literal_boundaries_recover_after_invalid_and_unterminated_strings(self):
+        source = '"bad\\q"\n"open\n"valid"\r\n"control\x00"\n' + json.dumps('\\"escaped')
+        literals = list(json_string_literals(source))
+        self.assertEqual([(line, value) for _, _, line, value in literals],
+                         [(3, 'valid'), (5, '\\"escaped')])

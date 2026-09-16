@@ -36,6 +36,9 @@ def redact_plain(text):
     return text
 
 
+JSON_BOUNDARIES = re.compile(r'["\\\r\n]')
+
+
 def json_string_literals(text):
     """Yield quoted JSON strings in one linear pass, including source locations."""
     if '"' not in text:
@@ -43,7 +46,12 @@ def json_string_literals(text):
     start = None
     start_line = line = 1
     escaped = False
-    for index, character in enumerate(text):
+    previous = -2
+    for boundary in JSON_BOUNDARIES.finditer(text):
+        index, character = boundary.start(), boundary.group()
+        # A backslash escapes exactly the next character, including skipped text.
+        adjacent = index == previous + 1
+        previous = index
         if character == '\n':
             line += 1
         if start is None:
@@ -51,7 +59,7 @@ def json_string_literals(text):
                 start, start_line, escaped = index, line, False
         elif character in '\r\n':
             start = None  # Literal newlines are invalid in JSON strings.
-        elif escaped:
+        elif escaped and adjacent:
             escaped = False
         elif character == '\\':
             escaped = True

@@ -24,6 +24,10 @@ measured 0.244 seconds (47.4% over baseline); the unchanged budget still fails. 
 the same per-file AST for credential and pattern checks reduced five-run in-process
 comprehensive-scan medians from 0.384 to 0.322 seconds with identical reports. That
 improves comprehensive scans but does not turn the cold-start budget into a passing check.
+A later JSON string-scanner experiment at `dbcdd8c` reduced seven-run staged scan
+medians from 0.213 to 0.196 seconds (about 8%) with identical reports, 10,000
+differential parser cases, and passing security/redaction fixtures. This is an
+in-process comparison; the cold-start budget still needs a fresh measurement.
 
 ## What the statuses mean
 
