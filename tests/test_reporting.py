@@ -424,3 +424,23 @@ class ReportingTests(unittest.TestCase):
         self.assertEqual(target.read_text(), 'outside must survive')
         self.assertEqual(sorted(path.name for path in outside.iterdir()), ['dashboard.html'])
         self.assertEqual(list((self.repo / 'original').glob('.ai-pilled-*.tmp')), [])
+
+    def test_dashboard_uses_one_history_snapshot_during_concurrent_append(self):
+        from ai_pilled.reporting import entries
+        record(self.repo, Report('security'), 'fixture')
+
+        def append_after_capture(repo):
+            captured = entries(repo)
+            record(repo, Report('security', status='fail'), 'concurrent failure')
+            return captured
+
+        with patch('ai_pilled.reporting.entries', side_effect=append_after_capture) as captured:
+            content = dashboard(self.repo).read_text()
+        self.assertEqual(captured.call_count, 1)
+        self.assertIn('All 1 latest recorded checks passed.', content)
+        self.assertIn('<td>pass</td>', content)
+        self.assertNotIn('<td>fail</td>', content)
+        self.assertEqual(summarize(self.repo)['blocker'], 'wait')
+        refreshed = dashboard(self.repo).read_text()
+        self.assertIn('1 unresolved result(s)', refreshed)
+        self.assertIn('<td>fail</td>', refreshed)

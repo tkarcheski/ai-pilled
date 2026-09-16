@@ -365,6 +365,11 @@ mode, or supply outside check records. Existing lock, regular-file, hard-link, a
 size checks still apply. Dashboard temporary files and publication use the same
 root-anchored writer as README updates, followed by a bounded content recheck.
 
+Dashboard counts, headline, and rows derive from one captured history read. An append
+while rendering becomes visible on the next generation, rather than mixing an older
+success summary with newer failed rows. Historical evidence still does not certify
+current source files.
+
 The dashboard escapes content, uses a restrictive content policy, and writes private
 output atomically. Symlinks/special files cannot redirect dashboard writes.
 
@@ -375,7 +380,7 @@ external actions are never replayed automatically. Nested newer check results su
 older child results; priority, bounds, redaction, and no-execution tests are in
 `test_suggestions.py`.
 
-The existing scan benchmark at `ac70b2a` passed its unchanged 20% budget: three-run
+An earlier scan benchmark at `ac70b2a` passed its unchanged 20% budget: three-run
 median 0.16828 seconds versus baseline 0.16558 seconds (1.63% increase). This measures
 that local run, not a latency guarantee for future snapshots or larger repositories.
 
@@ -389,7 +394,7 @@ that local run, not a latency guarantee for future snapshots or larger repositor
 | 4 | Commit messages — active | Shared conventional-subject checker, commit-msg and outgoing-history gates | Semantic message alignment requires optional model review. |
 | 5 | Branch protection — active locally | Actual pre-push destination patterns; local remote E2E | Hosted branch protections remain unconfigured. |
 | 6 | Coverage — active | Fresh coverage.py JSON and 80% line minimum; root-relative no-symlink reads and descriptor/current-path identity checks reject observed evidence changes; exact line-count comparisons against decimal thresholds avoid floating-point boundary errors; `test_metrics.py`, `scripts/check_coverage.py` | Line coverage is not branch coverage or a correctness proof. |
-| 7 | Performance regression — opt-in | Repeated process timing, median baseline, host/command identity; `test_performance.py` | Explicit baseline replacement; machine-dependent measurements, not application profiling. Last recorded scanner comparison: about 122 ms vs 166 ms baseline. |
+| 7 | Performance regression — opt-in | Repeated process timing, median baseline, host/command identity; `test_performance.py` | Explicit baseline replacement; machine-dependent measurements, not application profiling. Latest recorded cold scanner comparison: 255 ms vs 166 ms baseline, 54.0% over baseline; the 20% budget fails. |
 | 8 | Bundle size — opt-in | Existing artifact byte budgets; path/link/bounds tests in `test_metrics.py` | Does not build artifacts or infer a product-specific budget. |
 | 9 | Changelog — implemented | `release-plan`, bounded explicit conventional-commit range with raw ancestry verification (truncated shallow history is incomplete); `test_releases.py` | Inspect generated notes; no automatic publication. |
 | 10 | README updater — used here | Generated CLI block with drift check; `test_documentation.py` | Handwritten prose is preserved; detected concurrent content, identity, or permission changes block publication. Documentation correctness is not inferred. |
@@ -438,7 +443,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `0006b1d`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.68% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `1d21740`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.68% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags

@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 from .file_io import read_beneath
-
 from .runtime import CommandError
 from .credentials import redact_data
 from .state import atomic_text, directory, history
@@ -71,7 +70,11 @@ def latest_entries(records):
 
 
 def summarize(repo):
-    records = entries(repo)
+    return summarize_entries(entries(repo))
+
+
+def summarize_entries(records):
+    """Derive all summary fields from one captured set of historical evidence."""
     latest = latest_entries(records)
     blocked = [e['report']['check'] for e in latest.values() if e['report']['status'] != 'pass']
     counts = dict(Counter(e['report']['status'] for e in latest.values()))
@@ -93,8 +96,9 @@ def summarize(repo):
 
 def dashboard(repo):
     repo = Path(repo).resolve()
-    summary = summarize(repo)
-    recent = entries(repo)[-100:]
+    records = entries(repo)
+    summary = summarize_entries(records)
+    recent = records[-100:]
     def escape(value):
         return html.escape(str(value), quote=True)
     cards = ''.join(f'<div class="card {status}"><strong>{summary["counts"].get(status, 0)}</strong>'
