@@ -507,3 +507,44 @@ class PythonPatternTests(unittest.TestCase):
                            '" ".join(os.getenv("HOME") for _ in items)'):
             with self.subTest(expression=expression):
                 self.assertFalse(self.inspect('import os\nprint(' + expression + ')').findings)
+
+    def test_standard_output_and_error_streams_expose_environment_values(self):
+        for expression in ('sys.stdout.write(str(os.environ))',
+                           'sys.stderr.writelines([os.getenv("TOKEN")])',
+                           'sys.__stdout__.write(os.getenv("API_KEY"))',
+                           'sys.__stderr__.buffer.write(os.environb[b"PASSWORD"])',
+                           'sys.stdout.buffer.writelines([os.getenvb(b"TOKEN")])',
+                           'sys.displayhook(os.getenv("TOKEN"))',
+                           'getattr(sys.stdout, "write")(os.getenv("TOKEN"))'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import sys, os\n' + expression)
+                self.assertEqual(result.status, 'fail')
+                self.assertIn(result.findings[0].rule, ('environment-dump', 'environment-secret-log'))
+        source = 'from sys import stderr as output\nimport os\noutput.write(os.getenv("TOKEN"))'
+        self.assertEqual(self.inspect(source).status, 'fail')
+
+    def test_writelines_consumes_generator_values_but_write_does_not(self):
+        generator = '(os.getenv("TOKEN") for _ in items)'
+        self.assertEqual(self.inspect('import sys, os\nsys.stderr.writelines(' + generator + ')').status, 'fail')
+        self.assertFalse(self.inspect('import sys, os\nsys.stderr.write(' + generator + ')').findings)
+        self.assertFalse(self.inspect('import sys, os\nsys.displayhook(' + generator + ')').findings)
+
+    def test_warning_and_fatal_logging_aliases_keep_environment_checks(self):
+        for source in ('import warnings, os\nwarnings.warn(os.getenv("TOKEN"))',
+                       'import warnings, os\nwarnings.warn_explicit(os.getenv("TOKEN"), UserWarning, "file.py", 1)',
+                       'from warnings import warn as notice\nimport os\nnotice(os.getenv("TOKEN"))',
+                       'import logging, os\nlogging.fatal(os.getenv("API_KEY"))',
+                       'import logging, os\nlogging.getLogger().warn(os.environ)',
+                       'import os\ndef emit(logger):\n logger.fatal(os.getenv("TOKEN"))'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'fail')
+
+    def test_standard_stream_checks_respect_safe_keys_and_binding_scope(self):
+        for source in ('import sys, os\nsys.stdout.write(os.getenv("HOME"))',
+                       'import sys, os\ndef emit(sys):\n sys.stdout.write(os.getenv("TOKEN"))',
+                       'from . import sys\nimport os\nsys.stdout.write(os.getenv("TOKEN"))',
+                       'import os\ncustom.write(os.getenv("TOKEN"))',
+                       'import warnings, os\nwarnings.filterwarnings("ignore", message=os.getenv("TOKEN"))',
+                       'import sys, os\nsys.stdout.writelines("public" for _ in items if os.getenv("TOKEN"))'):
+            with self.subTest(source=source):
+                self.assertFalse(self.inspect(source).findings)

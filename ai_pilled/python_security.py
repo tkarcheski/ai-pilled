@@ -12,6 +12,13 @@ IMPLICIT_SHELL_CALLS = {'os.system', 'os.popen', 'subprocess.getoutput',
                         'subprocess.getstatusoutput', 'asyncio.create_subprocess_shell',
                         'asyncio.subprocess.create_subprocess_shell'}
 
+STANDARD_OUTPUT_CALLS = {
+    'sys.' + stream + layer + '.' + method
+    for stream in ('stdout', 'stderr', '__stdout__', '__stderr__')
+    for layer in ('', '.buffer')
+    for method in ('write', 'writelines')
+} | {'sys.displayhook', 'warnings.warn_explicit'}
+
 SHELL_KEYWORD_CALLS = {'subprocess.run', 'subprocess.Popen', 'subprocess.call',
                        'subprocess.check_call', 'subprocess.check_output'}
 KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | SHELL_KEYWORD_CALLS | {
@@ -301,9 +308,12 @@ def inspect_python(report, path, content, *, tree=None):
                                      any(k.arg == 'shell' and isinstance(k.value, ast.Constant)
                                          and bool(k.value.value) for k in keywords)):
             rule, message = 'shell-execution', 'Shell execution requires review; prefer argument arrays without shell=True.'
-        elif (name in ('print', 'builtins.print') or log_method in
-              ('debug', 'info', 'warning', 'error', 'critical', 'exception', 'log')):
-            rule = next((found for arg in [*node.args, *(keyword.value for keyword in keywords)]
+        elif (name in ('print', 'builtins.print') or name in STANDARD_OUTPUT_CALLS or log_method in
+              ('debug', 'info', 'warning', 'warn', 'error', 'critical', 'fatal', 'exception', 'log')):
+            arguments = node.args
+            if name in STANDARD_OUTPUT_CALLS and name.endswith('.writelines'):
+                arguments = [arg.elt if isinstance(arg, ast.GeneratorExp) else arg for arg in arguments]
+            rule = next((found for arg in [*arguments, *(keyword.value for keyword in keywords)]
                          if (found := environment_dump(arg))), None)
             if rule == 'environment-dump':
                 message = 'Do not log the complete environment; it can contain credentials.'

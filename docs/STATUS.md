@@ -157,6 +157,10 @@ Leak checks inspect eager comprehension result values and generators consumed by
 list/tuple/set/dict, starred print arguments, or string joining. Import aliases retain
 these checks. Merely logging a generator object, a comprehension filter condition, or
 an iterable whose values are not returned is not treated as exposing its secret values.
+Environment leak checks also cover standard output/error stream writes (including
+binary buffers and original streams), display hooks, warning calls, and logging's
+`warn`/`fatal` aliases. `writelines` inspects consumed generator values; unrelated or
+shadowed stream bindings are outside that rule.
 Dictionary overwrite semantics follow the [Python language reference](https://docs.python.org/3.10/reference/expressions.html#dictionary-displays). An after-tool hook
 can report a problem but cannot undo an already completed edit or external action.
 
