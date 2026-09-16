@@ -121,10 +121,15 @@ def inspect_python(report, path, content):
                 return True
             elif isinstance(value, ast.Call):
                 function = qualified(value.func)
-                if function in ('os.environ.copy', 'os.environ.items'):
+                if function in ('os.environ.copy', 'os.environ.items', 'os.environ.values'):
                     return True
-                if function in ('dict', 'str', 'repr', 'list', 'json.dumps'):
+                literal_format = (isinstance(value.func, ast.Attribute)
+                                  and isinstance(value.func.value, ast.Constant)
+                                  and isinstance(value.func.value.value, str)
+                                  and value.func.attr in ('format', 'format_map'))
+                if function in ('dict', 'str', 'repr', 'list', 'tuple', 'set', 'json.dumps') or literal_format:
                     pending.extend(value.args)
+                    pending.extend(keyword.value for keyword in value.keywords)
         return False
 
     for node in ast.walk(tree):

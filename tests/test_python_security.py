@@ -159,6 +159,25 @@ class PythonPatternTests(unittest.TestCase):
             self.assertEqual(result.findings[0].rule, 'environment-dump')
         self.assertEqual(self.inspect("import os\nprint(f\"home: {os.environ.get('HOME')}\")").status, 'pass')
 
+    def test_environment_dumps_through_serialization_and_literal_formatting(self):
+        for expression in ('"environment: {}".format(os.environ)',
+                           '"{env}".format(env=os.environ.copy())',
+                           '"{env}".format_map({"env": os.environ})',
+                           'json.dumps(obj=os.environ.copy())',
+                           'str(object=os.environ)', 'tuple(os.environ.values())',
+                           'os.environ.values()', 'list(os.environ.items())'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import os, json\nlogger.info(' + expression + ')')
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('environment-dump', 2)])
+
+    def test_safe_formatted_lookups_and_unrelated_values_remain_allowed(self):
+        for expression in ('"home: {}".format(os.environ.get("HOME"))',
+                           '"{home}".format_map({"home": os.environ.get("HOME")})',
+                           'json.dumps(obj={"home": os.environ.get("HOME")})',
+                           'custom.values()', 'str(object="ordinary")'):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.inspect('import os, json\nprint(' + expression + ')').status, 'pass')
+
     def test_deep_expression_is_inspected_without_recursive_traversal(self):
         for expression, status in (('os.environ', 'fail'), ('"ordinary"', 'pass')):
             code = 'import os\nprint(' + expression + ' + ""' * 1200 + ')'
