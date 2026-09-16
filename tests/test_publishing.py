@@ -235,3 +235,19 @@ class PublishingTests(unittest.TestCase):
                 self.assertEqual(result.action, expected)
                 self.assertEqual(sum(call[1:3] == ['release', 'create'] for call in self.calls),
                                  int(change_at == 3))
+
+    def test_invalid_publication_timestamps_are_unconfirmed(self):
+        for at in (True, {'invalid': 'timestamp'}, '', '2026-09-16', '2026-09-16T00:00:00',
+                   '2026-02-30T00:00:00Z', '2026-09-16T00:00:00+25:00', '0001-01-01T00:00:00Z'):
+            with self.subTest(at=at):
+                self.response['publishedAt'] = at
+                result = self.invoke(publish=True)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.action, 'unconfirmed')
+
+    def test_publication_timestamp_accepts_offsets_and_fractional_seconds(self):
+        for at in ('2026-09-16T00:00:00+00:00', '2026-09-15T19:00:00-05:00',
+                   '2026-09-16T00:00:00.123456789Z'):
+            with self.subTest(at=at):
+                self.response['publishedAt'] = at
+                self.assertEqual(self.invoke(publish=True).action, 'published')

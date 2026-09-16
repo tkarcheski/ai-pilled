@@ -9,6 +9,7 @@ from .config import ConfigError
 from .file_io import read_regular
 from .metrics import local_path
 from .pipeline import quality
+from .provider_evidence import object_id, timestamp
 from .releases import VERSION
 from .runtime import CommandError, Report, run, git_path
 from .security import scan_text
@@ -82,7 +83,7 @@ def publish_release(repo, github_repo, tag, expected_head, publish=False, execut
                 if not isinstance(target, dict):
                     raise CommandError('Remote release tag object is malformed')
                 kind, sha = target.get('type'), target.get('sha')
-                if not isinstance(sha, str) or not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', sha):
+                if not object_id(sha):
                     raise CommandError('Remote release tag object has an invalid SHA')
                 if kind == 'commit':
                     if sha != head:
@@ -110,7 +111,7 @@ def publish_release(repo, github_repo, tag, expected_head, publish=False, execut
                                   root, env=env, timeout=30, limit=150_000))
             remote_tag()
             if (not isinstance(data, dict) or data.get('tagName') != tag or data.get('isDraft') is not False
-                    or data.get('isPrerelease') is not False or not data.get('publishedAt')
+                    or data.get('isPrerelease') is not False or not timestamp(data.get('publishedAt'))
                     or data.get('body', '').strip() != notes):
                 raise CommandError('Published release was not confirmed; inspect GitHub before retrying')
             report.action = 'published'

@@ -4,9 +4,10 @@ from .json_data import loads
 import os
 import re
 
+from .provider_evidence import object_id, timestamp
 from .runtime import CommandError, Report, run, run_completed
 
-FIELDS = 'number,state,isDraft,baseRefName,headRefOid,reviewDecision,mergeable,autoMergeRequest'
+FIELDS = 'number,state,isDraft,baseRefName,headRefOid,reviewDecision,mergeable,autoMergeRequest,mergedAt,mergeCommit'
 
 
 @dataclass
@@ -23,7 +24,7 @@ def auto_merge(repo, github_repo, number, base, expected_head, enable=False, exe
             raise CommandError('Select an explicit GitHub owner/repository and positive PR number')
         if not base or len(base) > 200 or any(ord(c) < 32 for c in base):
             raise CommandError('Select an explicit expected base branch')
-        if not re.fullmatch(r'[a-f0-9]{40}(?:[a-f0-9]{24})?', expected_head):
+        if not object_id(expected_head):
             raise CommandError('Supply the full expected PR head commit SHA')
         report.target = f'{github_repo}#{number}'
         report.snapshot = expected_head
@@ -34,7 +35,7 @@ def auto_merge(repo, github_repo, number, base, expected_head, enable=False, exe
             return loads(run([executable, 'pr', 'view', *selection, '--json', FIELDS],
                                   repo, env=env, timeout=30, limit=100_000))
         def validate(data):
-            if not isinstance(data, dict) or data.get('number') != number:
+            if not isinstance(data, dict) or type(data.get('number')) is not int or data['number'] != number:
                 raise CommandError('Cannot verify the selected pull request')
             if data.get('headRefOid') != expected_head or data.get('baseRefName') != base:
                 raise CommandError('PR head or base no longer matches the explicit selection')
@@ -62,12 +63,15 @@ def auto_merge(repo, github_repo, number, base, expected_head, enable=False, exe
             run([executable, 'pr', 'merge', *selection, '--auto', '--squash',
                  '--match-head-commit', expected_head], repo, env=env, timeout=30)
             after = view()
-            if (not isinstance(after, dict) or after.get('number') != number
+            if (not isinstance(after, dict) or type(after.get('number')) is not int or after['number'] != number
                     or after.get('headRefOid') != expected_head or after.get('baseRefName') != base):
                 raise CommandError('Merge outcome differs from selected PR; inspect GitHub before retrying')
-            if after.get('state') == 'MERGED':
+            merge_commit, request = after.get('mergeCommit'), after.get('autoMergeRequest')
+            if (after.get('state') == 'MERGED' and timestamp(after.get('mergedAt'))
+                    and isinstance(merge_commit, dict) and object_id(merge_commit.get('oid'))):
                 report.action = 'merged'
-            elif after.get('state') == 'OPEN' and isinstance(after.get('autoMergeRequest'), dict):
+            elif (after.get('state') == 'OPEN' and isinstance(request, dict)
+                  and request.get('mergeMethod') == 'SQUASH' and timestamp(request.get('enabledAt'))):
                 report.action = 'enabled'
             else:
                 raise CommandError('Auto-merge was not confirmed; inspect GitHub before retrying')

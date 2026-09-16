@@ -421,6 +421,12 @@ only the selected commit is accepted. Verification repeats immediately before cr
 and after the provider response. Fixtures cover same-named branch evidence, malformed
 objects, moved tags, nested annotations, and chain boundaries. These repeated checks
 detect observed movement; they cannot make separate GitHub requests transactional.
+Release confirmation also requires a valid publication timestamp with a timezone.
+Auto-merge confirmation requires an integer PR identity plus the requested squash
+method and a valid enabled timestamp; a merged outcome needs a full merge-commit
+identity and valid merged timestamp. Empty or contradictory provider objects stay
+unconfirmed. Merge queues that substitute another method require manual inspection;
+this client does not certify that a separate server action followed the requested method.
 No live release was prepared or published during this hardening work.
 
 Performance evidence rejects invalid numeric budgets, nonpositive/nonfinite timings,

@@ -87,8 +87,10 @@ class MergeTests(unittest.TestCase):
         self.assertNotIn('merge', [args[2] for args in self.calls])
 
     def test_enable_revalidates_then_confirms_outcome(self):
-        for state, request, action in [('OPEN', {}, 'enabled'), ('MERGED', None, 'merged')]:
-            self.views = [self.pr, self.pr, {**self.pr, 'state': state, 'autoMergeRequest': request}]
+        enabled = {'mergeMethod': 'SQUASH', 'enabledAt': '2026-09-16T00:00:00Z'}
+        for state, request, action in [('OPEN', enabled, 'enabled'), ('MERGED', None, 'merged')]:
+            self.views = [self.pr, self.pr, {**self.pr, 'state': state, 'autoMergeRequest': request,
+                'mergedAt': '2026-09-16T00:00:00Z', 'mergeCommit': {'oid': 'b' * 40}}]
             self.assertEqual(self.invoke(enable=True).action, action)
 
     def test_changed_head_before_mutation_blocks_merge(self):
@@ -123,3 +125,33 @@ class MergeTests(unittest.TestCase):
         for repo, number, head in [('../x/y', 7, self.head), ('owner/repo', 0, self.head), ('owner/repo', 7, 'short')]:
             self.assertEqual(auto_merge(self.temp.name, repo, number, 'main', head, True).status, 'incomplete')
         self.assertEqual(self.calls, [])
+
+    def test_malformed_or_different_merge_requests_are_unconfirmed(self):
+        for request in ({}, {'mergeMethod': 'MERGE', 'enabledAt': '2026-09-16T00:00:00Z'},
+                        {'mergeMethod': 'SQUASH', 'enabledAt': True},
+                        {'mergeMethod': 'SQUASH', 'enabledAt': '0001-01-01T00:00:00Z'},
+                        {'mergeMethod': 'SQUASH', 'enabledAt': '2026-02-30T00:00:00Z'},
+                        {'mergeMethod': 'SQUASH', 'enabledAt': '2026-09-16T00:00:00'}):
+            with self.subTest(request=request):
+                self.views = [self.pr, self.pr, {**self.pr, 'autoMergeRequest': request}]
+                result = self.invoke(enable=True)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.action, 'unconfirmed')
+
+    def test_merged_state_requires_commit_and_timestamp_evidence(self):
+        for commit, at in ((None, '2026-09-16T00:00:00Z'), ({'oid': 'short'}, '2026-09-16T00:00:00Z'),
+                           ({'oid': True}, '2026-09-16T00:00:00Z'), ({'oid': 'b' * 40}, None),
+                           ({'oid': 'b' * 40}, {'invalid': 'timestamp'})):
+            with self.subTest(commit=commit, at=at):
+                self.views = [self.pr, self.pr, {**self.pr, 'state': 'MERGED',
+                                               'mergeCommit': commit, 'mergedAt': at}]
+                result = self.invoke(enable=True)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.action, 'unconfirmed')
+
+    def test_noninteger_pull_request_identity_is_rejected_before_and_after_action(self):
+        for number in (7.0, '7', True):
+            self.views = [{**self.pr, 'number': number}]
+            self.assertEqual(self.invoke(enable=True).action, 'not-requested')
+            self.views = [self.pr, self.pr, {**self.pr, 'number': number, 'state': 'MERGED'}]
+            self.assertEqual(self.invoke(enable=True).action, 'unconfirmed')
