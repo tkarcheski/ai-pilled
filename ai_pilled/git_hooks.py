@@ -74,8 +74,9 @@ def install(repo):
             raise CommandError('Existing executable Git hooks detected; compose hooks manually')
         if directory.exists():
             raise CommandError('Unmanaged .ai-pilled/hooks directory already exists')
-    directory.mkdir(parents=True, exist_ok=True)
+    installed = read_manifest(manifest, directory) if manifest.exists() else None
     source = str(Path(__file__).resolve().parent.parent)
+    contents = {}
     hashes = {}
     for event in ('pre-commit', 'commit-msg', 'pre-push'):
         content = ('#!/bin/sh\n# Managed by ai-pilled.\n'
@@ -85,17 +86,56 @@ def install(repo):
         path = directory / event
         if path.is_symlink():
             raise CommandError('Refusing to replace a symlink hook')
-        if path.exists() and path.read_text() != content:
+        if path.exists() and (not path.is_file() or path.read_text() != content):
             raise CommandError('Existing hook differs from generated content; preserve and reconcile manually')
-        path.write_text(content)
+        if path.exists() and not os.access(path, os.X_OK):
+            raise CommandError('Installed hook is no longer executable; reconcile manually')
+        contents[event] = content
         hashes[event] = hashlib.sha256(content.encode()).hexdigest()
-        path.chmod(0o755)
-    if manifest.exists():
-        previous = json.loads(manifest.read_text())['previous']
-    manifest.write_text(json.dumps({'previous': previous, 'scope': scope,
-                                    'hooks_path': str(directory), 'hashes': hashes}, indent=2))
-    run(['git', 'config', scope, 'core.hooksPath', str(directory)], repo)
+    if installed:
+        if installed['scope'] != scope or installed['hashes'] != hashes:
+            raise CommandError('Installation manifest differs from generated hooks; reconcile manually')
+        previous = installed['previous']
+    # Validate every owned file before creating or rewriting any of them.
+    directory.mkdir(parents=True, exist_ok=True)
+    created = []
+    try:
+        for event, content in contents.items():
+            path = directory / event
+            if not path.exists():
+                created.append(path)
+                path.write_text(content)
+                path.chmod(0o755)
+        if not installed:
+            manifest.write_text(json.dumps({'previous': previous, 'scope': scope,
+                                            'hooks_path': str(directory), 'hashes': hashes}, indent=2))
+        run(['git', 'config', scope, 'core.hooksPath', str(directory)], repo)
+    except BaseException:
+        for path in created:
+            path.unlink(missing_ok=True)
+        if not installed:
+            manifest.unlink(missing_ok=True)
+            if not any(directory.iterdir()):
+                directory.rmdir()
+        raise
     return Report('install-git-hooks')
+
+
+def read_manifest(manifest, expected):
+    try:
+        data = json.loads(manifest.read_text())
+    except (ValueError, OSError) as exc:
+        raise CommandError('Cannot read installation manifest') from exc
+    if (not isinstance(data, dict) or set(data) != {'previous', 'scope', 'hooks_path', 'hashes'}
+            or data.get('hooks_path') != str(expected)
+            or data.get('scope') not in ('--local', '--worktree') or expected.is_symlink()
+            or (data.get('previous') is not None and not isinstance(data['previous'], str))):
+        raise CommandError('Invalid installation manifest')
+    hashes = data.get('hashes')
+    if (not isinstance(hashes, dict) or set(hashes) != {'pre-commit', 'commit-msg', 'pre-push'}
+            or any(not isinstance(h, str) or not re.fullmatch('[0-9a-f]{64}', h) for h in hashes.values())):
+        raise CommandError('Invalid installation hook checksums')
+    return data
 
 
 def uninstall(repo):
@@ -105,12 +145,8 @@ def uninstall(repo):
         return Report('uninstall-git-hooks')
     if (repo / '.ai-pilled').is_symlink() or manifest.is_symlink():
         raise CommandError('Refusing symlink installation paths')
-    data = json.loads(manifest.read_text())
     expected = repo / '.ai-pilled' / 'hooks'
-    if data.get('hooks_path') != str(expected) or data.get('scope') not in ('--local', '--worktree') or expected.is_symlink():
-        raise CommandError('Invalid installation manifest')
-    if data.get('previous') is not None and not isinstance(data['previous'], str):
-        raise CommandError('Invalid previous hooks path')
+    data = read_manifest(manifest, expected)
     for name, checksum in data.get('hashes', {}).items():
         if name not in ('pre-commit', 'commit-msg', 'pre-push'):
             raise CommandError('Invalid installed hook name')
@@ -124,11 +160,10 @@ def uninstall(repo):
     else:
         run(['git', 'config', data['scope'], 'core.hooksPath', data['previous']], repo)
     manifest.unlink()
-    # Keep generated files for inspection; next install can reuse only our known files.
     directory = Path(data['hooks_path'])
     for name in ('pre-commit', 'commit-msg', 'pre-push'):
         path = directory / name
-        if path.exists() and not path.is_symlink() and '# Managed by ai-pilled.' in path.read_text():
+        if path.exists():
             path.unlink()
     if directory.exists() and not any(directory.iterdir()):
         directory.rmdir()

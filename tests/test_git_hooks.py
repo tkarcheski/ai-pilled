@@ -97,3 +97,41 @@ class GitHookTests(unittest.TestCase):
         with self.assertRaises(CommandError):
             install(self.repo)
         self.assertEqual(list(outside.iterdir()), [])
+
+    def test_reinstall_preflights_all_hooks_before_repair(self):
+        install(self.repo)
+        hooks = self.repo / '.ai-pilled' / 'hooks'
+        (hooks / 'pre-commit').unlink()
+        (hooks / 'pre-push').write_text('user replacement')
+        with self.assertRaises(CommandError):
+            install(self.repo)
+        self.assertFalse((hooks / 'pre-commit').exists())
+        self.assertEqual((hooks / 'pre-push').read_text(), 'user replacement')
+
+    def test_missing_checksums_never_authorize_removal(self):
+        import json
+        install(self.repo)
+        manifest = self.repo / '.ai-pilled' / 'installation.json'
+        data = json.loads(manifest.read_text())
+        data['hashes'] = {}
+        manifest.write_text(json.dumps(data))
+        hook = self.repo / '.ai-pilled' / 'hooks' / 'pre-commit'
+        hook.write_text(hook.read_text() + '# user edit\n')
+        for operation in (uninstall, install):
+            with self.assertRaises(CommandError):
+                operation(self.repo)
+        self.assertIn('user edit', hook.read_text())
+        self.assertTrue(manifest.exists())
+
+    def test_git_config_failure_rolls_back_new_install(self):
+        from ai_pilled.runtime import run
+        def fail_config(argv, *args, **kwargs):
+            if argv[:3] == ['git', 'config', '--local']:
+                raise CommandError('simulated config failure')
+            return run(argv, *args, **kwargs)
+        with patch('ai_pilled.git_hooks.run', side_effect=fail_config):
+            with self.assertRaises(CommandError):
+                install(self.repo)
+        self.assertFalse((self.repo / '.ai-pilled' / 'hooks').exists())
+        self.assertFalse((self.repo / '.ai-pilled' / 'installation.json').exists())
+        install(self.repo)
