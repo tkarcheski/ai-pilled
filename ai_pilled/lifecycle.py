@@ -56,15 +56,19 @@ def _handle(repo, payload):
                 tool_status = 'fail'
             elif type(response.get('exit_code')) is int:
                 tool_status = 'pass' if response['exit_code'] == 0 else 'fail'
+            elif tool in ('Bash', 'exec_command', 'write_stdin') and response.get('session_id') is not None:
+                tool_status = 'running'
             elif response.get('isError') is False:
                 tool_status = 'pass'
         check_blocked = any(result.status != 'pass' for result in reports)
         blocked = check_blocked or tool_status != 'pass'
         summary = {
-            'summary': f'{tool} finished; tool result {tool_status}; ' +
+            'summary': f'{tool} returned; tool result {tool_status}; ' +
                        ', '.join(f'{result.check} {result.status}' for result in reports) + '.',
             'blocker': 'wait' if blocked else 'proceed',
-            'next': ('Review the original tool result; its outcome was not supplied in structured form.'
+            'next': ('Wait for the running process and inspect its completion result.'
+                     if tool_status == 'running' and not check_blocked else
+                     'Review the original tool result; its outcome was not supplied in structured form.'
                      if tool_status == 'unknown' and not check_blocked else
                      'Resolve the reported errors or incomplete checks before continuing.'
                      if blocked else 'Continue the requested work; validate the next change.'),

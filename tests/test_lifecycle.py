@@ -111,3 +111,30 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn('"tool_status": "unknown"', context)
         self.assertIn('"blocker": "wait"', context)
         self.assertNotIn('decision', output)
+
+
+    def test_running_process_is_not_reported_as_completed_success(self):
+        for response in ({'session_id': 42}, {'session_id': 42, 'exit_code': None, 'isError': False}):
+            output = handle(self.repo, {'hook_event_name': 'PostToolUse', 'tool_name': 'exec_command',
+                                       'tool_response': response})
+            context = output['hookSpecificOutput']['additionalContext']
+            self.assertIn('"tool_status": "running"', context)
+            self.assertIn('"blocker": "wait"', context)
+            self.assertIn('completion result', context)
+            self.assertNotIn('finished', context)
+            self.assertNotIn('decision', output)
+
+    def test_completion_result_supersedes_session_identifier(self):
+        for code, status in ((0, 'pass'), (1, 'fail')):
+            output = handle(self.repo, {'hook_event_name': 'PostToolUse', 'tool_name': 'write_stdin',
+                                       'tool_response': {'session_id': 42, 'exit_code': code}})
+            context = output['hookSpecificOutput']['additionalContext']
+            self.assertIn('"tool_status": "' + status + '"', context)
+
+
+    def test_noncommand_session_creation_can_complete_successfully(self):
+        output = handle(self.repo, {'hook_event_name': 'PostToolUse', 'tool_name': 'mcp__service__connect',
+                                   'tool_response': {'session_id': 'connection-handle', 'isError': False}})
+        context = output['hookSpecificOutput']['additionalContext']
+        self.assertIn('"tool_status": "pass"', context)
+        self.assertIn('"blocker": "proceed"', context)
