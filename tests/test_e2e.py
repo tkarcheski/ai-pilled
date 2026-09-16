@@ -87,7 +87,7 @@ class EndToEndTests(unittest.TestCase):
             self.assertIn(rule, output)
             self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         (self.repo / 'note.txt').write_text('safe note\n')
-        (self.repo / 'transport.py').write_text('import requests as http\nhttp.get(url, verify=False)\n'
+        (self.repo / 'transport.py').write_text('import requests as http\nhttp.Session().get(url, verify=False)\n'
                                               'def unrelated():\n import json as http\n return http.dumps({})\n')
         self.git('add', 'note.txt', 'transport.py')
         (self.repo / 'transport.py').write_text('import requests\nrequests.get(url)\n')
@@ -98,6 +98,8 @@ class EndToEndTests(unittest.TestCase):
         for source, fixed, rule in (
                 ('import subprocess\nsubprocess.getoutput(command)\n',
                  'import subprocess\nsubprocess.run(["echo", value], check=True)\n', b'shell-execution'),
+                ('import pickle\npickle.Unpickler(stream).load()\n',
+                 'import json\njson.load(stream)\n', b'unsafe-deserialization'),
                 ('import yaml\nyaml.unsafe_load(data)\n',
                  'import yaml\nyaml.safe_load(data)\n', b'unsafe-yaml'),
                 ("value = 'ghp_' '" + 'A' * 36 + "'\n",

@@ -193,11 +193,18 @@ def inspect_python(report, path, content):
         if not isinstance(node, ast.Call):
             continue
         name = qualified(node.func)
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Call):
+            constructor = qualified(node.func.value.func)
+            if constructor in ('requests.Session', 'requests.sessions.Session'):
+                name = 'requests.' + node.func.attr
+            elif constructor in ('pickle.Unpickler', '_pickle.Unpickler', 'dill.Unpickler') and node.func.attr == 'load':
+                name = 'pickle.load'
         rule = message = None
         severity = 'error'
         if name in ('eval', 'exec', 'builtins.eval', 'builtins.exec'):
             rule, message = 'dynamic-code', 'Dynamic code execution requires review; use a constrained parser.'
-        elif name in ('pickle.load', 'pickle.loads', 'dill.load', 'dill.loads'):
+        elif name in ('pickle.load', 'pickle.loads', '_pickle.load', '_pickle.loads', 'dill.load', 'dill.loads',
+                      'pickle.Unpickler.load', '_pickle.Unpickler.load', 'dill.Unpickler.load'):
             rule, message = 'unsafe-deserialization', 'Object deserialization can execute code; do not accept untrusted input.'
         elif name in TLS_VERIFY_CALLS and any(
                 k.arg == 'verify' and isinstance(k.value, ast.Constant)

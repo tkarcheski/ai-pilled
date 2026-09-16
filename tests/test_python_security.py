@@ -281,3 +281,42 @@ class PythonPatternTests(unittest.TestCase):
                            'os.getenv("HOME", "unknown")'):
             with self.subTest(expression=expression):
                 self.assertEqual(self.inspect('import os\nprint(' + expression + ')').status, 'pass')
+
+    def test_direct_unpickler_methods_are_unsafe_deserialization(self):
+        for source in ('import pickle\npickle.Unpickler(stream).load()',
+                       'from pickle import Unpickler as Parser\nParser(stream).load()',
+                       'import _pickle as parser\nparser.Unpickler(stream).load()',
+                       'import dill\ndill.Unpickler(stream).load()',
+                       'import pickle\npickle.Unpickler.load(instance)',
+                       'import _pickle\n_pickle.loads(data)'):
+            with self.subTest(source=source):
+                self.assertEqual([(f.rule, f.line) for f in self.inspect(source).findings],
+                                 [('unsafe-deserialization', 2)])
+
+    def test_unrelated_loaders_and_constructor_only_are_not_unpickling(self):
+        for source in ('import pickle\npickle.Unpickler(stream)',
+                       'custom.Unpickler(stream).load()',
+                       'from . import pickle\npickle.Unpickler(stream).load()',
+                       'import pickle\nclass Restricted(pickle.Unpickler):\n pass\nRestricted(stream).load()',
+                       'from pickle import Unpickler\ndef inspect(Unpickler):\n return Unpickler(stream).load()'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_direct_requests_sessions_preserve_tls_inspection(self):
+        for call in ('requests.Session().get(url, verify=False)',
+                     'requests.sessions.Session().request("GET", url, verify=0)',
+                     'requests.Session().post(url, verify="")'):
+            with self.subTest(call=call):
+                self.assertEqual(self.inspect('import requests\n' + call).findings[0].rule,
+                                 'tls-verification-disabled')
+        source = 'from requests.sessions import Session as Client\nClient().get(url, verify=False)'
+        self.assertEqual(self.inspect(source).findings[0].rule, 'tls-verification-disabled')
+
+    def test_direct_session_safe_settings_and_unrelated_constructors(self):
+        for source in ('import requests\nrequests.Session().get(url, verify=None)',
+                       'import requests\nrequests.Session().get(url, verify=True)',
+                       'import requests\nrequests.Session().get(url, verify="ca.pem")',
+                       'custom.Session().get(url, verify=False)',
+                       'from . import requests\nrequests.Session().get(url, verify=False)'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')
