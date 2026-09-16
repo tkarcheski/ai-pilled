@@ -77,7 +77,7 @@ def install(repo):
     directory.mkdir(parents=True, exist_ok=True)
     source = str(Path(__file__).resolve().parent.parent)
     hashes = {}
-    for event in ('pre-commit', 'commit-msg'):
+    for event in ('pre-commit', 'commit-msg', 'pre-push'):
         content = ('#!/bin/sh\n# Managed by ai-pilled.\n'
                    f'PYTHONDONTWRITEBYTECODE=1 PYTHONPATH={shlex.quote(source)} '
                    f'exec {shlex.quote(sys.executable)} -m ai_pilled '
@@ -90,9 +90,10 @@ def install(repo):
         path.write_text(content)
         hashes[event] = hashlib.sha256(content.encode()).hexdigest()
         path.chmod(0o755)
-    if not manifest.exists():
-        manifest.write_text(json.dumps({'previous': previous, 'scope': scope,
-                                       'hooks_path': str(directory), 'hashes': hashes}, indent=2))
+    if manifest.exists():
+        previous = json.loads(manifest.read_text())['previous']
+    manifest.write_text(json.dumps({'previous': previous, 'scope': scope,
+                                    'hooks_path': str(directory), 'hashes': hashes}, indent=2))
     run(['git', 'config', scope, 'core.hooksPath', str(directory)], repo)
     return Report('install-git-hooks')
 
@@ -111,7 +112,7 @@ def uninstall(repo):
     if data.get('previous') is not None and not isinstance(data['previous'], str):
         raise CommandError('Invalid previous hooks path')
     for name, checksum in data.get('hashes', {}).items():
-        if name not in ('pre-commit', 'commit-msg'):
+        if name not in ('pre-commit', 'commit-msg', 'pre-push'):
             raise CommandError('Invalid installed hook name')
         path = expected / name
         if path.is_symlink() or (path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() != checksum):
@@ -125,7 +126,7 @@ def uninstall(repo):
     manifest.unlink()
     # Keep generated files for inspection; next install can reuse only our known files.
     directory = Path(data['hooks_path'])
-    for name in ('pre-commit', 'commit-msg'):
+    for name in ('pre-commit', 'commit-msg', 'pre-push'):
         path = directory / name
         if path.exists() and not path.is_symlink() and '# Managed by ai-pilled.' in path.read_text():
             path.unlink()
@@ -135,6 +136,9 @@ def uninstall(repo):
 
 
 def dispatch(repo, event, arguments):
+    if event == 'pre-push':
+        from .pre_push import pre_push
+        return pre_push(repo, sys.stdin.read())
     if event == 'pre-commit':
         return scan(repo)
     if event == 'commit-msg' and len(arguments) == 1:

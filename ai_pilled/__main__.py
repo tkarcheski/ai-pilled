@@ -21,7 +21,7 @@ def main(argv=None):
     commands.add_parser('install-git-hooks')
     commands.add_parser('uninstall-git-hooks')
     hook = commands.add_parser('hook')
-    hook.add_argument('event', choices=['pre-commit', 'commit-msg'])
+    hook.add_argument('event', choices=['pre-commit', 'commit-msg', 'pre-push'])
     hook.add_argument('arguments', nargs='*')
     args = parser.parse_args(argv)
     try:
