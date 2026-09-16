@@ -324,6 +324,10 @@ seconds for cooperative locks. Busy locks return an explicit unavailable result;
 contention never deletes a lock, appends partial history, runs a benchmark, or enters
 an installer mutation section. The scheduler already reports busy without waiting.
 
+Performance follow-ups now offer a repository-bound benchmark rerun with the recorded
+run count and budget, after validating both. They do not save a baseline or run the
+command automatically; missing configuration or malformed measurements require inspection.
+
 ## Known gaps and prioritized follow-ups
 
 | Priority | Follow-up | Why / completion evidence |

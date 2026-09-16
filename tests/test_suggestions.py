@@ -103,3 +103,26 @@ class SuggestionTests(unittest.TestCase):
         item = suggest(selected)['suggestions'][0]
         self.assertEqual(item['command'][3:5], ['--repo', str(selected.resolve())])
         self.assertEqual(item['command'][5:], ['review-checks'])
+
+    def test_performance_followup_preserves_budget_without_replacing_baseline(self):
+        record(self.repo, Report('performance-regression', status='fail',
+                                metrics={'runs': 5, 'maximum_regression_percent': 12.5}), 'benchmark')
+        baseline = self.repo / '.ai-pilled/benchmark.json'
+        baseline.write_text('unchanged evidence')
+        item = suggest(self.repo)['suggestions'][0]
+        self.assertEqual(item['command'][5:], ['benchmark', '--runs', '5', '--maximum-regression', '12.5'])
+        self.assertNotIn('--save-baseline', item['command'])
+        self.assertEqual(baseline.read_text(), 'unchanged evidence')
+        self.config['commands'].pop('benchmark')
+        self.configure()
+        self.assertEqual(suggest(self.repo)['suggestions'][0]['command'][-1], 'summary')
+
+    def test_invalid_performance_evidence_requires_inspection(self):
+        for metrics in ({}, {'runs': True, 'maximum_regression_percent': 20},
+                        {'runs': 11, 'maximum_regression_percent': 20},
+                        {'runs': 3, 'maximum_regression_percent': -1},
+                        {'runs': 3, 'maximum_regression_percent': 10 ** 400},
+                        {'runs': 3, 'maximum_regression_percent': 'unsafe argument'}):
+            with self.subTest(metrics=metrics):
+                record(self.repo, Report('performance-regression', status='fail', metrics=metrics), 'benchmark')
+                self.assertEqual(suggest(self.repo)['suggestions'][0]['command'][-1], 'summary')

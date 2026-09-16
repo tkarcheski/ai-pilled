@@ -1,5 +1,6 @@
 """Read-only, deterministic follow-ups from configuration and historical evidence."""
 from pathlib import Path
+import math
 import re
 
 from .config import load
@@ -43,6 +44,17 @@ def suggest(repo, limit=5):
         if report['status'] == 'pass':
             continue
         arguments = RECHECKS.get(name, ['summary'])
+        if name == 'performance-regression' and 'benchmark' in config.commands:
+            metrics = report.get('metrics', {})
+            runs = metrics.get('runs') if isinstance(metrics, dict) else None
+            maximum = metrics.get('maximum_regression_percent') if isinstance(metrics, dict) else None
+            try:
+                valid_budget = (isinstance(maximum, (int, float)) and not isinstance(maximum, bool)
+                                and math.isfinite(maximum) and maximum >= 0)
+            except OverflowError:
+                valid_budget = False
+            if type(runs) is int and 1 <= runs <= 10 and valid_budget:
+                arguments = ['benchmark', '--runs', str(runs), '--maximum-regression', str(maximum)]
         if name == 'python-dependency-vulnerabilities' and config.python_requirements:
             arguments = ['python-audit', '--pip-audit', config.python_audit_executable]
             for path in config.python_requirements:

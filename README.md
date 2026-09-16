@@ -550,7 +550,10 @@ raw tool output, and they do not invent a successful check when evidence is abse
 checks, and missing feature configuration. Each item gives a reason, a next step,
 and an argument list bound to the selected repository when a check can be rerun. It identifies missing
 quality gates, optional staged review, Python audit scope, performance baselines,
-and disposable refactor setup. Configure commands before enabling their automation.
+and disposable refactor setup. Performance reruns preserve the recorded run count
+and regression budget when both are valid; they never suggest replacing a baseline.
+Missing or malformed measurement settings require inspecting the summary first.
+Configure commands before enabling their automation.
 
 Newer nested quality/review results supersede older child-check results. Suggestions
 label historical evidence explicitly and do not certify current source. An unknown
