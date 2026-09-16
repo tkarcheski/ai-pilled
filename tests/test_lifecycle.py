@@ -143,3 +143,23 @@ class LifecycleTests(unittest.TestCase):
     def test_excessively_nested_payload_is_a_protocol_error(self):
         with self.assertRaises(CommandError):
             read_payload(io.StringIO('[' * 1500 + '0' + ']' * 1500))
+
+    def test_configured_python_audit_is_opt_in_and_blocks_on_missing_evidence(self):
+        config = json.loads((self.repo / '.ai-pilled.json').read_text())
+        config['python_requirements'] = ['requirements.txt']
+        (self.repo / '.ai-pilled.json').write_text(json.dumps(config))
+        with patch('ai_pilled.lifecycle.audit_python_changed') as audit:
+            handle(self.repo, {'hook_event_name': 'PostToolUse'})
+            audit.assert_not_called()
+        config['audit_dependencies_on_change'] = True
+        (self.repo / '.ai-pilled.json').write_text(json.dumps(config))
+        result = Report('python-dependency-vulnerabilities')
+        result.add('offline', 'No completed audit', severity='warning')
+        with patch('ai_pilled.lifecycle.audit_python_changed', return_value=(result, False)) as audit:
+            output = handle(self.repo, {'hook_event_name': 'PostToolUse'})
+            audit.assert_called_once_with(self.repo)
+            self.assertEqual(output['decision'], 'block')
+        (self.repo / 'secret').write_text('ghp_' + 'A' * 36)
+        with patch('ai_pilled.lifecycle.audit_python_changed') as audit:
+            handle(self.repo, {'hook_event_name': 'PostToolUse'})
+            audit.assert_not_called()

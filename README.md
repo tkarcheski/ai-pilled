@@ -97,6 +97,16 @@ available fixed versions. See the [official pip-audit documentation](https://git
 
 ## Python environment health and licenses
 
+For automatic auditing, configure `"python_requirements": ["requirements-dev.txt"]`
+and `"python_audit_executable": ".ai-pilled/python-audit-tools/bin/pip-audit"`
+(or another trusted installed tool). Normal/strict quality and comprehensive staged
+review audit those files even if an npm dependency command is configured. Missing
+files or tools block completion. `"audit_dependencies_on_change": true` also enables
+post-tool auditing; it reuses complete pass/fail evidence for unchanged pins for at
+most one hour, while incomplete results are retried with a 30-second provider limit.
+Quality and staged checks always obtain fresh evidence. Neither path installs or
+upgrades packages. This repository enables these options for its development pins.
+
 Run `python -m ai_pilled python-health --python .venv/bin/python` to inspect a trusted
 Python environment and check missing/incompatible dependencies. Pip23+ with inspect
 JSON version1 is required. Python isolated mode prevents project-local modules and

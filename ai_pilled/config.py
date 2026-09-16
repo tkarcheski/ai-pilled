@@ -21,6 +21,8 @@ class Config:
     codex_executable: str = 'codex'
     audit_dependencies_on_change: bool = False
     review_checks_on_commit: bool = False
+    python_requirements: list[str] = field(default_factory=list)
+    python_audit_executable: str = 'pip-audit'
 
 
 def load(repo):
@@ -46,7 +48,7 @@ def load(repo):
     except (ValueError, OSError) as exc:
         raise ConfigError('Cannot read valid JSON from .ai-pilled.json') from exc
     allowed = {'version', 'commands', 'protected_branches', 'timeout',
-               'require_tests', 'aggressiveness', 'review_on_commit', 'codex_executable', 'audit_dependencies_on_change', 'review_checks_on_commit'}
+               'require_tests', 'aggressiveness', 'review_on_commit', 'codex_executable', 'audit_dependencies_on_change', 'review_checks_on_commit', 'python_requirements', 'python_audit_executable'}
     if not isinstance(data, dict) or set(data) - allowed:
         raise ConfigError('Configuration must be an object with supported keys')
     if type(data.get('version', 1)) is not int or data.get('version', 1) != 1:
@@ -84,5 +86,14 @@ def load(repo):
     review_checks = data.get('review_checks_on_commit', False)
     if type(review_checks) is not bool:
         raise ConfigError('review_checks_on_commit must be boolean')
+    python_files = data.get('python_requirements', [])
+    if (not isinstance(python_files, list) or len(python_files) > 32
+            or any(not isinstance(p, str) or not p or len(p) > 1000 or '\0' in p
+                   or Path(p).is_absolute() or '..' in Path(p).parts for p in python_files)
+            or len(set(python_files)) != len(python_files)):
+        raise ConfigError('python_requirements must list at most 32 unique repository-relative paths')
+    python_executable = data.get('python_audit_executable', 'pip-audit')
+    if not isinstance(python_executable, str) or not python_executable or '\0' in python_executable:
+        raise ConfigError('python_audit_executable must be a nonempty executable path or command name')
     return Config(commands, branches, timeout, require_tests, aggressiveness,
-                  review_on_commit, executable, dependency_changes, review_checks)
+                  review_on_commit, executable, dependency_changes, review_checks, python_files, python_executable)

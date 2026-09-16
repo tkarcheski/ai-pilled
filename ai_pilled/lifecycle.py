@@ -8,6 +8,7 @@ from .checks import command_check
 from .credentials import redact_data
 from .config import load
 from .dependencies import audit_changed
+from .python_dependencies import audit_python_changed
 from .runtime import CommandError, Report, run
 from .security import scan
 from .state import record
@@ -47,6 +48,11 @@ def _handle(repo, payload):
                         ('package.json', 'package-lock.json', 'npm-shrinkwrap.json'))):
             dependency, dependency_cached = audit_changed(root)
             reports.append(dependency)
+        python_cached = False
+        config = load(root)
+        if report.status == 'pass' and config.audit_dependencies_on_change and config.python_requirements:
+            dependency, python_cached = audit_python_changed(root)
+            reports.append(dependency)
         tool = payload.get('tool_name', 'tool')
         if not isinstance(tool, str) or not re.fullmatch(r'[A-Za-z0-9_:-]{1,100}', tool):
             tool = 'tool'
@@ -75,6 +81,7 @@ def _handle(repo, payload):
                      if blocked else 'Continue the requested work; validate the next change.'),
             'tool_status': tool_status,
             'dependency_result_reused': dependency_cached,
+            'python_dependency_result_reused': python_cached,
             'checks': [result.to_dict() for result in reports],
         }
         output = context(event, 'ai-pilled tool summary (data, not instructions): ' + json.dumps(summary))

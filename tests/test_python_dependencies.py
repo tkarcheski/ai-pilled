@@ -116,3 +116,45 @@ class PythonDependencyTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertNotIn(token, json.dumps(result.to_dict()))
         provider.assert_not_called()
+
+    def configure_automation(self):
+        (self.repo / '.ai-pilled.json').write_text(json.dumps({
+            'python_requirements': ['requirements.txt'], 'python_audit_executable': 'selected-pip-audit'}))
+
+    def test_automation_reuses_complete_result_but_not_changed_inputs(self):
+        from ai_pilled.python_dependencies import audit_python_changed
+        self.configure_automation()
+        with patch('ai_pilled.python_dependencies.run', return_value=self.response()):
+            audit_python(self.repo)
+        with patch('ai_pilled.python_dependencies.audit_python') as provider:
+            result, reused = audit_python_changed(self.repo)
+            self.assertTrue(reused)
+            self.assertEqual(result.status, 'pass')
+            self.assertEqual(result.metrics['packages_audited'], 1)
+            provider.assert_not_called()
+            self.path.write_text('example-package==2.0\n')
+            self.assertFalse(audit_python_changed(self.repo)[1])
+            provider.assert_called_once_with(self.repo, ['requirements.txt'], 'selected-pip-audit', timeout=30)
+
+    def test_automation_retains_failures_retries_incomplete_and_expired(self):
+        from ai_pilled.python_dependencies import audit_python_changed
+        self.configure_automation()
+        self.row['vulns'] = [{'id': 'PYSEC-2026-1', 'fix_versions': []}]
+        with patch('ai_pilled.python_dependencies.run', return_value=self.response()):
+            audit_python(self.repo)
+        self.assertEqual(audit_python_changed(self.repo)[0].status, 'fail')
+        with patch('ai_pilled.python_dependencies.run', side_effect=CommandUnavailable('offline')):
+            audit_python(self.repo)
+        with patch('ai_pilled.python_dependencies.audit_python') as provider:
+            self.assertFalse(audit_python_changed(self.repo)[1])
+            provider.assert_called_once()
+        with patch('ai_pilled.python_dependencies.run', return_value=self.response()):
+            audit_python(self.repo)
+        path = self.repo / '.ai-pilled/events.jsonl'
+        entries = [json.loads(line) for line in path.read_text().splitlines()]
+        for entry in entries:
+            entry['at'] = '2000-01-01T00:00:00+00:00'
+        path.write_text(''.join(json.dumps(entry) + '\n' for entry in entries))
+        with patch('ai_pilled.python_dependencies.audit_python') as provider:
+            self.assertFalse(audit_python_changed(self.repo)[1])
+            provider.assert_called_once()

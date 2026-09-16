@@ -105,3 +105,13 @@ class ConfigTests(unittest.TestCase):
         (self.repo / '.ai-pilled.json').write_text('[' * 1500 + '0' + ']' * 1500)
         with self.assertRaises(ConfigError):
             load(self.repo)
+
+    def test_python_audit_configuration_rejects_unsafe_or_ambiguous_paths(self):
+        for value in ('requirements.txt', ['../outside'], ['/outside'], ['a', 'a'],
+                      ['a'] * 33, [None], ['a\0b']):
+            self.configure({'python_requirements': value})
+            with self.subTest(value=value), self.assertRaises(ConfigError):
+                load(self.repo)
+        self.configure({'python_audit_executable': []})
+        with self.assertRaises(ConfigError):
+            load(self.repo)

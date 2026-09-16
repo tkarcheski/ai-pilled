@@ -3,9 +3,10 @@ from dataclasses import dataclass, field
 import fnmatch
 from pathlib import Path
 
-from .checks import command_check
+from .checks import command_check, resolve_executable
 from .config import ConfigError, load
 from .dependencies import audit
+from .python_dependencies import audit_python
 from .runtime import CommandError, Report, run
 from .security import scan
 from .state import record
@@ -75,6 +76,9 @@ def quality(repo, ready=False, executable_root=None, comprehensive=False):
             if (comprehensive or config.aggressiveness != 'lazy') and 'dependency' not in names and any(
                     (root / name).exists() for name in ('package-lock.json', 'npm-shrinkwrap.json')):
                 combine(report, audit(root))
+            if config.python_requirements and (comprehensive or config.aggressiveness != 'lazy'):
+                executable = resolve_executable(root, config.python_audit_executable, executable_root)
+                combine(report, audit_python(root, config.python_requirements, executable))
             after = scan(root, 'worktree', patterns=(comprehensive or config.aggressiveness == 'strict'))
             record(root, after, 'quality:security-final')
             if after.status != 'pass':

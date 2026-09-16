@@ -132,3 +132,15 @@ class PipelineTests(unittest.TestCase):
         result = quality(self.repo)
         self.assertEqual(result.status, 'incomplete')
         self.assertIn('snapshot-changed', [f.rule for f in result.findings])
+
+    def test_explicit_python_pins_require_audit_independently_of_npm_command(self):
+        from ai_pilled.runtime import Report
+        config = json.loads((self.repo / '.ai-pilled.json').read_text())
+        config['python_requirements'] = ['requirements.txt']
+        config['commands']['dependency'] = [sys.executable, '-c', 'pass']
+        (self.repo / '.ai-pilled.json').write_text(json.dumps(config))
+        failed = Report('python-dependency-vulnerabilities')
+        failed.add('offline', 'Registry unavailable', severity='warning')
+        with patch('ai_pilled.pipeline.audit_python', return_value=failed) as audit:
+            self.assertEqual(quality(self.repo).status, 'incomplete')
+            audit.assert_called_once_with(self.repo, ['requirements.txt'], 'pip-audit')

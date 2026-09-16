@@ -14,12 +14,7 @@ def command_check(repo, name, executable_root=None):
         report.add('not-configured', f'Configure commands.{name} in .ai-pilled.json.',
                    severity='warning')
         return report
-    argv = list(argv)
-    if executable_root is not None and not Path(argv[0]).is_absolute() and '/' in argv[0]:
-        executable = Path(executable_root) / argv[0]
-        if (not (Path(repo) / argv[0]).exists() and executable.is_file()
-                and not run(['git', 'ls-files', '--', argv[0]], executable_root)):
-            argv[0] = str(executable.absolute())
+    argv = [resolve_executable(repo, argv[0], executable_root), *argv[1:]]
     try:
         # Git hooks export routing variables. A test creating another repo must
         # not inherit the parent repository's Git directory, index, or config.
@@ -30,3 +25,12 @@ def command_check(repo, name, executable_root=None):
     except CommandError as exc:
         report.add('command-failed', str(exc))
     return report
+
+
+def resolve_executable(repo, executable, executable_root=None):
+    if executable_root is not None and not Path(executable).is_absolute() and '/' in executable:
+        original = Path(executable_root) / executable
+        if (not (Path(repo) / executable).exists() and original.is_file()
+                and not run(['git', 'ls-files', '--', executable], executable_root)):
+            return str(original.absolute())
+    return executable
