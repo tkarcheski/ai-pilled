@@ -1,0 +1,98 @@
+"""Run explicitly configured refactor steps in a disposable local clone."""
+from dataclasses import dataclass, field
+import os
+from pathlib import Path
+import tempfile
+import uuid
+
+from .checks import command_check
+from .config import ConfigError, load
+from .pipeline import quality
+from .runtime import CommandError, Report, run
+from .security import scan
+from .state import directory
+
+
+@dataclass
+class RefactorReport(Report):
+    steps: list[dict] = field(default_factory=list)
+    patch: str = ''
+
+
+def refactor(repo):
+    report = RefactorReport('refactor')
+    try:
+        root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
+        config = load(root)
+        policy = (root / ".ai-pilled.json").read_bytes()
+        if any(name not in config.commands for name in ('simplify', 'repair', 'test')):
+            raise CommandError('Configure commands.simplify, commands.repair, and commands.test first')
+        if run(['git', 'status', '--porcelain', '--untracked-files=normal'], root):
+            raise CommandError('Refactoring requires a clean committed source checkout')
+        base = run(['git', 'rev-parse', '--verify', 'HEAD'], root).decode().strip()
+        report.snapshot = base
+        security = scan(root, 'worktree', patterns=config.aggressiveness == 'strict')
+        if security.status != 'pass':
+            report.status = security.status
+            report.findings = security.findings
+            return report
+        state = directory(root)
+        try:
+            run(['git', 'check-ignore', '-q', '--', '.ai-pilled/'], root)
+        except CommandError as exc:
+            raise CommandError('Ignore .ai-pilled/ before running disposable refactor work') from exc
+        env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+        with tempfile.TemporaryDirectory(prefix='refactor-work-', dir=state) as temporary:
+            clone = Path(temporary) / 'checkout'
+            run(['git', 'clone', '--quiet', '--no-local', '--no-checkout', '--', str(root), str(clone)],
+                root, timeout=config.timeout, env=env)
+            run(['git', 'remote', 'remove', 'origin'], clone, env=env)
+            run(['git', 'checkout', '--quiet', '--detach', base], clone, env=env)
+            for name in ('simplify', 'repair'):
+                result = command_check(clone, name, executable_root=root)
+                report.steps.append(result.to_dict())
+                if result.status != 'pass':
+                    report.status = result.status
+                    report.findings = result.findings
+                    return report
+                if run(['git', 'rev-parse', 'HEAD'], clone, env=env).decode().strip() != base:
+                    raise CommandError('Refactor commands must not create commits or change HEAD')
+                if (clone / '.ai-pilled.json').is_symlink() or (clone / '.ai-pilled.json').read_bytes() != policy:
+                    raise CommandError('Refactor commands must not change the quality configuration')
+                security = scan(clone, 'worktree', patterns=config.aggressiveness == 'strict')
+                if security.status != 'pass':
+                    report.status = security.status
+                    report.findings = security.findings
+                    return report
+            verified = quality(clone, executable_root=root)
+            report.steps.append(verified.to_dict())
+            if verified.status != 'pass':
+                report.status = verified.status
+                report.findings = verified.findings
+                return report
+            if run(['git', 'rev-parse', 'HEAD'], root).decode().strip() != base or run(
+                    ['git', 'status', '--porcelain', '--untracked-files=normal'], root):
+                raise CommandError('Original checkout changed during refactoring; no patch exported')
+            new_paths = run(['git', 'ls-files', '--others', '--exclude-standard', '-z'], clone, env=env)
+            names = [p.decode('utf-8', errors='surrogateescape') for p in new_paths.split(b'\0') if p]
+            for start in range(0, len(names), 100):
+                run(['git', 'add', '--intent-to-add', '--', *names[start:start + 100]], clone, env=env)
+            patch = run(['git', 'diff', '--binary', '--no-ext-diff', '--no-textconv', base, '--'],
+                        clone, env=env)
+            if not patch:
+                report.metrics = {'patch_bytes': 0}
+                return report
+            output = state / ('refactor-' + uuid.uuid4().hex + '.patch')
+            fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            try:
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(patch)
+            except OSError:
+                output.unlink(missing_ok=True)
+                raise
+            report.patch = str(output)
+            report.metrics = {'patch_bytes': len(patch)}
+    except (CommandError, ConfigError, OSError) as exc:
+        report.add('refactor-unavailable', str(exc) if isinstance(exc, (CommandError, ConfigError))
+                   else 'Cannot complete disposable refactor work', severity='warning')
+    return report

@@ -20,6 +20,7 @@ from .performance import benchmark
 from .pipeline import quality
 from .releases import prepare_release, release_plan
 from .documentation import update_readme
+from .refactor import refactor
 
 
 def build_parser():
@@ -58,6 +59,7 @@ def build_parser():
     readme = commands.add_parser('update-readme', help='Refresh a generated README command reference')
     readme.add_argument('--path', default='README.md')
     readme.add_argument('--check', action='store_true')
+    commands.add_parser('refactor', help='Run configured refactor steps in a disposable clone and export a patch')
     commands.add_parser('quality', help='Run the configured quality profile')
     commands.add_parser('ready', help='Validate a clean proposal branch and its quality checks')
     commands.add_parser('summary', help='Summarize recorded checks and next steps')
@@ -89,6 +91,8 @@ def main(argv=None):
             report = review(args.repo, args.codex)
         elif args.command == 'update-readme':
             report = update_readme(args.repo, args.path, args.check)
+        elif args.command == 'refactor':
+            report = refactor(args.repo)
         elif args.command == 'prepare-release':
             report = prepare_release(args.repo, args.current, args.since)
         elif args.command == 'release-plan':

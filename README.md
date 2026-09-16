@@ -51,6 +51,20 @@ The benchmark command uses a separate commands.benchmark argument array.
 These commands report the configured tool's result; they do not invent coverage numbers
 or dependency vulnerability data.
 
+## Refactor in a disposable checkout
+
+Configure commands.simplify and commands.repair as trusted argument arrays, plus
+commands.test, then run `python -m ai_pilled refactor` from a clean committed checkout.
+The workflow runs simplify, repair, credential checks, and the configured quality profile
+in a temporary local clone. It exports a private patch under the ignored .ai-pilled/
+directory only after all gates pass. Review and apply that patch explicitly; the workflow
+does not modify the source checkout, commit, push, or schedule itself.
+
+Commands cannot change HEAD or the quality configuration. Relative executable paths
+may use the source checkout's local tools, preserving virtual environments; command
+arguments resolve inside the clone. This separates working copies, but is not a security
+sandbox: trusted commands still have your normal filesystem and network access.
+
 ## Dependency vulnerabilities
 
 Run `dependency-audit` in an npm project with package.json and a lockfile. It parses
@@ -290,10 +304,10 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,quality,ready,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
@@ -306,6 +320,8 @@ positional arguments:
     release-plan        Generate changelog and semantic-version proposal
     prepare-release     Validate readiness and write VERSION/CHANGELOG.md
     update-readme       Refresh a generated README command reference
+    refactor            Run configured refactor steps in a disposable clone and export a
+                        patch
     quality             Run the configured quality profile
     ready               Validate a clean proposal branch and its quality checks
     summary             Summarize recorded checks and next steps

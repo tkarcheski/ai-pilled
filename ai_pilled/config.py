@@ -38,7 +38,7 @@ def load(repo):
     if not isinstance(commands, dict):
         raise ConfigError('commands must map check names to argument lists')
     for name, args in commands.items():
-        if name not in {'test', 'lint', 'typecheck', 'deadcode', 'coverage', 'dependency', 'benchmark'}:
+        if name not in {'test', 'lint', 'typecheck', 'deadcode', 'coverage', 'dependency', 'benchmark', 'simplify', 'repair'}:
             raise ConfigError('Unknown command check name')
         if not isinstance(args, list) or not args or any(
                 not isinstance(a, str) or '\0' in a for a in args) or not args[0]:

@@ -25,7 +25,7 @@ def combine(report, result):
                    path=finding.path, line=finding.line, severity=finding.severity)
 
 
-def quality(repo, ready=False):
+def quality(repo, ready=False, executable_root=None):
     report = PipelineReport('pr-readiness' if ready else 'quality')
     root = Path(run(['git', 'rev-parse', '--show-toplevel'], repo).decode().strip())
     config = load(root)
@@ -66,7 +66,7 @@ def quality(repo, ready=False):
                     names.append(name)
         try:
             for name in names:
-                result = command_check(root, name)
+                result = command_check(root, name, executable_root=executable_root)
                 combine(report, result)
                 record(root, result, 'quality:' + name)
             if config.aggressiveness != 'lazy' and 'dependency' not in names and any(
