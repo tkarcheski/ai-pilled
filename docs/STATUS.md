@@ -71,7 +71,11 @@ Provider distinctions: [GitLab token overview](https://docs.gitlab.com/security/
 and [Stripe key types](https://docs.stripe.com/keys).
 Python string/byte constants are parsed without
 execution, including adjacent literals and Python escapes; findings cite the start of
-the source literal. Parser warnings are suppressed because Python can echo an
+the source literal. Direct AWS secret fields are also paired with literal values in
+assignments, annotations, named expressions, dictionaries, keyword arguments, and
+function defaults. Multiline parentheses, adjacent strings, byte strings, and Python
+escapes cannot hide a recognized field's literal value; arbitrary variable data flow
+and destructuring assignments remain outside this context check. Parser warnings are suppressed because Python can echo an
 unredacted source line; syntax failures still yield incomplete evidence. Runtime string
 computations and arbitrary encodings are not evaluated. History caches separate
 Python interpretation from identical non-Python blobs. Strict Python AST checks flag environment dumps, unsafe parsing, shell

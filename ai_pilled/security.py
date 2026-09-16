@@ -8,7 +8,7 @@ from .file_io import file_identity
 from .git_blobs import read_blobs
 from .runtime import CommandError, Report, run, git_path
 from .python_security import inspect_python, parse_python
-from .credentials import PATTERNS, json_secret_literals
+from .credentials import PATTERNS, aws_secret_field, json_secret_literals
 
 
 MAX_FILE_BYTES = 2_000_000
@@ -38,6 +38,37 @@ def scan_path(report, path):
                        path=path)
 
 
+AWS_FIELD_NODES = {ast.Assign, ast.AnnAssign, ast.NamedExpr, ast.Dict, ast.keyword, ast.arguments}
+
+
+def aws_field_literals(node):
+    """Find literal AWS secret values in direct Python fields, without data flow."""
+    pairs: list[tuple[object, ast.AST | None]] = []
+    if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        pairs = [(target.id if isinstance(target, ast.Name) else
+                  target.attr if isinstance(target, ast.Attribute) else '', node.value) for target in targets]
+    elif isinstance(node, ast.Dict):
+        pairs = [(key.value, value) for key, value in zip(node.keys, node.values, strict=True)
+                 if isinstance(key, ast.Constant)]
+    elif isinstance(node, ast.keyword):
+        pairs = [(node.arg, node.value)]
+    elif isinstance(node, ast.arguments):
+        positional = [*node.posonlyargs, *node.args]
+        if node.defaults:
+            pairs = [(argument.arg, value) for argument, value in
+                     zip(positional[-len(node.defaults):], node.defaults, strict=True)]
+        pairs.extend((argument.arg, value) for argument, value in
+                     zip(node.kwonlyargs, node.kw_defaults, strict=True))
+    for key, value in pairs:
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, (str, bytes)):
+            continue
+        key = key.decode('latin-1') if isinstance(key, bytes) else key
+        literal = value.value.decode('latin-1') if isinstance(value.value, bytes) else value.value
+        if aws_secret_field(key, literal):
+            yield value
+
+
 def scan_bytes(report, path, content):
     # A BOM identifies UTF-16/32 where ASCII tokens contain interleaved NULs.
     # Replacement decoding retains scannable prefixes even in malformed text.
@@ -61,6 +92,14 @@ def scan_bytes(report, path, content):
             node = pending.pop()
             if isinstance(node, ast.Name):
                 continue  # Identifier/context fields cannot contain literal child nodes.
+            if type(node) in AWS_FIELD_NODES:
+                for value in aws_field_literals(node):
+                    key = ('aws-secret-key', path, value.lineno)
+                    if key not in seen:
+                        report.add('aws-secret-key',
+                                   'Potential AWS secret in a Python field; remove and rotate if genuine.',
+                                   path=path, line=value.lineno)
+                        seen.add(key)
             if not isinstance(node, ast.Constant):
                 if not node._fields:
                     continue  # Context/operator leaves have no literals to inspect.

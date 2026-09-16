@@ -439,3 +439,47 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertIn('during reading', result.findings[0].message)
         self.assertEqual(path.read_text(), 'changed!')
+
+    def test_python_aws_secret_fields_span_lines_and_annotations(self):
+        secret = 'aB3/+' * 8
+        literal = repr(secret)
+        expressions = (
+            'aws_secret_access_key = (\n' + literal + '\n)',
+            'aws_secret_access_key: str = ' + literal,
+            'settings.AWS_SECRET_ACCESS_KEY = (\n' + literal + '\n)',
+            'if (secretaccesskey := ' + literal + '): pass',
+            'client(aws_secret_access_key=(\n' + literal + '\n))',
+            'values = {"aws_secret_access_key": (\n' + literal + '\n)}',
+            'values = {b"SecretAccessKey": ' + repr(secret.encode()) + '}',
+            'def client(ordinary, aws_secret_access_key=(\n' + literal + '\n)): pass',
+            'def client(*, SecretAccessKey=(\n' + literal + '\n)): pass')
+        for source in expressions:
+            with self.subTest(source=source[:40]):
+                self.write('fields.py', source)
+                for scope in ('staged', 'worktree'):
+                    result = scan(self.repo, scope)
+                    self.assertEqual(result.status, 'fail', result.to_dict())
+                    self.assertEqual({f.rule for f in result.findings}, {'aws-secret-key'})
+                    self.assertNotIn(secret, json.dumps(result.to_dict()))
+
+    def test_python_aws_fields_decode_adjacent_and_escaped_literals(self):
+        secret = 'aB3/+' * 8
+        for value in (repr(secret[:20]) + '\n' + repr(secret[20:]),
+                      repr(secret).replace('a', r'\x61'), repr(secret.encode())):
+            self.write('fields.py', 'aws_secret_access_key = (\n' + value + '\n)')
+            result = scan(self.repo)
+            self.assertEqual([(f.rule, f.line) for f in result.findings], [('aws-secret-key', 2)])
+
+    def test_python_aws_context_does_not_classify_unrelated_strings_or_duplicate_hits(self):
+        secret = 'aB3/+' * 8
+        self.write('fields.py', 'aws_secret_access_key = ' + repr(secret))
+        self.assertEqual(len(scan(self.repo).findings), 1)
+        for source in ('ordinary = ' + repr(secret),
+                       'aws_secret_access_key = "short-example"',
+                       'aws_secret_access_key: str',
+                       'def client(aws_secret_access_key, ordinary="value"): pass',
+                       'def client(*, aws_secret_access_key): pass',
+                       '{"unrelated": ' + repr(secret) + '}',
+                       'client(ordinary=' + repr(secret) + ')'):
+            self.write('fields.py', source)
+            self.assertEqual(scan(self.repo).status, 'pass', source[:40])
