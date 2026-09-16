@@ -25,7 +25,8 @@ JWT_DECODE_CALLS = {module + '.' + method
 
 SHELL_KEYWORD_CALLS = {'subprocess.run', 'subprocess.Popen', 'subprocess.call',
                        'subprocess.check_call', 'subprocess.check_output'}
-KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | SHELL_KEYWORD_CALLS | JWT_DECODE_CALLS | {
+POSITIONAL_SECURITY_CALLS = SHELL_KEYWORD_CALLS | JWT_DECODE_CALLS
+KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | POSITIONAL_SECURITY_CALLS | {
     'yaml.load', 'yaml.load_all', 'hashlib.new', 'hashlib.md5', 'hashlib.sha1'}
 
 SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
@@ -108,6 +109,21 @@ def import_scopes(tree):
                 bindings[scope].setdefault(name, set()).add(target)
         pending.extend((child, scope) for child in ast.iter_child_nodes(node))
     return scopes, bindings, parents
+
+
+def call_arguments(node):
+    """Expand only literal starred lists/tuples; never evaluate argument expressions."""
+    if not any(isinstance(argument, ast.Starred) for argument in node.args):
+        return node.args
+    result = []
+    pending = list(reversed(node.args))
+    while pending:
+        argument = pending.pop()
+        if isinstance(argument, ast.Starred) and isinstance(argument.value, (ast.List, ast.Tuple)):
+            pending.extend(reversed(argument.value.elts))
+        else:
+            result.append(argument)
+    return result
 
 
 def mapping_keywords(value):
@@ -237,6 +253,7 @@ def inspect_python(report, path, content, *, tree=None):
                 return 'environment-secret-log'
             elif isinstance(value, ast.Call):
                 function = qualified(value.func)
+                arguments = call_arguments(value)
                 if function.startswith('builtins.'):
                     function = function[len('builtins.'):]
                 if function in tuple(prefix + '.' + method for prefix in ('os.environ', 'os.environb')
@@ -244,11 +261,11 @@ def inspect_python(report, path, content, *, tree=None):
                     return 'environment-dump'
                 if function in ('os.getenv', 'os.getenvb', 'os.environ.get', 'os.environb.get'):
                     lookup_keywords = call_keywords(value)
-                    key = value.args[0] if value.args else next(
+                    key = arguments[0] if arguments else next(
                         (keyword.value for keyword in lookup_keywords if keyword.arg == 'key'), None)
                     if credential_key(key):
                         return 'environment-secret-log'
-                    pending.extend(value.args[1:])
+                    pending.extend(arguments[1:])
                     pending.extend(keyword.value for keyword in lookup_keywords if keyword.arg == 'default')
                 literal_method = (value.func.attr if isinstance(value.func, ast.Attribute)
                                   and isinstance(value.func.value, ast.Constant)
@@ -258,7 +275,7 @@ def inspect_python(report, path, content, *, tree=None):
                     consumes = (function in ('dict', 'list', 'tuple', 'set', 'str.join')
                                 or literal_method == 'join')
                     pending.extend(arg.elt if consumes and isinstance(arg, ast.GeneratorExp) else arg
-                                   for arg in value.args)
+                                   for arg in arguments)
                     pending.extend(keyword.value for keyword in value.keywords)
         return None
 
@@ -278,12 +295,18 @@ def inspect_python(report, path, content, *, tree=None):
             elif constructor in ('pickle.Unpickler', '_pickle.Unpickler', 'dill.Unpickler') and node.func.attr == 'load':
                 name = 'pickle.load'
         keywords = call_keywords(node)
+        arguments = call_arguments(node)
+        unknown_arguments = any(isinstance(argument, ast.Starred) for argument in arguments)
+        if name in POSITIONAL_SECURITY_CALLS and unknown_arguments:
+            report.add('python-arguments-unresolved',
+                       'Expanded positional settings cannot be fully inspected; make security options explicit.',
+                       path=path, line=node.lineno, severity='warning')
         if name in KEYWORD_SECURITY_CALLS and any(keyword.arg is None for keyword in keywords):
             report.add('python-keywords-unresolved',
                        'Expanded keyword settings cannot be fully inspected; make security options explicit.',
                        path=path, line=node.lineno, severity='warning')
         if name == 'hashlib.new':
-            algorithm = node.args[0] if node.args else next(
+            algorithm = arguments[0] if arguments else next(
                 (keyword.value for keyword in keywords if keyword.arg == 'name'), None)
             if (isinstance(algorithm, ast.Constant) and isinstance(algorithm.value, str)
                     and algorithm.value.lower() in ('md5', 'sha1')):
@@ -298,7 +321,7 @@ def inspect_python(report, path, content, *, tree=None):
                 'Temporary names can be claimed before use; create the file atomically with mkstemp or NamedTemporaryFile.')
         elif name in JWT_DECODE_CALLS:
             options = next((keyword.value for keyword in keywords if keyword.arg == 'options'),
-                           node.args[3] if len(node.args) > 3 else None)
+                           arguments[3] if len(arguments) > 3 and not unknown_arguments else None)
             if options is not None and not (isinstance(options, ast.Constant) and options.value is None):
                 settings = mapping_keywords(options)
                 if any(setting.arg is None or setting.arg == 'verify_signature'
@@ -327,17 +350,18 @@ def inspect_python(report, path, content, *, tree=None):
             rule, message = 'unsafe-yaml', 'Use safe_load or safe_load_all for untrusted YAML.'
         elif name in ('yaml.load', 'yaml.load_all'):
             loader = next((k.value for k in keywords if k.arg == 'Loader'), None)
-            if loader is None and len(node.args) > 1:
-                loader = node.args[1]
+            if loader is None and len(arguments) > 1 and not unknown_arguments:
+                loader = arguments[1]
             if qualified(loader, SAFE_YAML_LOADERS) not in SAFE_YAML_LOADERS:
                 rule, message = 'unsafe-yaml', 'Use safe_load or an explicit SafeLoader for untrusted YAML.'
-        elif name in IMPLICIT_SHELL_CALLS or (name in SHELL_KEYWORD_CALLS and
-                                     any(k.arg == 'shell' and isinstance(k.value, ast.Constant)
-                                         and bool(k.value.value) for k in keywords)):
+        elif name in IMPLICIT_SHELL_CALLS or (name in SHELL_KEYWORD_CALLS and (
+                any(k.arg == 'shell' and isinstance(k.value, ast.Constant)
+                    and bool(k.value.value) for k in keywords)
+                or not unknown_arguments and len(arguments) > 8 and isinstance(arguments[8], ast.Constant)
+                and bool(arguments[8].value))):
             rule, message = 'shell-execution', 'Shell execution requires review; prefer argument arrays without shell=True.'
         elif (name in ('print', 'builtins.print') or name in STANDARD_OUTPUT_CALLS or log_method in
               ('debug', 'info', 'warning', 'warn', 'error', 'critical', 'fatal', 'exception', 'log')):
-            arguments = node.args
             if name in STANDARD_OUTPUT_CALLS and name.endswith('.writelines'):
                 arguments = [arg.elt if isinstance(arg, ast.GeneratorExp) else arg for arg in arguments]
             rule = next((found for arg in [*arguments, *(keyword.value for keyword in keywords)]

@@ -597,3 +597,52 @@ class PythonPatternTests(unittest.TestCase):
         result = self.inspect('import jwt\njwt.decode(token, options={"verify_signature": False, **settings})')
         self.assertEqual(result.status, 'fail')
         self.assertEqual({f.rule for f in result.findings}, {'jwt-options-unresolved', 'jwt-signature-disabled'})
+
+    def test_positional_shell_flags_and_literal_argument_expansion(self):
+        prefix = 'command, -1, None, None, None, None, None, True, '
+        for method in ('Popen', 'run', 'call', 'check_call', 'check_output'):
+            for arguments in (prefix + 'True', '*(' + prefix + 'True,)',
+                              '*[command, *[-1, None, None, None, None, None, True, True]]'):
+                with self.subTest(method=method, arguments=arguments):
+                    result = self.inspect('import subprocess as process\nprocess.' + method + '(' + arguments + ')')
+                    self.assertEqual([(f.rule, f.line) for f in result.findings], [('shell-execution', 2)])
+            for value in ('False', '0', 'None'):
+                result = self.inspect('import subprocess\nsubprocess.' + method + '(' + prefix + value + ')')
+                self.assertEqual(result.status, 'pass')
+
+    def test_unresolved_positional_security_options_are_incomplete(self):
+        for source in ('import subprocess\nsubprocess.Popen(*arguments)',
+                       'from subprocess import run as execute\nexecute(command, *arguments)',
+                       'import jwt\njwt.decode(token, *arguments)',
+                       'import jwt\njwt.decode(*[token, *arguments])'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual(result.status, 'incomplete')
+                self.assertEqual(result.findings[0].rule, 'python-arguments-unresolved')
+        result = self.inspect('import subprocess\nsubprocess.run(*arguments, shell=True)')
+        self.assertEqual(result.status, 'fail')
+        self.assertEqual({f.rule for f in result.findings}, {'python-arguments-unresolved', 'shell-execution'})
+
+    def test_literal_positional_jwt_yaml_and_hash_options_are_inspected(self):
+        cases = (
+            ('import jwt\njwt.decode(*(token, key, algorithms, {"verify_signature": False}))',
+             'jwt-signature-disabled'),
+            ('import yaml\nyaml.load(*[data, yaml.UnsafeLoader])', 'unsafe-yaml'),
+            ('import hashlib\nhashlib.new(*["md5", data])', 'weak-hash-review'))
+        for source, rule in cases:
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual(result.findings[0].rule, rule)
+        for source in ('import jwt\njwt.decode(*[token, key, algorithms, {"verify_signature": True}])',
+                       'import yaml\nyaml.load(*[data, yaml.SafeLoader])',
+                       'import subprocess\nsubprocess.run(*[["echo", value]], shell=False)'):
+            self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_literal_expanded_environment_lookup_keys_are_not_loggable(self):
+        for expression in ('os.getenv(*["TOKEN"])', 'os.environ.get(*("API_KEY",))',
+                           'os.getenvb(*[b"PASSWORD"])',
+                           'str(*[os.getenv(*["TOKEN"])])'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import os\nprint(' + expression + ')')
+                self.assertEqual(result.findings[0].rule, 'environment-secret-log')
+        self.assertEqual(self.inspect('import os\nprint(os.getenv(*["HOME"]))').status, 'pass')

@@ -4,8 +4,8 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `fdef209`: 557 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `4f1bbab`
+The verification baseline is `9ef8f71`: 571 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `cfd06e3`
 passed the same quality profile and all five E2E scenarios on Python 3.10. An actual full-audit of `fdef209` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
@@ -116,6 +116,11 @@ References: [Python temporary-file warning](https://docs.python.org/3/library/te
 and [PyJWT signature options](https://pyjwt.readthedocs.io/en/latest/usage.html).
 Argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Other referenced conflicting imports
 in one scope are incomplete. Verified defaults/custom CA bundles remain allowed.
+Literal starred lists and tuples are expanded iteratively for inspected arguments,
+including nested expansion. Positional subprocess shell flags receive the same review
+as keyword flags; unresolved positional expansions in subprocess/PyJWT security calls
+are incomplete. Literal expansion also preserves environment-lookup, YAML-loader,
+and weak-hash checks without running source expressions.
 General assignment/rebinding, global/nonlocal mutation, and session-instance data flow
 are not modeled; these patterns do not certify runtime behavior.
 Shared JSON input parsing rejects duplicate object keys (including escaped aliases)

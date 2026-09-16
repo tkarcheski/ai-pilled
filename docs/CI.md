@@ -1,8 +1,8 @@
 # Continuous integration and local parity
 
 The GitHub workflow is prepared on the local `codex/ai-pilled-ci-pending` branch.
-The recorded validation below covers snapshot `4f1bbab` and implementation baseline
-`fdef209`. Inspect the current proposal file:
+The recorded validation below covers snapshot `cfd06e3` and implementation baseline
+`9ef8f71`. Inspect the current proposal file:
 
 ```sh
 git show codex/ai-pilled-ci-pending:.github/workflows/quality.yml
@@ -83,9 +83,9 @@ coverage; the dedicated E2E invocation additionally exports JSON/JUnit evidence.
 Fixtures use local bare remotes and controlled registry responses. The quality audit
 separately contacts PyPI for the actual selected development pins.
 
-At prepared snapshot `4f1bbab`, Python 3.10 passed all seven gates and the five E2E
-scenarios, with fresh coverage of 3,452 of 3,746 lines (92.15%). Its implementation
-baseline `fdef209` passed all 557 tests on both Python 3.10 and 3.14, and the primary
+At prepared snapshot `cfd06e3`, Python 3.10 passed all seven gates and the five E2E
+scenarios, with fresh coverage of 3,503 of 3,795 lines (92.31%). Its implementation
+baseline `9ef8f71` passed all 571 tests on both Python 3.10 and 3.14, and the primary
 branch passed the stronger staged quality profile on 3.14. The E2E scenario now also
 rejects staged TLS, implicit-shell, and unsafe-YAML calls hidden by unstaged fixes. These measurements belong to
 their recorded snapshots, not every later commit.
