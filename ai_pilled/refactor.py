@@ -19,6 +19,18 @@ class RefactorReport(Report):
     patch: str = ''
 
 
+def export_patch(state, patch, prefix):
+    output = state / (prefix + '-' + uuid.uuid4().hex + '.patch')
+    fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(patch)
+    except OSError:
+        output.unlink(missing_ok=True)
+        raise
+    return output
+
+
 def refactor(repo):
     report = RefactorReport('refactor')
     try:
@@ -82,15 +94,7 @@ def refactor(repo):
             if not patch:
                 report.metrics = {'patch_bytes': 0}
                 return report
-            output = state / ('refactor-' + uuid.uuid4().hex + '.patch')
-            fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-            try:
-                with os.fdopen(fd, 'wb') as stream:
-                    stream.write(patch)
-            except OSError:
-                output.unlink(missing_ok=True)
-                raise
-            report.patch = str(output)
+            report.patch = str(export_patch(state, patch, 'refactor'))
             report.metrics = {'patch_bytes': len(patch)}
     except (CommandError, ConfigError, OSError) as exc:
         report.add('refactor-unavailable', str(exc) if isinstance(exc, (CommandError, ConfigError))

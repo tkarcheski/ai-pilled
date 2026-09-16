@@ -51,6 +51,24 @@ The benchmark command uses a separate commands.benchmark argument array.
 These commands report the configured tool's result; they do not invent coverage numbers
 or dependency vulnerability data.
 
+## Verified self-healing (experimental)
+
+Run `python -m ai_pilled heal --expected-head FULL-COMMIT-SHA` to investigate a failing
+latest commit. The command requires a clean branch, one parent, a configured test,
+and a passing credential/security scan. It first establishes that current tests fail,
+then reverses that commit in a disposable clone and runs the entire quality profile.
+A passing candidate produces a private patch; the original checkout is unchanged.
+Passing current tests need no action. Merge commits, changed quality policies, and
+still-failing candidates require manual review.
+
+Add --apply only when you intend to create a local revert commit. It rechecks the exact
+HEAD, branch, and clean checkout, runs ordinary Git hooks, uses a conventional fix
+message, and verifies the resulting tree against the tested candidate. It never resets
+history or pushes. If a hook or Git operation fails, changes may remain staged and the
+result requests checkout inspection; it does not discard that work. Use exclusive access
+to the checkout while applying. This is an explicit command, not an active repair daemon.
+The failure/recovery paths and real Git revert commits are tested in disposable fixtures.
+
 ## Full audit and bug finding
 
 Run `python -m ai_pilled full-audit` for the configured quality profile. Adding
@@ -353,10 +371,10 @@ Configuration is not proof that checks passed; use quality to run them.
 
 ~~~text
 usage: ai-pilled [-h] [--repo REPO]
-                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
+                 {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook} ...
 
 positional arguments:
-  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
+  {scan,check,review,dependency-audit,coverage,bundle,benchmark,dependency-health,licenses,release-plan,prepare-release,update-readme,refactor,heal,full-audit,quality,ready,notify,summary,dashboard,lifecycle,install-codex-hooks,uninstall-codex-hooks,install-git-hooks,uninstall-git-hooks,hook}
     scan                Scan the Git index or working tree for credentials
     check               Run a configured quality command
     review              Review the staged snapshot with Codex
@@ -371,6 +389,7 @@ positional arguments:
     update-readme       Refresh a generated README command reference
     refactor            Run configured refactor steps in a disposable clone and export a
                         patch
+    heal                Verify reversal of a failing HEAD; preview unless --apply
     full-audit          Run quality gates and optional isolated model perspectives
     quality             Run the configured quality profile
     ready               Validate a clean proposal branch and its quality checks

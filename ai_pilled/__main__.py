@@ -23,6 +23,7 @@ from .documentation import update_readme
 from .refactor import refactor
 from .notifications import notify
 from .full_audit import full_audit
+from .healing import heal
 
 
 def build_parser():
@@ -62,6 +63,9 @@ def build_parser():
     readme.add_argument('--path', default='README.md')
     readme.add_argument('--check', action='store_true')
     commands.add_parser('refactor', help='Run configured refactor steps in a disposable clone and export a patch')
+    healing = commands.add_parser('heal', help='Verify reversal of a failing HEAD; preview unless --apply')
+    healing.add_argument('--expected-head', required=True)
+    healing.add_argument('--apply', action='store_true')
     audit_parser = commands.add_parser('full-audit', help='Run quality gates and optional isolated model perspectives')
     audit_parser.add_argument('--model-reviews', action='store_true')
     audit_parser.add_argument('--codex')
@@ -118,6 +122,8 @@ def main(argv=None):
             report = health(args.repo, args.npm)
         elif args.command == 'licenses':
             report = licenses(args.repo, args.allow)
+        elif args.command == 'heal':
+            report = heal(args.repo, args.expected_head, args.apply)
         elif args.command == 'full-audit':
             report = full_audit(args.repo, args.model_reviews, args.codex, args.workers)
         elif args.command in ('quality', 'ready'):
