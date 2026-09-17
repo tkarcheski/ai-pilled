@@ -1,6 +1,7 @@
 import os
 from unittest.mock import patch
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -29,6 +30,36 @@ class SecurityTests(unittest.TestCase):
         (self.repo / name).write_text(content)
         if stage:
             self.git('add', '--', name)
+
+    def test_raw_prefix_hints_preserve_all_credential_variants_and_escaped_values(self):
+        from ai_pilled.credentials import PATTERNS
+        cases = [('aws-access-key', prefix + 'Q' * 16) for prefix in ('AKIA', 'ASIA')]
+        cases += [('aws-secret-key', 'AWS_SECRET_ACCESS_KEY = "' + 'a' * 40 + '"')]
+        cases += [('github-token', 'gh' + kind + '_' + 'a' * 36) for kind in 'pousr']
+        cases += [('github-fine-grained-token', 'github_pat_' + 'a' * 40),
+                  ('gitlab-access-token', 'glpat-' + 'a' * 20),
+                  ('pypi-token', 'pypi-' + 'a' * 85)]
+        cases += [('stripe-secret-key', prefix + 'a' * 24)
+                  for prefix in ('sk_live_', 'sk_test_', 'rk_live_', 'rk_test_', 'sk_org_')]
+        cases += [('private-key', '-----BEGIN ' + kind + 'PRIVATE KEY-----')
+                  for kind in ('', 'RSA ', 'EC ', 'DSA ', 'OPENSSH ', 'ENCRYPTED ')]
+        cases += [('openai-token', 'sk-' + kind + 'a' * 32) for kind in ('', 'proj-', 'svcacct-')]
+        cases += [('slack-webhook', 'https://hooks.slack.com/services/' + 'A' * 8 + '/' + 'B' * 8 + '/' + 'C' * 16)]
+        cases += [('slack-token', 'xox' + kind + '-' + 'a' * 20) for kind in 'baprs']
+        self.assertEqual({rule for rule, _ in cases}, {rule for rule, _ in PATTERNS})
+        for rule, token in cases:
+            escaped = '"' + ''.join('\\u%04x' % ord(character) for character in token) + '"'
+            for value in (token, escaped):
+                with self.subTest(rule=rule, escaped=value == escaped):
+                    report = Report('fixture')
+                    scan_text(report, 'fixture', 'first line\n' + value + '\nlast line')
+                    self.assertEqual([(finding.rule, finding.line) for finding in report.findings], [(rule, 2)])
+
+    def test_unknown_rule_without_prefix_hint_is_still_checked(self):
+        with patch('ai_pilled.security.PATTERNS', (('future-rule', re.compile('fixture-value')),)):
+            report = Report('fixture')
+            scan_text(report, 'fixture', 'first line\nfixture-value')
+        self.assertEqual([(finding.rule, finding.line) for finding in report.findings], [('future-rule', 2)])
 
     def test_index_content_not_worktree_is_checked(self):
         token = 'AKIA' + 'Q' * 16

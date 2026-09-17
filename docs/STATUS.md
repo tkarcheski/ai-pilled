@@ -42,6 +42,15 @@ alternating scans measured 210.647 ms without it and 214.442 ms with it. Reports
 were identical and 76 security/redaction fixtures passed, but the cache added cost.
 No literal cache was added to the product.
 
+A retained raw-text prefix filter measured 214.374 versus 189.543 ms at `424d02f`
+across seven alternating in-process scans (11.6% improvement), with identical reports,
+797 literal comparisons, and 76 existing security/redaction tests. It skips a raw-text
+pattern only when its required case-sensitive substring is absent. Case-insensitive
+AWS secret matching, unlisted rules, and all decoded-string checks still run. New
+fixtures cover every current prefix variant, fully escaped equivalents, source lines,
+and unlisted-rule fallback; all 78 related tests pass on Python 3.10 and 3.14. This
+measurement does not itself satisfy the separate cold-process performance budget.
+
 ## What the statuses mean
 
 - **Implemented / tested:** code exists and named tests exercise it. Provider fixtures

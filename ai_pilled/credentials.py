@@ -23,6 +23,21 @@ PATTERNS = (
     ('slack-token', re.compile(r'(?a)\bxox[baprs]-[A-Za-z0-9-]{20,}\b')),
 )
 
+# Required case-sensitive substrings for raw-text checks only. Keep these in sync
+# with their patterns; unlisted rules always run, and decoded strings bypass hints.
+RAW_PREFIXES = {
+    'aws-access-key': ('AKIA', 'ASIA'),
+    'github-token': ('ghp_', 'gho_', 'ghu_', 'ghs_', 'ghr_'),
+    'github-fine-grained-token': ('github_pat_',),
+    'gitlab-access-token': ('glpat-',),
+    'stripe-secret-key': ('sk_', 'rk_'),
+    'pypi-token': ('pypi-',),
+    'private-key': ('PRIVATE KEY-----',),
+    'openai-token': ('sk-',),
+    'slack-webhook': ('https://hooks.slack.com/services/',),
+    'slack-token': ('xoxb-', 'xoxa-', 'xoxp-', 'xoxr-', 'xoxs-'),
+}
+
 AWS_SECRET_ASSIGNMENT = dict(PATTERNS)['aws-secret-key']
 
 PRIVATE_KEY_BLOCK = re.compile(
