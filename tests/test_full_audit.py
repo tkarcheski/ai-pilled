@@ -35,6 +35,19 @@ class FullAuditTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.run(['git', *args], cwd=self.repo, check=True, capture_output=True).stdout
 
+    def test_changed_perspective_source_invalidates_empty_result(self):
+        def model(snapshot, *_):
+            (snapshot / 'code.py').write_text('value = 9\n')
+            return []
+        with patch('ai_pilled.full_audit.invoke_review', side_effect=model):
+            result = full_audit(self.repo, model_reviews=True, workers=1)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual([check['status'] for check in result.checks],
+                         ['pass', 'incomplete', 'incomplete', 'incomplete'])
+        self.assertTrue(all('Supplied review source changed' in finding.message
+                            for finding in result.findings))
+        self.assertEqual((self.repo / 'code.py').read_text(), 'value = 1\n')
+
     def test_default_runs_quality_without_model(self):
         with patch('ai_pilled.full_audit.invoke_review') as model:
             result = full_audit(self.repo)

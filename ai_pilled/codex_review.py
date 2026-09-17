@@ -1,11 +1,13 @@
 """Read-only, subscription-backed Codex review of the staged snapshot."""
+import hashlib
 import json
 from .json_data import loads
 import os
 from pathlib import Path
 import tempfile
+import stat
 
-from .file_io import read_beneath, read_regular
+from .file_io import read_beneath, read_regular, read_snapshot
 from .git_blobs import read_blobs
 from .config import load
 from .runtime import CommandError, Report, run, git_path
@@ -63,6 +65,7 @@ def review_environment():
 def materialize_index(repo, destination):
     records = run(['git', 'ls-files', '--stage', '-z'], repo).split(b'\0')
     total = 0
+    manifest = {}
     for raw in filter(None, records):
         metadata, raw_path = raw.split(b'\t', 1)
         mode, oid, stage = metadata.split()
@@ -83,6 +86,21 @@ def materialize_index(repo, destination):
             raise CommandError('Prepared review snapshot contains credentials; rerun after resolving them')
         path.write_bytes(content)
         path.chmod(0o755 if mode == b'100755' else 0o644)
+        manifest[str(path.relative_to(destination))] = (hashlib.sha256(content).digest(),
+                                                       len(content), 0o755 if mode == b'100755' else 0o644)
+    return manifest
+
+
+def validate_snapshot(snapshot, manifest):
+    """Bind model evidence to the supplied index bytes and permissions."""
+    for name, (digest, size, mode) in manifest.items():
+        try:
+            content, identity = read_snapshot(snapshot / name, size, root=snapshot)
+            if (content is None or identity is None or hashlib.sha256(content).digest() != digest
+                    or stat.S_IMODE(identity[-1]) != mode):
+                raise CommandError('Supplied review source changed; discard results and rerun')
+        except (OSError, CommandError) as exc:
+            raise CommandError('Supplied review source changed or became unavailable; discard results and rerun') from exc
 
 
 def check_historical_redaction(repo, head):
@@ -181,12 +199,14 @@ def review(repo, executable=None, message=None):
         with tempfile.TemporaryDirectory(prefix='ai-pilled-review-') as temporary:
             snapshot = Path(temporary) / 'snapshot'
             snapshot.mkdir()
-            materialize_index(root, snapshot)
+            manifest = materialize_index(root, snapshot)
             if scan(root).snapshot != before.snapshot:
                 raise CommandError('Staged snapshot changed before review; rerun the review')
             unchanged_head()
+            validate_snapshot(snapshot, manifest)
             findings = invoke_review(snapshot, prompt, executable, config.timeout)
             unchanged_head()
+            validate_snapshot(snapshot, manifest)
             validate_locations(snapshot, findings)
             if scan(root).snapshot != before.snapshot:
                 raise CommandError('Staged snapshot changed during review; rerun the review')

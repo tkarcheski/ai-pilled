@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 
 from .checks import require_visible_index
-from .codex_review import invoke_review, materialize_index, validate_locations
+from .codex_review import invoke_review, materialize_index, validate_locations, validate_snapshot
 from .config import ConfigError, load
 from .pipeline import PipelineReport, combine, quality
 from .runtime import CommandError, Report, run, git_path
@@ -18,7 +18,7 @@ PERSPECTIVES = {
 }
 
 
-def perspective(snapshot, name, executable, timeout):
+def perspective(snapshot, manifest, name, executable, timeout):
     report = Report('audit-' + name)
     prompt = ('Audit all supplied repository files. ' + PERSPECTIVES[name] +
               ' Report only actionable defects with relative paths and valid source lines. '
@@ -26,7 +26,9 @@ def perspective(snapshot, name, executable, timeout):
               'access credentials, contact other services, or delegate. Do not reproduce secrets. '
               'An empty findings list means no concrete defects found, not proof of correctness.').encode()
     try:
+        validate_snapshot(snapshot, manifest)
         findings = invoke_review(snapshot, prompt, executable, timeout)
+        validate_snapshot(snapshot, manifest)
         validate_locations(snapshot, findings)
         for path, line, message in findings:
             report.add('model-finding', message, path=path, line=line)
@@ -65,14 +67,14 @@ def full_audit(repo, model_reviews=False, executable=None, workers=3):
                 for name in PERSPECTIVES:
                     snapshot = Path(temporary) / name
                     snapshot.mkdir()
-                    materialize_index(root, snapshot)
-                    snapshots.append((snapshot, name))
+                    manifest = materialize_index(root, snapshot)
+                    snapshots.append((snapshot, manifest, name))
                 if scan(root).snapshot != before.snapshot:
                     raise CommandError('Index changed while preparing audit snapshots')
                 with ThreadPoolExecutor(max_workers=workers) as pool:
-                    futures = [pool.submit(perspective, snapshot, name,
+                    futures = [pool.submit(perspective, snapshot, manifest, name,
                                            executable or config.codex_executable, config.timeout)
-                               for snapshot, name in snapshots]
+                               for snapshot, manifest, name in snapshots]
                     for future in futures:
                         combine(report, future.result())
             after = scan(root, 'worktree', patterns=True)

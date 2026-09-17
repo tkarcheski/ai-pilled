@@ -283,6 +283,13 @@ Parent-directory swaps and observed replacements cannot validate an outside or s
 source line. This is a read-time consistency check, not an atomic filesystem snapshot.
 `review --comprehensive` requires deterministic evidence and model findings to refer
 to the same index.
+Each materialized index also returns a manifest of original file hashes, sizes, and
+permissions. Review and full-audit perspectives verify those supplied files before
+and after model invocation, even when the model returns no findings. Changed bytes,
+permissions, missing files, and symlink substitutions make evidence incomplete.
+Fake-reviewer mutation and pre-invocation corruption fixtures exercise this boundary;
+no live model call was made. This detects observed changes to supplied files, not
+transient edits restored between checks or every added untracked file.
 
 **Evidence:** `test_staged_review.py`, `test_git_hooks.py`, `test_codex_review.py`,
 and the partial-staging E2E case. The new reviewer passed its own staged implementation.

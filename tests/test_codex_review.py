@@ -38,6 +38,33 @@ class ReviewTests(unittest.TestCase):
             f'output.write_text({content!r})\n' + extra)
         self.fake.chmod(0o755)
 
+    def test_changed_supplied_source_invalidates_empty_model_result(self):
+        mutations = (
+            'Path("code.py").write_text("value = 9\\n")',
+            'Path("code.py").unlink()',
+            'Path("code.py").chmod(0o755)',
+            'Path("code.py").rename("moved.py"); Path("code.py").symlink_to("moved.py")',
+        )
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                self.response({'findings': []}, extra=mutation + '\n')
+                result = review(self.repo, str(self.fake))
+                self.assertEqual(result.status, 'incomplete')
+                self.assertIn('Supplied review source changed', result.findings[0].message)
+                self.assertEqual((self.repo / 'code.py').read_text(), 'value = 1\n')
+
+    def test_changed_materialization_is_rejected_before_model(self):
+        from ai_pilled.codex_review import materialize_index
+        def changed(repo, destination):
+            manifest = materialize_index(repo, destination)
+            (destination / 'code.py').write_text('value = 9\n')
+            return manifest
+        with patch('ai_pilled.codex_review.materialize_index', side_effect=changed), patch(
+                'ai_pilled.codex_review.invoke_review') as model:
+            result = review(self.repo, str(self.fake))
+        self.assertEqual(result.status, 'incomplete')
+        model.assert_not_called()
+
     def test_structured_review_passes(self):
         self.assertEqual(review(self.repo, str(self.fake)).status, 'pass')
 
