@@ -22,6 +22,12 @@ CERT_REQUIREMENT_CALLS = {
     **{prefix + 'create_urllib3_context': 1 for prefix in ('urllib3.util.', 'urllib3.util.ssl_.')},
     **{prefix + 'ssl_wrap_socket': 3 for prefix in ('urllib3.util.', 'urllib3.util.ssl_.')},
 }
+# Explicit keywords only: positional hostname locations vary across urllib3 releases.
+HOSTNAME_OPTIONS = {
+    name: ('assert_hostname', 'proxy_assert_hostname')
+    if name.endswith(('ProxyManager', 'proxy_from_url')) else ('assert_hostname',)
+    for name in CERT_REQUIREMENT_CALLS if not name.startswith('urllib3.util.')
+}
 CERT_MODES = {'ssl.CERT_NONE': 0, 'ssl.CERT_OPTIONAL': 1, 'ssl.CERT_REQUIRED': 2,
               'ssl.VerifyMode.CERT_NONE': 0, 'ssl.VerifyMode.CERT_OPTIONAL': 1,
               'ssl.VerifyMode.CERT_REQUIRED': 2}
@@ -533,6 +539,20 @@ def inspect_python(report, path, content, *, tree=None):
                 elif mode is None:
                     report.add('tls-option-unresolved',
                                'Certificate requirements cannot be inspected; make verification explicit.',
+                               path=path, line=node.lineno, severity='warning')
+        if name in HOSTNAME_OPTIONS:
+            for keyword in keywords:
+                if keyword.arg not in HOSTNAME_OPTIONS[name]:
+                    continue
+                setting = keyword.value
+                if isinstance(setting, ast.Constant) and setting.value is False:
+                    report.add('tls-hostname-review',
+                               'Hostname matching is disabled; review the intended peer identity or fingerprint-pinning policy.',
+                               path=path, line=node.lineno, severity='warning')
+                elif not (isinstance(setting, ast.Constant) and (setting.value is None
+                          or isinstance(setting.value, str) and bool(setting.value))):
+                    report.add('tls-hostname-unresolved',
+                               'Hostname verification settings cannot be inspected; make the peer identity policy explicit.',
                                path=path, line=node.lineno, severity='warning')
         direct_shell = direct_shell_command(name, arguments, keywords)
         if direct_shell is None:

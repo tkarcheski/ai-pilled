@@ -56,6 +56,43 @@ class PythonPatternTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         self.assertIn('python-import-ambiguous', [f.rule for f in result.findings])
 
+    def test_urllib3_disabled_hostname_matching_requires_review(self):
+        calls = ('urllib3.PoolManager', 'urllib3.poolmanager.PoolManager',
+                 'urllib3.ProxyManager', 'urllib3.proxy_from_url',
+                 'urllib3.HTTPSConnectionPool', 'urllib3.connectionpool.HTTPSConnectionPool',
+                 'urllib3.connection.HTTPSConnection')
+        for call in calls:
+            with self.subTest(call=call):
+                result = self.inspect('import urllib3\n' + call + '(assert_hostname=False)')
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('tls-hostname-review', 2)])
+                self.assertEqual(result.status, 'incomplete')
+        for source in (
+                'from urllib3 import PoolManager as P\nP(**{"assert_hostname": False})',
+                'import urllib3\ngetattr(urllib3, "PoolManager")(assert_hostname=False)',
+                '__import__("urllib3").PoolManager(assert_hostname=False)',
+                'import urllib3\nurllib3.PoolManager(assert_hostname=False, assert_fingerprint="pin")'):
+            self.assertEqual(self.inspect(source).status, 'incomplete')
+
+    def test_urllib3_proxy_hostname_policy_and_unknown_values(self):
+        for call in ('urllib3.ProxyManager', 'urllib3.proxy_from_url',
+                     'urllib3.poolmanager.ProxyManager', 'urllib3.poolmanager.proxy_from_url'):
+            result = self.inspect('import urllib3\n' + call + '(proxy_assert_hostname=False)')
+            self.assertEqual(result.findings[0].rule, 'tls-hostname-review')
+        for value in ('selected', 'True', '0', '[]', '""', 'b"host"'):
+            result = self.inspect('import urllib3\nurllib3.PoolManager(assert_hostname=' + value + ')')
+            self.assertEqual(result.status, 'incomplete')
+            self.assertEqual(result.findings[0].rule, 'tls-hostname-unresolved')
+
+    def test_urllib3_hostname_defaults_and_unrelated_calls_remain_allowed(self):
+        for arguments in ('', 'assert_hostname=None', 'assert_hostname="host.example"',
+                          '**{"assert_hostname": False, "assert_hostname": None}'):
+            self.assertEqual(self.inspect('import urllib3\nurllib3.PoolManager(' + arguments + ')').status, 'pass')
+        for source in ('custom.PoolManager(assert_hostname=False)',
+                       'from . import urllib3\nurllib3.PoolManager(assert_hostname=False)',
+                       'import urllib3\ndef f(urllib3):\n urllib3.PoolManager(assert_hostname=False)',
+                       'import urllib3\nurllib3.HTTPConnectionPool(assert_hostname=False)'):
+            self.assertEqual(self.inspect(source).status, 'pass')
+
     def test_urllib3_disabled_certificate_requirements(self):
         calls = ('urllib3.PoolManager', 'urllib3.ProxyManager', 'urllib3.proxy_from_url',
                  'urllib3.poolmanager.PoolManager', 'urllib3.HTTPSConnectionPool',

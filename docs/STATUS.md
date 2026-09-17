@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `c6cba2f`: 673 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `708d917`
-passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `c6cba2f` also passed all seven gates with zero
+The verification baseline is `37d2ef8`: 686 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `6d9d831`
+passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `37d2ef8` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -52,6 +52,23 @@ AWS secret matching, unlisted rules, and all decoded-string checks still run. Ne
 fixtures cover every current prefix variant, fully escaped equivalents, source lines,
 and unlisted-rule fallback; all 78 related tests pass on Python 3.10 and 3.14. This
 measurement does not itself satisfy the separate cold-process performance budget.
+
+The latest idle cold-process rerun at `37d2ef8` measured 0.260 seconds, 56.8%
+over the unchanged baseline. Profiling still identifies Python parsing and AST
+traversal as major costs. An isolated traversal experiment measured 194.661 versus
+187.899 ms over seven alternating in-process runs, with identical reports and 78
+passing security/redaction tests. That small improvement was not adopted; it does
+not resolve the cold-process budget.
+
+Explicit urllib3 `assert_hostname=False` and proxy hostname overrides now produce
+review warnings, including imported aliases and literal keyword dictionaries.
+Dynamic or invalid explicit values remain incomplete; omitted settings, `None`, and
+literal hostname strings remain allowed. Fingerprint pinning can be deliberate, so
+these findings request peer-identity policy review rather than assert an exploit.
+This rule covers explicit keywords on recognized managers, HTTPS pools and connections;
+version-dependent positional hostname arguments and stored-instance mutation are not
+traced. AST fixtures and a staged-versus-unstaged E2E scenario cover the behavior.
+See the [urllib3 connection-pool contract](https://urllib3.readthedocs.io/en/latest/reference/urllib3.connectionpool.html).
 
 ## What the statuses mean
 
@@ -529,7 +546,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `708d917`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.80% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `6d9d831`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.90% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
