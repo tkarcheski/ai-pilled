@@ -132,6 +132,38 @@ class LifecycleTests(unittest.TestCase):
         self.assertNotIn('decision', output)
 
 
+    def test_malformed_completion_markers_cannot_claim_success(self):
+        responses = [{'isError': False, 'exit_code': code}
+                     for code in (True, False, '0', '1', 0.0, [], {})]
+        responses += [{'isError': error, 'exit_code': 0}
+                      for error in ('false', 'true', 0, 1, None, [], {})]
+        for response in responses:
+            with self.subTest(response=response):
+                output = handle(self.repo, {'hook_event_name': 'PostToolUse', 'tool_name': 'exec_command',
+                                           'tool_response': response})
+                context = output['hookSpecificOutput']['additionalContext']
+                self.assertIn('"tool_status": "unknown"', context)
+                self.assertIn('"blocker": "wait"', context)
+                self.assertNotIn('decision', output)
+
+    def test_null_exit_without_live_session_is_not_completion(self):
+        for response in ({'exit_code': None}, {'exit_code': None, 'isError': False},
+                         {'exit_code': None, 'session_id': None, 'isError': False}):
+            output = handle(self.repo, {'hook_event_name': 'PostToolUse', 'tool_name': 'write_stdin',
+                                       'tool_response': response})
+            context = output['hookSpecificOutput']['additionalContext']
+            self.assertIn('"tool_status": "unknown"', context)
+            self.assertIn('"blocker": "wait"', context)
+
+    def test_explicit_failures_remain_failures_despite_other_malformed_markers(self):
+        for response in ({'isError': 'false', 'exit_code': 1}, {'isError': None, 'exit_code': -9},
+                         {'isError': True, 'exit_code': 0}, {'isError': True, 'exit_code': 'invalid'}):
+            output = handle(self.repo, {'hook_event_name': 'PostToolUse', 'tool_name': 'exec_command',
+                                       'tool_response': response})
+            context = output['hookSpecificOutput']['additionalContext']
+            self.assertIn('"tool_status": "fail"', context)
+            self.assertIn('"blocker": "wait"', context)
+
     def test_running_process_is_not_reported_as_completed_success(self):
         for response in ({'session_id': 42}, {'session_id': 42, 'exit_code': None, 'isError': False}):
             output = handle(self.repo, {'hook_event_name': 'PostToolUse', 'tool_name': 'exec_command',

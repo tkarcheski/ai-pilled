@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `46f203c`: 663 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `2f6dabe`
-passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `46f203c` also passed all seven gates with zero
+The verification baseline is `c6cba2f`: 673 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `708d917`
+passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `c6cba2f` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -406,7 +406,10 @@ need pip's JSON index output. Health/license execution requires an explicit inte
 [lifecycle.py](../ai_pilled/lifecycle.py) and [reporting.py](../ai_pilled/reporting.py).
 Summaries include a sentence, blocker state, warnings, and next action. Structured
 exit codes and MCP errors determine tool success; running and unknown outcomes are
-preserved. Stop-hook recursion metadata must be a real boolean; strings such as
+preserved. Malformed error flags or exit codes cannot certify success; a null exit
+without a live command session remains unknown/wait. Explicit failures retain failure
+status even when another marker is malformed, and a valid completion code still
+supersedes a retained session identifier. Stop-hook recursion metadata must be a real boolean; strings such as
 `"false"` cannot suppress a blocking result and are rejected before configured tests run.
 Summaries, dashboard counts, and suggestions share bounded traversal of
 nested check/step results; a newer child result supersedes older evidence for that check.
@@ -503,7 +506,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `2f6dabe`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.74% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `708d917`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.80% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags

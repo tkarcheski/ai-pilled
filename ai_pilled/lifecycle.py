@@ -17,6 +17,25 @@ def context(event, text):
     return {'hookSpecificOutput': {'hookEventName': event, 'additionalContext': text}}
 
 
+def tool_outcome(tool, response):
+    """Require well-formed completion evidence without weakening known failures."""
+    if not isinstance(response, dict):
+        return 'unknown'
+    error, code = response.get('isError'), response.get('exit_code')
+    if error is True or type(code) is int and code != 0:
+        return 'fail'
+    if ('isError' in response and type(error) is not bool
+            or 'exit_code' in response and code is not None and type(code) is not int):
+        return 'unknown'
+    if type(code) is int:
+        return 'pass'
+    if tool in ('Bash', 'exec_command', 'write_stdin') and response.get('session_id') is not None:
+        return 'running'
+    if 'exit_code' in response:
+        return 'unknown'
+    return 'pass' if error is False else 'unknown'
+
+
 def handle(repo, payload):
     return redact_data(_handle(repo, payload))
 
@@ -55,17 +74,7 @@ def _handle(repo, payload):
         tool = payload.get('tool_name', 'tool')
         if not isinstance(tool, str) or not re.fullmatch(r'[A-Za-z0-9_:-]{1,100}', tool):
             tool = 'tool'
-        response = payload.get('tool_response')
-        tool_status = 'unknown'
-        if isinstance(response, dict):
-            if response.get('isError') is True:
-                tool_status = 'fail'
-            elif type(response.get('exit_code')) is int:
-                tool_status = 'pass' if response['exit_code'] == 0 else 'fail'
-            elif tool in ('Bash', 'exec_command', 'write_stdin') and response.get('session_id') is not None:
-                tool_status = 'running'
-            elif response.get('isError') is False:
-                tool_status = 'pass'
+        tool_status = tool_outcome(tool, payload.get('tool_response'))
         check_blocked = any(result.status != 'pass' for result in reports)
         blocked = check_blocked or tool_status != 'pass'
         summary = {
