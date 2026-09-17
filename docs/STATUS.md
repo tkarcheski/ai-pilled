@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `37d2ef8`: 686 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `6d9d831`
-passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `37d2ef8` also passed all seven gates with zero
+The verification baseline is `1878a39`: 711 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `9298609`
+passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `1878a39` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -53,7 +53,7 @@ fixtures cover every current prefix variant, fully escaped equivalents, source l
 and unlisted-rule fallback; all 78 related tests pass on Python 3.10 and 3.14. This
 measurement does not itself satisfy the separate cold-process performance budget.
 
-The latest idle cold-process rerun at `37d2ef8` measured 0.260 seconds, 56.8%
+An idle cold-process rerun at `37d2ef8` measured 0.260 seconds, 56.8%
 over the unchanged baseline. Profiling still identifies Python parsing and AST
 traversal as major costs. An isolated traversal experiment measured 194.661 versus
 187.899 ms over seven alternating in-process runs, with identical reports and 78
@@ -91,6 +91,15 @@ inspection, not general assignment or object data-flow analysis. Source-only fix
 and staged Git-hook E2E coverage exercise these boundaries without reading real secrets.
 See [Python's reversible encodings](https://docs.python.org/3/library/base64.html)
 and [binary conversions](https://docs.python.org/3/library/binascii.html).
+
+The current validation refresh at `1878a39` includes 711 tests and a passing actual
+full audit with all seven nested quality gates and zero model workers. Prepared local
+CI `9298609` passes the same gates plus six E2E scenarios (6.684 seconds, no failures,
+errors or skips), with 3,983 of 4,288 lines covered (92.89%). Its branch is preserved
+in both checkouts. The subsequent idle cold benchmark measured 0.262 seconds, 58.3%
+over the byte-for-byte unchanged baseline: performance remains failed at the original
+20% budget and is the sole currently generated follow-up. None of this constitutes a
+hosted GitHub/GitLab run or live integration delivery.
 
 ## What the statuses mean
 
@@ -542,7 +551,7 @@ that local run, not a latency guarantee for future snapshots or larger repositor
 | 4 | Commit messages — active | Shared conventional-subject checker, commit-msg and outgoing-history gates | Semantic message alignment requires optional model review. |
 | 5 | Branch protection — active locally | Actual pre-push destination patterns; local remote E2E | Hosted branch protections remain unconfigured. |
 | 6 | Coverage — active | Fresh coverage.py JSON and 80% line minimum; root-relative no-symlink reads and descriptor/current-path identity checks reject observed evidence changes; exact line-count comparisons against decimal thresholds avoid floating-point boundary errors; `test_metrics.py`, `scripts/check_coverage.py` | Line coverage is not branch coverage or a correctness proof. |
-| 7 | Performance regression — opt-in | Repeated process timing, median baseline, host/command identity; `test_performance.py` | Explicit baseline replacement; machine-dependent measurements, not application profiling. Latest recorded cold scanner comparison: 260 ms vs 166 ms baseline, 56.8% over baseline; the 20% budget fails. |
+| 7 | Performance regression — opt-in | Repeated process timing, median baseline, host/command identity; `test_performance.py` | Explicit baseline replacement; machine-dependent measurements, not application profiling. Latest recorded cold scanner comparison: 262 ms vs 166 ms baseline, 58.3% over baseline; the 20% budget fails. |
 | 8 | Bundle size — opt-in | Existing artifact byte budgets; path/link/bounds tests in `test_metrics.py` | Does not build artifacts or infer a product-specific budget. |
 | 9 | Changelog — implemented | `release-plan`, bounded explicit conventional-commit range with raw ancestry verification (truncated shallow history is incomplete); `test_releases.py` | Inspect generated notes; no automatic publication. |
 | 10 | README updater — used here | Generated CLI block with drift check; `test_documentation.py` | Handwritten prose is preserved; detected concurrent content, identity, or permission changes block publication. Documentation correctness is not inferred. |
@@ -591,7 +600,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `6d9d831`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.90% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `9298609`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.89% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
