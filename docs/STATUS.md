@@ -421,6 +421,15 @@ Normal development pushes use the installed hook; it has not been bypassed.
 **Limits / acceptance:** local hooks are user-bypassable. Server branch protection and
 required hosted checks are separate controls and have not been configured or claimed.
 
+Pending repository policy cannot authorize a push. Preflight now rejects staged,
+unstaged, deleted, untracked or ignored `.ai-pilled.json` changes before loading the
+policy, and checks hidden index flags before evaluating deletion updates as well.
+A local bare-remote regression reproduced a protected-branch push bypass through an
+unstaged test/protection opt-out; the push is now rejected. A committed test opt-out
+still permits unrelated pending work, and no-op pushes do not run checks. These are
+local cooperative gates; they do not replace hosted branch protection or prevent a
+user from editing/disabling installed hooks.
+
 ### 4. Dependency auditing — npm and Python implemented; Python active here
 
 The npm manifest and selected lockfiles now receive bounded, identity-checked reads

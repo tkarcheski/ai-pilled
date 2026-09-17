@@ -146,6 +146,18 @@ def pre_push(repo, updates, destination=None):
         report.add('update-count-limit', 'Push exceeds the 2000-ref update limit; split the proposal.',
                    severity='warning')
         return report
+    if not lines:
+        return report
+    try:
+        require_visible_index(repo)
+    except CommandError as exc:
+        report.add('hidden-worktree', str(exc))
+        return report
+    if run(['git', 'status', '--porcelain', '--untracked-files=normal', '--ignored',
+            '--', '.ai-pilled.json'], repo):
+        report.add('policy-changed',
+                   'Commit or restore repository policy before pushing; pending .ai-pilled.json changes cannot authorize updates.')
+        return report
     config = load(repo)
     head = run(['git', 'rev-parse', '--verify', 'HEAD'], repo).decode().strip()
     commits = set()

@@ -63,6 +63,49 @@ class PrePushTests(unittest.TestCase):
         self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote),
                                                 'for-each-ref']), b'')
 
+    def test_uncommitted_policy_cannot_disable_actual_push_gates(self):
+        install(self.repo)
+        (self.repo / '.ai-pilled.json').write_text('{"require_tests":false,"protected_branches":[]}')
+        result = self.git('push', 'origin', 'HEAD:main', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'policy-changed', result.stdout + result.stderr)
+        self.assertEqual(subprocess.check_output(['git', '--git-dir', str(self.remote), 'for-each-ref']), b'')
+
+    def test_staged_deleted_and_new_policy_inputs_require_commit(self):
+        policy = self.repo / '.ai-pilled.json'
+        policy.write_text('{"require_tests":false}')
+        self.git('add', '.ai-pilled.json')
+        self.assertIn('policy-changed', [f.rule for f in pre_push(self.repo, self.update()).findings])
+        policy.unlink()
+        self.assertIn('policy-changed', [f.rule for f in pre_push(self.repo, self.update()).findings])
+        self.git('add', '.ai-pilled.json')
+        self.git('commit', '-qm', 'test: remove policy')
+        for ignored in (False, True):
+            with self.subTest(ignored=ignored):
+                if ignored:
+                    (self.repo / '.git/info/exclude').write_text('.ai-pilled.json\n')
+                policy.write_text('{"require_tests":false}')
+                self.assertIn('policy-changed', [f.rule for f in pre_push(self.repo, self.update()).findings])
+
+    def test_hidden_policy_cannot_disable_protected_deletion(self):
+        self.git('update-index', '--assume-unchanged', '.ai-pilled.json')
+        (self.repo / '.ai-pilled.json').write_text('{"require_tests":false,"protected_branches":[]}')
+        head = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        result = pre_push(self.repo, f'(delete) {"0" * 40} refs/heads/main {head}\n')
+        self.assertIn('hidden-worktree', [f.rule for f in result.findings])
+
+    def test_committed_test_opt_out_allows_unrelated_pending_work(self):
+        (self.repo / '.ai-pilled.json').write_text('{"require_tests":false}')
+        self.commit()
+        (self.repo / 'unfinished.txt').write_text('ordinary pending work')
+        self.assertEqual(pre_push(self.repo, self.update()).status, 'pass')
+
+    def test_no_ref_updates_need_no_policy_or_git_commands(self):
+        with patch('ai_pilled.pre_push.run') as command, patch('ai_pilled.pre_push.load') as config:
+            self.assertEqual(pre_push(self.repo, '').status, 'pass')
+        command.assert_not_called()
+        config.assert_not_called()
+
     def test_failed_tests_block_actual_push(self):
         self.configure(1)
         self.commit()
