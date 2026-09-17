@@ -31,3 +31,27 @@ class InstallationLockTests(unittest.TestCase):
                     self.assertTrue(path.is_file())
                     self.assertFalse((repo / '.codex').exists())
                     self.assertFalse((state / 'hooks').exists())
+
+    def test_replaced_state_parent_cannot_redirect_lock_creation(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+        for module, helper in ((git_hooks, 'state_directory'), (codex_hooks, 'directory')):
+            with self.subTest(installer=module.__name__), tempfile.TemporaryDirectory() as temporary:
+                repo = Path(temporary) / 'repo'
+                outside = Path(temporary) / 'outside'
+                repo.mkdir()
+                outside.mkdir()
+                original = getattr(module, helper)
+
+                def swap(root, original=original, outside=outside):
+                    state = original(root)
+                    state.rename(root / 'parked-state')
+                    state.symlink_to(outside, target_is_directory=True)
+                    return state
+
+                with patch.dict(os.environ, env, clear=True):
+                    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+                    with patch.object(module, helper, side_effect=swap):
+                        with self.assertRaises((CommandError, OSError)):
+                            with module.locked(repo):
+                                pass
+                self.assertEqual(list(outside.iterdir()), [])

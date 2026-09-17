@@ -14,7 +14,7 @@ import stat
 
 from .runtime import CommandError, CommandFailed, Report, run, git_path
 from .config import load_staged
-from .file_io import read_regular
+from .file_io import read_regular, directory_beneath
 from .commit_messages import check_subject
 from .security import scan, scan_text
 from .state import directory as state_directory
@@ -73,7 +73,9 @@ def hook_contents(repo):
 def locked(repo):
     root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
     state = state_directory(root)
-    fd = os.open(state / 'git-install.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    with directory_beneath(root, state.relative_to(root)) as parent:
+        fd = os.open('git-install.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     0o600, dir_fd=parent)
     with os.fdopen(fd, 'r+') as lock:
         if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
             raise CommandError('Git installation lock must be a regular file')

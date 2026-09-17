@@ -13,6 +13,7 @@ import sys
 
 from .runtime import CommandError, Report, run, git_path
 from .state import atomic_text, directory
+from .file_io import directory_beneath
 
 
 def groups(repo):
@@ -79,7 +80,9 @@ def locked(repo):
     state = directory(root)
     if (root / '.codex').is_symlink():
         raise CommandError('Refusing symlink Codex configuration directory')
-    fd = os.open(state / 'codex-install.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    with directory_beneath(root, state.relative_to(root)) as parent:
+        fd = os.open('codex-install.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     0o600, dir_fd=parent)
     with os.fdopen(fd, 'rb') as lock:
         if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
             raise CommandError('Codex installation lock must be a regular file')
