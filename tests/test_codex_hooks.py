@@ -55,6 +55,45 @@ class CodexInstallTests(unittest.TestCase):
                 parked = root / 'parked-codex' / 'hooks.json'
                 self.assertEqual(parked.read_bytes() if parked.exists() else None, original)
 
+    def test_snapshot_rejects_changes_after_descriptor_read(self):
+        from contextlib import contextmanager
+        from ai_pilled.codex_hooks import read_snapshot
+        original = os.fdopen
+        for change in ('replace', 'delete', 'mode'):
+            with self.subTest(change=change):
+                self.path.write_text(json.dumps(self.original))
+                self.path.chmod(0o644)
+                changed = []
+
+                @contextmanager
+                def opened(*args, change=change, changed=changed, **kwargs):
+                    with original(*args, **kwargs) as stream:
+                        yield stream
+                    if not changed:
+                        changed.append(True)
+                        if change == 'replace':
+                            replacement = self.repo / 'replacement.json'
+                            replacement.write_text('{}')
+                            replacement.replace(self.path)
+                        elif change == 'delete':
+                            self.path.unlink()
+                        else:
+                            self.path.chmod(0o600)
+
+                with patch.object(os, 'fdopen', side_effect=opened):
+                    with self.assertRaises(CommandError):
+                        read_snapshot(self.path, self.repo)
+
+    def test_snapshot_rejects_symlink_parent(self):
+        from ai_pilled.codex_hooks import read_snapshot
+        parent = self.repo / '.codex'
+        parked = self.repo / 'parked-codex'
+        parent.rename(parked)
+        parent.symlink_to(parked, target_is_directory=True)
+        with self.assertRaises(CommandError):
+            read_snapshot(self.path, self.repo)
+        self.assertEqual(json.loads((parked / 'hooks.json').read_text()), self.original)
+
     def test_preserves_user_hooks_across_install_and_uninstall(self):
         install(self.repo)
         once = self.path.read_text()

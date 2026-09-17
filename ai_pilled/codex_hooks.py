@@ -13,7 +13,7 @@ import sys
 
 from .runtime import CommandError, Report, run, git_path
 from .state import atomic_text, directory
-from .file_io import directory_beneath
+from .file_io import directory_beneath, read_snapshot as read_file_snapshot
 
 
 def groups(repo):
@@ -30,36 +30,21 @@ def groups(repo):
             ('Stop', '', 180, 'test results'))}
 
 
-def read_snapshot(path):
+def read_snapshot(path, root):
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(fd, 'rb') as stream:
-            metadata = os.fstat(stream.fileno())
-            if not stat.S_ISREG(metadata.st_mode):
-                raise CommandError('Codex configuration must be a regular file')
-            content = stream.read(1_000_001)
-            after = os.fstat(stream.fileno())
-            if fingerprint(metadata) != fingerprint(after):
-                raise CommandError('Codex configuration changed while reading')
-        if len(content) > 1_000_000:
-            raise CommandError('Codex configuration exceeds the 1 MB size limit')
+        content, identity = read_file_snapshot(path, 1_000_000, root=root)
+        if content is None:
+            return {}, None
         data = loads(content)
-    except FileNotFoundError:
-        return {}, None
     except (OSError, ValueError) as exc:
         raise CommandError('Cannot read valid regular JSON configuration') from exc
     if not isinstance(data, dict):
         raise CommandError('Configuration must be a JSON object')
-    return data, (*fingerprint(after), hashlib.sha256(content).hexdigest())
+    return data, (*identity, hashlib.sha256(content).hexdigest())
 
 
-def fingerprint(metadata):
-    return (metadata.st_dev, metadata.st_ino, metadata.st_size,
-            metadata.st_mtime_ns, metadata.st_ctime_ns)
-
-
-def require_unchanged(path, snapshot):
-    if read_snapshot(path)[1] != snapshot:
+def require_unchanged(path, snapshot, root):
+    if read_snapshot(path, root)[1] != snapshot:
         raise CommandError('Codex configuration changed concurrently; retry after reconciling edits')
 
 
@@ -98,7 +83,7 @@ def validate_hooks(data):
 
 
 def read_installation(path, root):
-    data, snapshot = read_snapshot(path)
+    data, snapshot = read_snapshot(path, root)
     if snapshot is None:
         return None, None
     current = groups(root)
@@ -114,7 +99,7 @@ def install(repo):
     with locked(repo) as (root, state):
         path = root / '.codex' / 'hooks.json'
         manifest_path = state / 'codex-installation.json'
-        data, config_snapshot = read_snapshot(path)
+        data, config_snapshot = read_snapshot(path, root)
         hooks = validate_hooks(data)
         desired = groups(root)
         previous, manifest_snapshot = read_installation(manifest_path, root)
@@ -134,7 +119,7 @@ def install(repo):
             manifest = render_object({'groups': desired})
             # Never replace ownership metadata created by a concurrent writer.
             owned_identity = atomic_text(manifest_path, manifest, exclusive=True, root=root)
-            _, owned_snapshot = read_snapshot(manifest_path)
+            _, owned_snapshot = read_snapshot(manifest_path, root)
             if (owned_snapshot is None or owned_snapshot[:2] != owned_identity
                     or owned_snapshot[-1] != hashlib.sha256(manifest.encode()).hexdigest()):
                 raise CommandError('Codex installation metadata changed concurrently')
@@ -142,8 +127,8 @@ def install(repo):
 
             def guard():
                 nonlocal publishing
-                require_unchanged(path, config_snapshot)
-                require_unchanged(manifest_path, owned_snapshot)
+                require_unchanged(path, config_snapshot, root)
+                require_unchanged(manifest_path, owned_snapshot, root)
                 publishing = True
 
             try:
@@ -151,13 +136,13 @@ def install(repo):
             except (OSError, CommandError):
                 # Keep recovery metadata if publication may have succeeded.
                 try:
-                    if not publishing or read_snapshot(path)[1] == config_snapshot:
-                        require_unchanged(manifest_path, owned_snapshot)
+                    if not publishing or read_snapshot(path, root)[1] == config_snapshot:
+                        require_unchanged(manifest_path, owned_snapshot, root)
                         manifest_path.unlink()
                 except (OSError, CommandError):
                     pass
                 raise
-            require_unchanged(manifest_path, owned_snapshot)
+            require_unchanged(manifest_path, owned_snapshot, root)
     result = Report('install-codex-hooks')
     # Installation is complete, activation remains explicitly separate.
     result.findings = []
@@ -171,7 +156,7 @@ def uninstall(repo):
         previous, manifest_snapshot = read_installation(manifest_path, root)
         if not previous:
             return Report('uninstall-codex-hooks')
-        data, config_snapshot = read_snapshot(path)
+        data, config_snapshot = read_snapshot(path, root)
         hooks = validate_hooks(data)
         for event, entries in previous.get('groups', {}).items():
             for group in entries:
@@ -184,10 +169,10 @@ def uninstall(repo):
                 del hooks[event]
         data['hooks'] = hooks
         def guard():
-            require_unchanged(path, config_snapshot)
-            require_unchanged(manifest_path, manifest_snapshot)
+            require_unchanged(path, config_snapshot, root)
+            require_unchanged(manifest_path, manifest_snapshot, root)
 
         atomic_text(path, render_object(data), before_publish=guard, root=root)
-        require_unchanged(manifest_path, manifest_snapshot)
+        require_unchanged(manifest_path, manifest_snapshot, root)
         manifest_path.unlink()
     return Report('uninstall-codex-hooks')
