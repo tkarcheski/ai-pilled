@@ -1052,6 +1052,58 @@ class PythonPatternTests(unittest.TestCase):
         result = self.inspect('from subprocess import run as execute\nexecute(["sh", "-c", command])')
         self.assertEqual(result.status, 'fail')
 
+    def test_explicit_shell_standard_input_is_reviewed(self):
+        for expression in ('subprocess.run(["sh"], input=script)',
+                           'subprocess.run("/bin/bash", input=script)',
+                           'subprocess.check_output(["dash", "-s", "argument"], input=script)',
+                           'subprocess.run(["bash", "-es", "--", "argument"], input=script)',
+                           'subprocess.run(["sh", "--"], input=script)',
+                           'subprocess.run(["sh", "-"], input=script)',
+                           'subprocess.run(["bash", "-o", "errexit"], input=script)',
+                           'subprocess.run(["display"], executable="sh", input=script)',
+                           'subprocess.run(**{"args": ["sh"], "input": script})',
+                           'subprocess.run([b"sh", b"-s"], input=script)',
+                           '__import__("subprocess").run(["sh"], input=script)'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import subprocess\n' + expression)
+                self.assertEqual([f.rule for f in result.findings], ['shell-execution'])
+        self.assertEqual(self.inspect('from subprocess import run as execute\nexecute(["sh"], input=script)').status, 'fail')
+
+    def test_positive_shell_options_do_not_hide_command_sources(self):
+        for expression in ('subprocess.run(["sh", "+e", "-c", command])',
+                           'subprocess.run(["sh", "+e"], input=script)',
+                           'subprocess.run(["bash", "+o", "errexit", "-c", command])',
+                           'subprocess.run(["bash", "+O", "extglob", "-c", command])',
+                           'subprocess.run(["bash", "-n", "+n"], input=script)'):
+            self.assertEqual(self.inspect('import subprocess\n' + expression).status, 'fail')
+        for expression in ('subprocess.run(["sh", "--", "+e", "-c", command])',
+                           'subprocess.run(["bash", "-s", "+s", "script.sh"], input=data)'):
+            self.assertEqual(self.inspect('import subprocess\n' + expression).status, 'pass')
+
+    def test_standalone_shell_syntax_check_does_not_execute_input(self):
+        for shell in ('sh', '/bin/bash', 'dash', 'zsh', 'ksh'):
+            with self.subTest(shell=shell):
+                source = 'import subprocess\nsubprocess.run([' + repr(shell) + ', "-n"], input=script)'
+                self.assertEqual(self.inspect(source).status, 'pass')
+        # Additional invocation flags can change semantics; retain review.
+        self.assertEqual(self.inspect('import subprocess\nsubprocess.run(["bash", "-n", "-i"], input=script)').status, 'fail')
+
+    def test_shell_stdin_detection_preserves_script_data_and_absent_input(self):
+        for expression in ('subprocess.run(["sh", "script.sh"], input=data)',
+                           'subprocess.run(["bash", "--", script], input=data)',
+                           'subprocess.run(["bash", "-", script], input=data)',
+                           'subprocess.run(["bash", "-o", "errexit", "script.sh"], input=data)',
+                           'subprocess.run(["bash", "--version"], input=data)',
+                           'subprocess.run(["bash", "-s", "--help"], input=data)',
+                           'subprocess.run(["sh"], input=None)',
+                           'subprocess.run(["sh", "-s"])',
+                           'subprocess.run(["cat"], input=data)',
+                           'subprocess.run(["sh"], executable="cat", input=data)',
+                           'custom.run(["sh"], input=data)'):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.inspect('import subprocess\n' + expression).status, 'pass')
+        self.assertEqual(self.inspect('import subprocess\nsubprocess.run(["sh", *flags], input=data)').status, 'incomplete')
+
     def test_async_shell_commands_and_executable_overrides_are_reviewed(self):
         for source in ('import asyncio\nasyncio.create_subprocess_exec("sh", "-c", command)',
                        'from asyncio.subprocess import create_subprocess_exec as execute\nexecute("bash", "-lc", command)',

@@ -70,6 +70,18 @@ version-dependent positional hostname arguments and stored-instance mutation are
 traced. AST fixtures and a staged-versus-unstaged E2E scenario cover the behavior.
 See the [urllib3 connection-pool contract](https://urllib3.readthedocs.io/en/latest/reference/urllib3.connectionpool.html).
 
+The shell-vector reviewer also checks explicit `input=` supplied to a recognized
+POSIX shell by `subprocess.run` or `check_output`, including scalar executable names,
+`-s`, `+` option toggles, option separators, aliases and literal keyword dictionaries. Passing data to
+a named script or a non-shell program remains outside this signal. A standalone
+noninteractive `-n` syntax check is allowed; the repo's own hook-protocol test exposed
+and now guards this false-positive boundary. Separately stored
+`Popen` objects and later `communicate()` calls are not traced. This is a shell-use
+review signal, not a proof that supplied commands are hostile. Source-only fixtures
+and a real staged Git-hook scenario cover the distinction. The behavior follows
+[Python's input forwarding](https://docs.python.org/3/library/subprocess.html) and
+[Bash invocation rules](https://www.gnu.org/s/bash/manual/html_node/Invoking-Bash.html).
+
 ## What the statuses mean
 
 - **Implemented / tested:** code exists and named tests exercise it. Provider fixtures
@@ -497,7 +509,7 @@ that local run, not a latency guarantee for future snapshots or larger repositor
 | 4 | Commit messages — active | Shared conventional-subject checker, commit-msg and outgoing-history gates | Semantic message alignment requires optional model review. |
 | 5 | Branch protection — active locally | Actual pre-push destination patterns; local remote E2E | Hosted branch protections remain unconfigured. |
 | 6 | Coverage — active | Fresh coverage.py JSON and 80% line minimum; root-relative no-symlink reads and descriptor/current-path identity checks reject observed evidence changes; exact line-count comparisons against decimal thresholds avoid floating-point boundary errors; `test_metrics.py`, `scripts/check_coverage.py` | Line coverage is not branch coverage or a correctness proof. |
-| 7 | Performance regression — opt-in | Repeated process timing, median baseline, host/command identity; `test_performance.py` | Explicit baseline replacement; machine-dependent measurements, not application profiling. Latest recorded cold scanner comparison: 253 ms vs 166 ms baseline, 52.6% over baseline; the 20% budget fails. |
+| 7 | Performance regression — opt-in | Repeated process timing, median baseline, host/command identity; `test_performance.py` | Explicit baseline replacement; machine-dependent measurements, not application profiling. Latest recorded cold scanner comparison: 260 ms vs 166 ms baseline, 56.8% over baseline; the 20% budget fails. |
 | 8 | Bundle size — opt-in | Existing artifact byte budgets; path/link/bounds tests in `test_metrics.py` | Does not build artifacts or infer a product-specific budget. |
 | 9 | Changelog — implemented | `release-plan`, bounded explicit conventional-commit range with raw ancestry verification (truncated shallow history is incomplete); `test_releases.py` | Inspect generated notes; no automatic publication. |
 | 10 | README updater — used here | Generated CLI block with drift check; `test_documentation.py` | Handwritten prose is preserved; detected concurrent content, identity, or permission changes block publication. Documentation correctness is not inferred. |

@@ -203,9 +203,12 @@ def direct_shell_command(name, arguments, keywords):
     options = {keyword.arg: keyword.value for keyword in keywords}
     if name in SHELL_KEYWORD_CALLS:
         selected = options.get('args', arguments[0] if arguments else None)
-        if not isinstance(selected, (ast.List, ast.Tuple)):
+        if isinstance(selected, (ast.List, ast.Tuple)):
+            values = expand_arguments(selected.elts)
+        elif literal_text(selected) is not None:
+            values = [selected]
+        else:
             return False
-        values = expand_arguments(selected.elts)
         executable = options.get('executable', arguments[2] if len(arguments) > 2 else None)
     elif name in ASYNC_EXEC_CALLS:
         values = arguments
@@ -222,14 +225,25 @@ def direct_shell_command(name, arguments, keywords):
         program = replacement
     if program is None or program.rsplit('/', 1)[-1] not in SHELL_PROGRAMS:
         return False
+    # A standalone noninteractive -n parses stdin without executing commands.
+    if len(values) == 2 and literal_text(values[1]) == '-n':
+        return False
+    supplied_input = options.get('input') if name in ('subprocess.run', 'subprocess.check_output') else None
+    input_script = supplied_input is not None and not (
+        isinstance(supplied_input, ast.Constant) and supplied_input.value is None)
+    stdin_mode = False
     index = 1
     while index < len(values):
         flag = literal_text(values[index])
         if flag is None:
             return None
-        if flag in ('-', '--', '--help', '--version') or not flag.startswith('-'):
+        if flag in ('--help', '--version'):
             return False
-        if flag in ('--rcfile', '--init-file', '-o', '-O'):
+        if flag in ('-', '--'):
+            return input_script and (stdin_mode or index + 1 == len(values))
+        if not flag.startswith(('-', '+')):
+            return input_script and stdin_mode
+        if flag in ('--rcfile', '--init-file', '-o', '-O', '+o', '+O'):
             if index + 1 >= len(values) or isinstance(values[index + 1], ast.Starred):
                 return None
             index += 2
@@ -237,15 +251,20 @@ def direct_shell_command(name, arguments, keywords):
         if flag.startswith('--'):
             if flag not in ('--noprofile', '--norc', '--posix', '--login', '--restricted', '--verbose', '--debugger'):
                 return None
+        elif flag.startswith('++'):
+            return None
         elif 'c' in flag[1:]:
-            return True
-        elif flag.endswith(('o', 'O')):
-            if index + 1 >= len(values) or isinstance(values[index + 1], ast.Starred):
-                return None
-            index += 2
-            continue
+            return True if flag.startswith('-') else None
+        else:
+            if 's' in flag[1:]:
+                stdin_mode = flag.startswith('-')
+            if flag.endswith(('o', 'O')):
+                if index + 1 >= len(values) or isinstance(values[index + 1], ast.Starred):
+                    return None
+                index += 2
+                continue
         index += 1
-    return False
+    return input_script
 
 
 def mapping_keywords(value):
