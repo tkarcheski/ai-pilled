@@ -28,6 +28,19 @@ class DependencyHealthTests(unittest.TestCase):
                             f'print(json.dumps(data))\nraise SystemExit({tree_code} if sys.argv[1] == "ls" else {outdated_code})\n')
         self.fake.chmod(0o755)
 
+    def test_credential_inputs_block_health_and_license_checks(self):
+        token = 'ghp_' + 'a' * 36
+        (self.repo / 'package.json').write_text(json.dumps({'name': token}))
+        with patch('ai_pilled.dependency_health.run_completed',
+                   side_effect=AssertionError('Provider must not run')) as provider:
+            reports = (health(self.repo, str(self.fake)), licenses(self.repo, ['MIT']))
+        provider.assert_not_called()
+        for result in reports:
+            self.assertEqual(result.status, 'incomplete')
+            self.assertIn('credentials', result.findings[0].message)
+            self.assertNotIn(token, json.dumps(result.to_dict()))
+        self.assertNotIn(token, (self.repo / '.ai-pilled/events.jsonl').read_text())
+
     def test_outdated_versions_are_informational_not_claimed_vulnerabilities(self):
         self.provider({'name': 'fixture', 'dependencies': {}},
                       {'example': {'current': '1.0.0', 'wanted': '1.1.0', 'latest': '2.0.0'}})

@@ -380,6 +380,14 @@ required hosted checks are separate controls and have not been configured or cla
 
 ### 4. Dependency auditing — npm and Python implemented; Python active here
 
+The npm manifest and selected lockfiles now receive bounded, identity-checked reads
+and credential inspection before any audit or health provider is invoked. Raw,
+JSON-escaped, UTF-16 and UTF-32 recognizable credentials block the operation with a
+generic diagnostic; input contents are not copied into reports or history. License
+checks use the same preflight. Regression fixtures cover all three selected input
+names and replacement during a read. These checks do not establish whole-repository
+atomicity or detect every possible credential format.
+
 Python requirement inputs use descriptor-relative, no-symlink reads and identity
 checks during and after reading. Observed parent substitutions, replacements, and
 mutations are rejected before invoking pip-audit, preventing the reproduced outside-pin

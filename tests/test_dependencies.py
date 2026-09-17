@@ -36,6 +36,49 @@ class DependencyTests(unittest.TestCase):
                             f'{extra}\nprint({payload!r})\nsys.exit({code})\n')
         self.fake.chmod(0o755)
 
+    def test_selected_inputs_reject_credentials_before_provider(self):
+        token = 'ghp_' + 'a' * 36
+        plain = json.dumps({'name': token})
+        escaped = plain
+        escaped = escaped.replace(token, ''.join('\\u%04x' % ord(c) for c in token))
+        for name in ('package.json', 'package-lock.json', 'npm-shrinkwrap.json'):
+            path = self.repo / name
+            saved = path.read_bytes() if path.exists() else None
+            for content in (plain.encode(), escaped.encode(), plain.encode('utf-16'), plain.encode('utf-32')):
+                with self.subTest(name=name, encoding=content[:4]):
+                    path.write_bytes(content)
+                    with patch('ai_pilled.dependencies.run_completed', side_effect=AssertionError('Provider must not run')) as provider:
+                        result = audit(self.repo, str(self.fake))
+                    provider.assert_not_called()
+                    self.assertEqual(result.status, 'incomplete')
+                    self.assertIn('credentials', result.findings[0].message)
+                    self.assertNotIn(token, json.dumps(result.to_dict()))
+                    self.assertNotIn(token, (self.repo / '.ai-pilled/events.jsonl').read_text())
+            if saved is None:
+                path.unlink()
+            else:
+                path.write_bytes(saved)
+
+    def test_replaced_input_is_rejected_before_provider(self):
+        from ai_pilled.file_io import open_beneath
+        replacement = self.repo / 'replacement.json'
+        replacement.write_text('{}')
+        calls = 0
+
+        def opening(root, name):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                replacement.replace(self.repo / 'package.json')
+            return open_beneath(root, name)
+
+        with patch('ai_pilled.file_io.open_beneath', side_effect=opening):
+            with patch('ai_pilled.dependencies.run_completed') as provider:
+                result = audit(self.repo, str(self.fake))
+        provider.assert_not_called()
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('replaced', result.findings[0].message)
+
     def test_clean_structured_audit(self):
         with patch.dict(os.environ, {'GIT_DIR': '/invalid'}):
             result = audit(self.repo, str(self.fake))

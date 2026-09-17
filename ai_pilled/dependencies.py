@@ -4,9 +4,10 @@ from .json_data import loads
 import os
 from pathlib import Path
 import re
-import stat
 
 from .config import load
+from .file_io import read_beneath
+from .security import scan_bytes
 from .runtime import CommandError, Report, run_completed
 from .state import record
 
@@ -15,13 +16,11 @@ EVIDENCE_VERSION = 2
 
 
 def read_input(path):
-    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-    with os.fdopen(fd, 'rb') as stream:
-        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-            raise CommandError('Dependency input must be a regular file')
-        content = stream.read(2_000_001)
-    if len(content) > 2_000_000:
-        raise CommandError('Dependency input exceeds size limit')
+    content = read_beneath(path.parent, path.name, 2_000_000)
+    checked = Report('dependency-input-security')
+    scan_bytes(checked, '(dependency input)', content)
+    if checked.status != 'pass':
+        raise CommandError('Dependency inputs contain potential credentials; resolve before auditing')
     data = loads(content)
     if not isinstance(data, dict):
         raise CommandError('Dependency input must be a JSON object')
