@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `f85088e`: 714 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `e9438fc`
-passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `f85088e` also passed all seven gates with zero
+The verification baseline is `3d27b8f`: 718 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `7ef0538`
+passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `3d27b8f` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -92,11 +92,11 @@ and staged Git-hook E2E coverage exercise these boundaries without reading real 
 See [Python's reversible encodings](https://docs.python.org/3/library/base64.html)
 and [binary conversions](https://docs.python.org/3/library/binascii.html).
 
-The current validation refresh at `f85088e` includes 714 tests and a passing actual
+The current validation refresh at `3d27b8f` includes 718 tests and a passing actual
 full audit with all seven nested quality gates and zero model workers. Prepared local
-CI `e9438fc` passes the same gates plus six E2E scenarios (6.423 seconds, no failures,
-errors or skips), with 3,966 of 4,262 lines covered (93.05%). Its branch is preserved
-in both checkouts. The earlier idle cold benchmark at `1878a39` measured 0.262 seconds, 58.3%
+CI `7ef0538` passes the same gates plus six E2E scenarios (6.407 seconds, no failures,
+errors or skips), with 3,958 of 4,253 lines covered (93.06%). Its branch is preserved
+in both checkouts. The idle cold benchmark at `3d27b8f` measured 0.264 seconds, 59.4%
 over the byte-for-byte unchanged baseline: performance remains failed at the original
 20% budget and is the sole currently generated follow-up. None of this constitutes a
 hosted GitHub/GitLab run or live integration delivery.
@@ -615,7 +615,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `e9438fc`; publication blocked | Current 3.10 seven-gate/E2E evidence, 93.05% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `7ef0538`; publication blocked | Current 3.10 seven-gate/E2E evidence, 93.06% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
