@@ -4,9 +4,9 @@ Updated 2026-09-16. The source of feature intent is [FEATURES.md](FEATURES.md),
 not claims made by the original scaffold. This report distinguishes implemented
 behavior, reproducible tests, actual activation, and work still needed.
 
-The verification baseline is `1878a39`: 711 tests and seven configured quality gates
-passed through the active Python 3.14 staged review. Prepared CI snapshot `9298609`
-passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `1878a39` also passed all seven gates with zero
+The verification baseline is `f85088e`: 714 tests and seven configured quality gates
+passed through the active Python 3.14 staged review. Prepared CI snapshot `e9438fc`
+passed the same quality profile and all six E2E scenarios on Python 3.10. An actual full-audit of `f85088e` also passed all seven gates with zero
 model workers. Comprehensive
 staged review and Python dependency auditing are enabled in this repository.
 GitHub workflow publication is blocked by the current login's missing `workflow`
@@ -92,11 +92,11 @@ and staged Git-hook E2E coverage exercise these boundaries without reading real 
 See [Python's reversible encodings](https://docs.python.org/3/library/base64.html)
 and [binary conversions](https://docs.python.org/3/library/binascii.html).
 
-The current validation refresh at `1878a39` includes 711 tests and a passing actual
+The current validation refresh at `f85088e` includes 714 tests and a passing actual
 full audit with all seven nested quality gates and zero model workers. Prepared local
-CI `9298609` passes the same gates plus six E2E scenarios (6.684 seconds, no failures,
-errors or skips), with 3,983 of 4,288 lines covered (92.89%). Its branch is preserved
-in both checkouts. The subsequent idle cold benchmark measured 0.262 seconds, 58.3%
+CI `e9438fc` passes the same gates plus six E2E scenarios (6.423 seconds, no failures,
+errors or skips), with 3,966 of 4,262 lines covered (93.05%). Its branch is preserved
+in both checkouts. The earlier idle cold benchmark at `1878a39` measured 0.262 seconds, 58.3%
 over the byte-for-byte unchanged baseline: performance remains failed at the original
 20% budget and is the sole currently generated follow-up. None of this constitutes a
 hosted GitHub/GitLab run or live integration delivery.
@@ -615,7 +615,7 @@ quality run separately exercises Ruff, mypy, Vulture, and fresh coverage.
 | --- | --- | --- |
 | Local quality and staged review | Active | Seven gates: security, tests, Ruff (syntax/imports plus bugbear and Bandit), mypy, Vulture, fresh coverage, live Python dependency audit. Missing tools/registry evidence block. |
 | Local shared E2E | Verified on 3.10 and 3.14 | Real Git/CLI workflows; registry response fixtures explicitly distinguished from live audit evidence. |
-| GitHub Actions | Prepared and locally validated at `9298609`; publication blocked | Current 3.10 seven-gate/E2E evidence, 92.89% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
+| GitHub Actions | Prepared and locally validated at `e9438fc`; publication blocked | Current 3.10 seven-gate/E2E evidence, 93.05% coverage, hash-enforced development and auditor bootstraps, immutable action pins, and explicit artifacts are documented in [CI.md](CI.md). GitHub rejected publication after pre-push passed because the login lacks workflow scope. No hosted run or required-check activation is claimed. |
 | GitLab CI | Planned / user-deferred | No project selected, pipeline activated, or remote run claimed. |
 
 Readiness, release publication, refactor, and healing also reject hidden index flags
@@ -747,6 +747,7 @@ replace the reviewer; no live model worker was started for this hardening.
 | Priority | Follow-up | Why / completion evidence |
 | --- | --- | --- |
 | P1 | Reduce Python-literal scan overhead | Actual dogfooding exceeds the unchanged performance budget; retain decoded-literal security coverage and require measured improvement. |
+| P1 | Investigate installer parent-directory races | Source review found raw parent-path reads, locks, publication and rollback in Git/Codex installers. Reproduce swaps in disposable fixtures, then anchor the entire transaction; changing only the final writer is insufficient. This is an unconfirmed review concern, not a demonstrated exploit. |
 | P1 | Complete hosted GitHub acceptance when credentials permit | Workflow refresh and local parity are complete. Publishing remains blocked by OAuth scope. Inspect both matrix jobs and downloaded artifacts after publication; never substitute local evidence for a hosted result. |
 | Done / monitor | Isolate watch fixture interruption | A captured failure identified a shared `time.sleep` patch that could interrupt Git subprocess cleanup before the watch report. A deterministic delayed-command probe reproduced it; the fixture now replaces only the scheduling module’s time reference. Older failures without named diagnostics cannot be attributed conclusively. Keep redacted failure capture active. |
 | Done | Isolate disposable operations from inherited Git routing | Reproduced a refactor credential-export bypass and healing candidate misrouting. Candidate scans/quality now isolate routing; real fixtures verify rejection and preservation of original HEAD/index/worktree. Model review already strips Git variables from its subprocess environment. |
