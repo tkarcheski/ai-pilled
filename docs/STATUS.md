@@ -82,6 +82,16 @@ and a real staged Git-hook scenario cover the distinction. The behavior follows
 [Python's input forwarding](https://docs.python.org/3/library/subprocess.html) and
 [Bash invocation rules](https://www.gnu.org/s/bash/manual/html_node/Invoking-Bash.html).
 
+Environment-secret logging checks now follow direct text/byte conversions,
+`.encode()`, `.decode()`, `.hex()`, and recognized Base16/32/64/85 or binascii
+wrappers, including nested calls, aliases and keyword inputs. Encoding does not
+redact the value. Ordinary non-credential environment keys, length-only metadata,
+custom redactors and digest calls remain outside this rule; this is bounded expression
+inspection, not general assignment or object data-flow analysis. Source-only fixtures
+and staged Git-hook E2E coverage exercise these boundaries without reading real secrets.
+See [Python's reversible encodings](https://docs.python.org/3/library/base64.html)
+and [binary conversions](https://docs.python.org/3/library/binascii.html).
+
 ## What the statuses mean
 
 - **Implemented / tested:** code exists and named tests exercise it. Provider fixtures

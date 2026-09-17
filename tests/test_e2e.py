@@ -101,6 +101,8 @@ class EndToEndTests(unittest.TestCase):
                  'import urllib3\nurllib3.PoolManager(cert_reqs="CERT_REQUIRED")\n', b'tls-verification-disabled'),
                 ('import subprocess\nsubprocess.getoutput(command)\n',
                  'import subprocess\nsubprocess.run(["echo", value], check=True)\n', b'shell-execution'),
+                ('import os, base64\nprint(base64.b64encode(os.environ["TOKEN"].encode()))\n',
+                 'import os\nprint(len(os.environ["TOKEN"]))\n', b'environment-secret-log'),
                 ('import subprocess\nsubprocess.run(["sh"], input=script)\n',
                  'import subprocess\nsubprocess.run(["cat"], input=data)\n', b'shell-execution'),
                 ('import urllib3\nurllib3.PoolManager(assert_hostname=False)\n',

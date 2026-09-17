@@ -128,6 +128,48 @@ class PythonPatternTests(unittest.TestCase):
             with self.subTest(call=call, args=args):
                 self.assertEqual(self.inspect('import urllib3\nurllib3.' + call + '(' + args + ')').status, 'incomplete')
 
+    def test_logged_secret_text_and_byte_conversions(self):
+        for expression in ('os.environ["TOKEN"].encode()',
+                           'os.environb[b"PASSWORD"].decode()',
+                           'os.getenv("API_KEY").encode().hex()',
+                           'bytes(os.environ["TOKEN"], "utf8")',
+                           'bytearray(os.environb[b"TOKEN"])',
+                           'builtins.bytes(os.environ["TOKEN"], "utf8")',
+                           'json.dumps(obj={"value": os.getenv("TOKEN")})',
+                           'dict(value=os.getenv("TOKEN"))'):
+            with self.subTest(expression=expression):
+                result = self.inspect('import os, builtins, json\nprint(' + expression + ')')
+                self.assertEqual([(f.rule, f.line) for f in result.findings], [('environment-secret-log', 2)])
+        self.assertEqual(self.inspect('import os\nprint(dict(**os.environ))').findings[0].rule, 'environment-dump')
+
+    def test_logged_secret_base_and_binary_encodings(self):
+        for function in ('base64.b64encode', 'base64.urlsafe_b64encode', 'base64.standard_b64encode',
+                         'base64.b32encode', 'base64.b32hexencode', 'base64.b16encode',
+                         'base64.a85encode', 'base64.b85encode', 'base64.encodebytes',
+                         'base64.b64decode', 'binascii.hexlify', 'binascii.b2a_base64',
+                         'binascii.unhexlify'):
+            result = self.inspect('import os, base64, binascii\nprint(' + function + '(os.environb[b"TOKEN"]))')
+            self.assertEqual(result.findings[0].rule, 'environment-secret-log')
+        for source in (
+                'import os, base64\nprint(base64.b64encode(s=os.environb[b"TOKEN"]))',
+                'import os\nfrom base64 import b64encode as encode\nprint(encode(os.environb[b"TOKEN"]))',
+                'import os, base64\nprint(getattr(base64, "b64encode")(os.environb[b"TOKEN"]))',
+                'import os, base64, logging\nlogging.info(base64.b64encode(os.getenv("TOKEN").encode()).decode())'):
+            self.assertEqual(self.inspect(source).status, 'fail')
+
+    def test_encoding_detection_preserves_nonsecret_and_opaque_boundaries(self):
+        for source in (
+                'import os\nprint(os.getenv("HOME").encode())',
+                'import os, base64\nprint(base64.b64encode(os.environb[b"PATH"]))',
+                'import os\nprint(len(os.environ["TOKEN"].encode()))',
+                'import os, hashlib\nprint(hashlib.sha256(os.environ["TOKEN"].encode()).hexdigest())',
+                'import os\nprint(redact(os.environ["TOKEN"]).encode())',
+                'import os\nprint(custom.encode(os.environ["TOKEN"]))',
+                'import os, base64\ndef f(base64):\n print(base64.b64encode(os.environb[b"TOKEN"]))',
+                'import os\nvalue = os.environ["TOKEN"].encode()'):
+            with self.subTest(source=source):
+                self.assertEqual(self.inspect(source).status, 'pass')
+
     def test_import_aliases_and_call_locations(self):
         report = self.inspect('import pickle as p\nvalue = p.loads(data)\n')
         self.assertEqual(report.status, 'fail')

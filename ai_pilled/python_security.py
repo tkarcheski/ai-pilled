@@ -76,6 +76,19 @@ ENVIRONMENT_DUMPS = {name + '.' + method for name in ENVIRONMENT_MAPPINGS
 ENVIRONMENT_LOOKUPS = {name + '.' + method for name in ENVIRONMENT_MAPPINGS
                        for method in ('get', 'pop', 'setdefault', '__getitem__')} | {'os.getenv', 'os.getenvb'}
 
+# Reversible encodings preserve sensitive content; digest functions are excluded.
+ENCODING_CALLS = {
+    'base64.' + name for name in (
+        'b64encode', 'b64decode', 'standard_b64encode', 'standard_b64decode',
+        'urlsafe_b64encode', 'urlsafe_b64decode', 'b32encode', 'b32decode',
+        'b32hexencode', 'b32hexdecode', 'b16encode', 'b16decode',
+        'a85encode', 'a85decode', 'b85encode', 'b85decode', 'z85encode', 'z85decode',
+        'encodebytes', 'decodebytes')
+} | {'binascii.' + name for name in (
+    'hexlify', 'unhexlify', 'b2a_hex', 'a2b_hex', 'b2a_base64', 'a2b_base64',
+    'b2a_uu', 'a2b_uu', 'b2a_qp', 'a2b_qp')}
+
+
 SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
                      'yaml.loader.SafeLoader', 'yaml.cyaml.CSafeLoader'}
 
@@ -458,10 +471,13 @@ def inspect_python(report, path, content, *, tree=None):
                     pending.extend(arguments[1:])
                     fallback = 'value' if function.endswith('.setdefault') else 'default'
                     pending.extend(keyword.value for keyword in lookup_keywords if keyword.arg == fallback)
+                if isinstance(value.func, ast.Attribute) and value.func.attr in ('encode', 'decode', 'hex'):
+                    pending.append(value.func.value)
                 literal_method = (value.func.attr if isinstance(value.func, ast.Attribute)
                                   and isinstance(value.func.value, ast.Constant)
                                   and isinstance(value.func.value.value, str) else '')
-                if (function in ('dict', 'str', 'repr', 'list', 'tuple', 'set', 'json.dumps', 'str.join')
+                if (function in ('dict', 'str', 'repr', 'bytes', 'bytearray', 'list', 'tuple', 'set', 'json.dumps', 'str.join')
+                        or function in ENCODING_CALLS
                         or literal_method in ('format', 'format_map', 'join')):
                     consumes = (function in ('dict', 'list', 'tuple', 'set', 'str.join')
                                 or literal_method == 'join')
