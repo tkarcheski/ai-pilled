@@ -209,6 +209,46 @@ class PrePushTests(unittest.TestCase):
         result = scan_revision(self.repo, 'HEAD', patterns=True, cache=cache)
         self.assertEqual([f.path for f in result.findings], ['example.py'])
 
+    def test_cache_separates_every_python_extension_from_plain_text(self):
+        from ai_pilled.pre_push import blob_findings
+        encoded = "value = '\\x67hp_' '" + 'a' * 36 + "'\n"
+        for patterns, source, rule in ((True, 'eval(data)\n', 'dynamic-code'),
+                                       (False, encoded, 'github-token')):
+            (self.repo / 'payload.txt').write_text(source)
+            self.commit()
+            oid = self.git('rev-parse', 'HEAD:payload.txt').stdout.decode().strip()
+            for extension in ('.py', '.pyw', '.pyi'):
+                python_path = 'source' + extension
+                for order in (('payload.txt', python_path), (python_path, 'payload.txt')):
+                    with self.subTest(patterns=patterns, order=order):
+                        cache = {}
+                        for name in order:
+                            findings = blob_findings(self.repo, oid, name, patterns, cache)
+                            self.assertEqual([finding[0] for finding in findings], [rule] if name == python_path else [])
+
+    def test_cache_retains_shebang_inspection_across_paths(self):
+        from ai_pilled.pre_push import blob_findings
+        (self.repo / 'entrypoint').write_text('#!/usr/bin/env python3\neval(data)\n')
+        self.commit()
+        oid = self.git('rev-parse', 'HEAD:entrypoint').stdout.decode().strip()
+        cache = {}
+        for name in ('notes.txt', 'entrypoint', 'source.pyw', 'source.pyi', 'source.py'):
+            findings = blob_findings(self.repo, oid, name, True, cache)
+            self.assertEqual([(finding[0], finding[2]) for finding in findings], [('dynamic-code', 2)])
+
+    def test_actual_push_rejects_removed_python_literal_secret_despite_plain_blob_cache(self):
+        source = "value = '\\x67hp_' '" + 'a' * 36 + "'\n"
+        (self.repo / 'a.txt').write_text(source)
+        (self.repo / 'z.pyw').write_text(source)
+        self.commit()
+        (self.repo / 'z.pyw').unlink()
+        self.commit()
+        install(self.repo)
+        result = self.git('push', 'origin', 'HEAD:feature', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'github-token', result.stdout + result.stderr)
+        self.assertEqual(self.git('ls-remote', 'origin', 'refs/heads/feature').stdout, b'')
+
     def test_full_cache_still_scans_uncached_blobs(self):
         from ai_pilled.pre_push import scan_revision
         (self.repo / 'secret.txt').write_text('ghp_' + 'B' * 36)

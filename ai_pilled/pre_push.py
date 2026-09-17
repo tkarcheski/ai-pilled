@@ -7,7 +7,7 @@ from .config import load
 from .commit_messages import check_subject
 from .runtime import CommandError, Report, run
 from .security import MAX_FILE_BYTES, scan, scan_text, scan_bytes, scan_path
-from .python_security import inspect_python
+from .python_security import inspect_python, is_python_source
 
 OID = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?')
 MAX_COMMITS = 2000
@@ -28,7 +28,8 @@ def read_updates(stream):
 
 
 def blob_findings(repo, oid, path, patterns, cache):
-    key = (oid, path.endswith('.py'), patterns)
+    # Shebang detection is fixed by the blob; extensions can change interpretation.
+    key = (oid, is_python_source(path, b''), patterns)
     if key in cache:
         return cache[key]
     result = Report('blob-security')

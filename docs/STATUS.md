@@ -363,6 +363,12 @@ forged local tracking refs cannot hide unpublished commits. Tips retain security
 Traversal parents must match raw outgoing commit parents: unverified shallow boundaries
 are incomplete, while verified published boundaries can delimit a complete new range.
 History traversal, object caching, and tag depth have explicit bounds.
+Historical cache keys now use the central Python-source classifier, separating `.py`,
+`.pyw`, and `.pyi` interpretation from plain text; shebang behavior remains tied to
+the blob content. A regression reproduced a real local push of an encoded credential
+from a subsequently removed `.pyw` file when an identical text blob primed the cache.
+That push is now rejected, with the remote ref unchanged. Both cache orders, all
+Python extensions, and shebang paths have coverage on both supported runtimes.
 
 **Evidence:** `test_pre_push.py` plus actual local bare-remote E2E pushes. Protected
 branch and failing-test rejections leave remote refs unchanged. Regression fixtures
