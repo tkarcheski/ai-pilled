@@ -332,6 +332,41 @@ class GitHookTests(unittest.TestCase):
         self.assertNotEqual(self.git('config', '--get', 'core.hooksPath', success=False).returncode, 0)
         self.assertFalse((self.repo / '.ai-pilled/installation.json').exists())
 
+    def test_unstaged_policy_cannot_disable_comprehensive_commit_checks(self):
+        commands = {name: [sys.executable, '-c', 'pass']
+                    for name in ('lint', 'typecheck', 'deadcode', 'coverage')}
+        commands['test'] = [sys.executable, '-c', 'raise SystemExit(1)']
+        policy = self.repo / '.ai-pilled.json'
+        policy.write_text(json.dumps({'review_checks_on_commit': True, 'commands': commands}))
+        self.git('add', '.ai-pilled.json')
+        policy.write_text('{}')
+        install(self.repo)
+        result = self.git('commit', '-m', 'feat: staged checks required', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'command-failed', result.stdout + result.stderr)
+        self.assertNotEqual(self.git('rev-parse', '--verify', 'HEAD', success=False).returncode, 0)
+
+    def test_unstaged_policy_cannot_disable_strict_patterns(self):
+        policy = self.repo / '.ai-pilled.json'
+        policy.write_text('{"aggressiveness":"strict"}')
+        (self.repo / 'code.py').write_text('eval(data)\n')
+        self.git('add', '.ai-pilled.json', 'code.py')
+        policy.write_text('{}')
+        install(self.repo)
+        result = self.git('commit', '-m', 'feat: staged patterns required', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'dynamic-code', result.stdout + result.stderr)
+
+    def test_unstaged_policy_cannot_disable_selected_model_review(self):
+        policy = self.repo / '.ai-pilled.json'
+        policy.write_text('{"review_on_commit":true,"codex_executable":"missing-ai-pilled-codex"}')
+        self.git('add', '.ai-pilled.json')
+        policy.write_text('{}')
+        install(self.repo)
+        result = self.git('commit', '-m', 'feat: staged model policy', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'review-unavailable', result.stdout + result.stderr)
+
     def test_commit_hook_runs_opted_in_model_review_and_blocks_missing_cli(self):
         import json
         (self.repo / '.ai-pilled.json').write_text(json.dumps({

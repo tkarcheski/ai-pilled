@@ -13,7 +13,7 @@ import sys
 import stat
 
 from .runtime import CommandError, CommandFailed, Report, run, git_path
-from .config import load
+from .config import load_staged
 from .file_io import read_regular
 from .commit_messages import check_subject
 from .security import scan, scan_text
@@ -244,15 +244,16 @@ def dispatch(repo, event, arguments):
             raise CommandError('Expected the Git pre-push remote name and destination')
         return pre_push(repo, read_updates(sys.stdin), destination=arguments[1] if arguments else None)
     if event == 'pre-commit':
-        if load(repo).review_checks_on_commit:
+        config = load_staged(repo)
+        if config.review_checks_on_commit:
             from .staged_review import review_checks
             return review_checks(repo)
-        return scan(repo, patterns=load(repo).aggressiveness == 'strict')
+        return scan(repo, patterns=config.aggressiveness == 'strict')
     if event == 'commit-msg' and len(arguments) == 1:
         report = commit_message(arguments[0])
         if report.status != 'pass':
             return report
-        config = load(repo)
+        config = load_staged(repo)
         if config.review_on_commit:
             from .codex_review import review
             return review(repo, config.codex_executable,

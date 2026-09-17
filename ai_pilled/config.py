@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from .json_data import loads
 import os
+import re
 import stat
 from pathlib import Path
 
@@ -42,10 +43,18 @@ def load(repo):
             content = stream.read(64_001)
         if len(content) > 64_000:
             raise ConfigError('Configuration exceeds the 64 KB size limit')
-        data = loads(content)
+        return parse_config(content)
     except ConfigError:
         raise
     except (ValueError, OSError) as exc:
+        raise ConfigError('Cannot read valid JSON from .ai-pilled.json') from exc
+
+
+def parse_config(content):
+    """Apply one strict schema to filesystem and staged policy bytes."""
+    try:
+        data = loads(content)
+    except ValueError as exc:
         raise ConfigError('Cannot read valid JSON from .ai-pilled.json') from exc
     allowed = {'version', 'commands', 'protected_branches', 'timeout',
                'require_tests', 'aggressiveness', 'review_on_commit', 'codex_executable', 'audit_dependencies_on_change', 'review_checks_on_commit', 'python_requirements', 'python_audit_executable'}
@@ -97,3 +106,25 @@ def load(repo):
         raise ConfigError('python_audit_executable must be a nonempty executable path or command name')
     return Config(commands, branches, timeout, require_tests, aggressiveness,
                   review_on_commit, executable, dependency_changes, review_checks, python_files, python_executable)
+
+
+def load_staged(repo):
+    """Load only the resolved regular policy blob selected by Git's index."""
+    from .runtime import CommandError, run
+    try:
+        records = list(filter(None, run(['git', 'ls-files', '--stage', '-z', '--', '.ai-pilled.json'],
+                                        repo, limit=2048).split(b'\0')))
+        if not records:
+            return Config()
+        if len(records) != 1:
+            raise ConfigError('Staged configuration must be a resolved regular file')
+        metadata, path = records[0].split(b'\t', 1)
+        mode, oid, stage = metadata.split()
+        if (path != b'.ai-pilled.json' or mode not in (b'100644', b'100755') or stage != b'0'
+                or re.fullmatch(rb'[0-9a-f]{40}(?:[0-9a-f]{24})?', oid) is None):
+            raise ConfigError('Staged configuration must be a resolved regular file')
+        return parse_config(run(['git', 'cat-file', 'blob', oid.decode('ascii')], repo, limit=64_000))
+    except ConfigError:
+        raise
+    except (CommandError, ValueError, OSError) as exc:
+        raise ConfigError('Cannot read complete staged configuration') from exc

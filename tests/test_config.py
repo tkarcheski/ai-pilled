@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 from ai_pilled.checks import command_check
-from ai_pilled.config import ConfigError, load
+from ai_pilled.config import ConfigError, load, load_staged
 from ai_pilled.runtime import run
 
 
@@ -19,6 +19,41 @@ class ConfigTests(unittest.TestCase):
 
     def configure(self, data):
         (self.repo / '.ai-pilled.json').write_text(json.dumps(data))
+
+    def test_staged_configuration_ignores_unstaged_deleted_and_untracked_policy(self):
+        run(['git', 'init', '-q'], self.repo)
+        self.configure({'timeout': 7})
+        self.assertEqual(load_staged(self.repo).timeout, 120)
+        run(['git', 'add', '.ai-pilled.json'], self.repo)
+        self.configure({'timeout': 31})
+        self.assertEqual(load_staged(self.repo).timeout, 7)
+        policy = self.repo / '.ai-pilled.json'
+        policy.unlink()
+        self.assertEqual(load_staged(self.repo).timeout, 7)
+        policy.symlink_to('not-present')
+        self.assertEqual(load_staged(self.repo).timeout, 7)
+        run(['git', 'add', '.ai-pilled.json'], self.repo)
+        with self.assertRaisesRegex(ConfigError, 'resolved regular file'):
+            load_staged(self.repo)
+
+    def test_staged_configuration_rejects_malformed_and_oversized_blobs(self):
+        run(['git', 'init', '-q'], self.repo)
+        for content in ('{"require_tests":false,"require_tests":true}', '[]', 'broken', ' ' * 64_001):
+            with self.subTest(size=len(content)):
+                (self.repo / '.ai-pilled.json').write_text(content)
+                run(['git', 'add', '.ai-pilled.json'], self.repo)
+                self.configure({})
+                with self.assertRaises(ConfigError):
+                    load_staged(self.repo)
+
+    def test_conflicted_staged_policy_cannot_choose_a_side(self):
+        run(['git', 'init', '-q'], self.repo)
+        oid = run(['git', 'hash-object', '-w', '--stdin'], self.repo, input_data=b'{}').strip()
+        rows = b''.join(b'100644 ' + oid + b' ' + str(stage).encode() + b'\t.ai-pilled.json\n'
+                        for stage in (1, 2, 3))
+        run(['git', 'update-index', '--index-info'], self.repo, input_data=rows)
+        with self.assertRaisesRegex(ConfigError, 'resolved regular file'):
+            load_staged(self.repo)
 
     def test_defaults_protect_primary_branches_and_require_tests(self):
         config = load(self.repo)

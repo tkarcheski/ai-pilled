@@ -38,6 +38,16 @@ class ReviewTests(unittest.TestCase):
             f'output.write_text({content!r})\n' + extra)
         self.fake.chmod(0o755)
 
+    def test_staged_policy_selects_reviewer_and_timeout(self):
+        policy = self.repo / '.ai-pilled.json'
+        policy.write_text('{"timeout":7,"codex_executable":"staged-provider"}')
+        subprocess.run(['git', 'add', '.ai-pilled.json'], cwd=self.repo, check=True)
+        policy.write_text('{"timeout":31,"codex_executable":"unstaged-provider"}')
+        with patch('ai_pilled.codex_review.invoke_review', return_value=[]) as provider:
+            result = review(self.repo)
+        self.assertEqual(result.status, 'pass')
+        self.assertEqual(provider.call_args.args[2:], ('staged-provider', 7))
+
     def test_model_created_file_cannot_be_cited_as_supplied_source(self):
         self.response({'findings': [
             {'path': 'code.py', 'line': 1, 'message': 'Existing location'},

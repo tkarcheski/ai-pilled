@@ -9,7 +9,7 @@ import stat
 
 from .file_io import read_beneath, read_regular, read_snapshot
 from .git_blobs import read_blobs
-from .config import load
+from .config import load_staged
 from .runtime import CommandError, Report, run, git_path
 from .security import MAX_FILE_BYTES, scan, scan_text, scan_bytes, scan_path
 from .credentials import redact
@@ -173,7 +173,7 @@ def review(repo, executable=None, message=None):
     if os.environ.get('AI_PILLED_REVIEW_ACTIVE'):
         raise CommandError('Recursive model reviews are not supported')
     root = git_path(run(['git', 'rev-parse', '--show-toplevel'], repo))
-    config = load(root)
+    config = load_staged(root)
     executable = executable or config.codex_executable
     report = Report('codex-review')
     before = scan(root)

@@ -347,6 +347,16 @@ staged code. Source executables come from that copy; reusable local tools must b
 ignored and untracked. Executables deleted from HEAD cannot be borrowed from leftovers
 in the working tree. Changed source, permissions, index, or HEAD invalidate evidence.
 
+Commit-hook selection now reads the resolved regular policy blob from the index,
+with a 64 KB bound and the same strict configuration schema. Unstaged opt-outs cannot
+disable staged comprehensive checks, strict patterns or selected model review.
+The staged reviewer also takes its configured executable and timeout from that policy;
+an explicit CLI executable override remains available. An absent staged policy uses
+defaults, so new local policy must be staged to affect commit gates. Conflicted,
+symlink, malformed and oversized policy entries block rather than choosing a working
+copy or conflict side. Actual disposable Git commits reproduce each opt-out bypass;
+no live model was invoked during these regressions.
+
 The commit-msg hook checks conventional subjects, length, and credentials. Optional
 model review checks message alignment and concrete correctness/security defects. It
 uses the existing Codex subscription login, a bounded staged snapshot, read-only mode,
