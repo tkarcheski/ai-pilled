@@ -49,11 +49,15 @@ PICKLE_OPTION_CALLS: dict[str, tuple[str, int | None, bool]] = {
     'torch.load': ('weights_only', None, False),
     'torch.serialization.load': ('weights_only', None, False),
 }
+TAR_EXTRACT_CALLS = {'tarfile.TarFile.extract', 'tarfile.TarFile.extractall'}
+TAR_CONSTRUCTORS = {'tarfile.open', 'tarfile.TarFile', 'tarfile.TarFile.open'}
+TAR_FILTERS = {'tarfile.data_filter': 'data', 'tarfile.tar_filter': 'tar',
+               'tarfile.fully_trusted_filter': 'fully_trusted'}
 ASYNC_EXEC_CALLS = {'asyncio.create_subprocess_exec', 'asyncio.subprocess.create_subprocess_exec'}
 SHELL_PROGRAMS = {'sh', 'bash', 'dash', 'ksh', 'zsh'}
 POSITIONAL_SECURITY_CALLS = SHELL_KEYWORD_CALLS | ASYNC_EXEC_CALLS | JWT_DECODE_CALLS | {'numpy.load'} | {
     name for name, position in CERT_REQUIREMENT_CALLS.items() if position is not None}
-KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | set(CERT_REQUIREMENT_CALLS) | POSITIONAL_SECURITY_CALLS | set(PICKLE_OPTION_CALLS) | {
+KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | set(CERT_REQUIREMENT_CALLS) | POSITIONAL_SECURITY_CALLS | set(PICKLE_OPTION_CALLS) | TAR_EXTRACT_CALLS | {
     'yaml.load', 'yaml.load_all', 'hashlib.new', 'hashlib.md5', 'hashlib.sha1'}
 
 SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
@@ -434,6 +438,8 @@ def inspect_python(report, path, content, *, tree=None):
             if constructor in ('requests.Session', 'requests.sessions.Session',
                                'requests.session', 'requests.sessions.session'):
                 name = 'requests.' + node.func.attr
+            elif constructor in TAR_CONSTRUCTORS and node.func.attr in ('extract', 'extractall'):
+                name = 'tarfile.TarFile.' + node.func.attr
             elif constructor in ('pickle.Unpickler', '_pickle.Unpickler', 'dill.Unpickler') and node.func.attr == 'load':
                 name = 'pickle.load'
         keywords = call_keywords(node)
@@ -503,6 +509,16 @@ def inspect_python(report, path, content, *, tree=None):
         elif name == 'tempfile.mktemp':
             rule, message = 'insecure-temporary-name', (
                 'Temporary names can be claimed before use; create the file atomically with mkstemp or NamedTemporaryFile.')
+        elif name in TAR_EXTRACT_CALLS:
+            setting = next((keyword.value for keyword in keywords if keyword.arg == 'filter'), None)
+            selected_filter = (setting.value if isinstance(setting, ast.Constant) and isinstance(setting.value, str)
+                               else TAR_FILTERS.get(qualified(setting)))
+            if selected_filter == 'fully_trusted':
+                rule, message = 'unsafe-archive-extraction', (
+                    'Fully trusted tar extraction bypasses filtering; verify archive trust or use the data filter.')
+            elif selected_filter not in ('data', 'tar'):
+                rule, message, severity = 'archive-filter-unresolved', (
+                    'Tar extraction filter is unknown or depends on runtime/instance defaults; make the policy explicit.'), 'warning'
         elif name in JWT_DECODE_CALLS:
             options = next((keyword.value for keyword in keywords if keyword.arg == 'options'),
                            arguments[3] if len(arguments) > 3 and not unknown_arguments else None)

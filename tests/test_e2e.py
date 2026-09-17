@@ -101,6 +101,8 @@ class EndToEndTests(unittest.TestCase):
                  'import urllib3\nurllib3.PoolManager(cert_reqs="CERT_REQUIRED")\n', b'tls-verification-disabled'),
                 ('import subprocess\nsubprocess.getoutput(command)\n',
                  'import subprocess\nsubprocess.run(["echo", value], check=True)\n', b'shell-execution'),
+                ('import tarfile\ntarfile.open(path).extractall(filter="fully_trusted")\n',
+                 'import tarfile\ntarfile.open(path).extractall(filter="data")\n', b'unsafe-archive-extraction'),
                 ('import pickle\npickle.Unpickler(stream).load()\n',
                  'import json\njson.load(stream)\n', b'unsafe-deserialization'),
                 ('import yaml\nyaml.unsafe_load(data)\n',

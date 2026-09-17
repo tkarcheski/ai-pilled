@@ -10,6 +10,52 @@ class PythonPatternTests(unittest.TestCase):
         inspect_python(report, 'example.py', code.encode())
         return report
 
+    def test_explicit_unfiltered_tar_extraction_requires_review(self):
+        for call in ('tarfile.TarFile.extract', 'tarfile.TarFile.extractall',
+                     'tarfile.open(path).extract', 'tarfile.open(path).extractall',
+                     'tarfile.TarFile(path).extractall', 'tarfile.TarFile.open(path).extractall'):
+            for setting in ('"fully_trusted"', 'tarfile.fully_trusted_filter'):
+                with self.subTest(call=call, setting=setting):
+                    result = self.inspect('import tarfile\n' + call + '(filter=' + setting + ')')
+                    self.assertEqual([(f.rule, f.line) for f in result.findings], [('unsafe-archive-extraction', 2)])
+        for source in (
+                'from tarfile import TarFile as T\nT.extractall(archive, **{"filter": "fully_trusted"})',
+                'from tarfile import open as load, fully_trusted_filter as trust\nload(path).extractall(filter=trust)',
+                '__import__("tarfile").open(path).extractall(filter="fully_trusted")',
+                'import tarfile\ngetattr(tarfile.TarFile, "extract")(archive, member, filter="fully_trusted")'):
+            self.assertEqual(self.inspect(source).status, 'fail')
+
+    def test_tar_filter_defaults_unknown_values_and_expansions_are_incomplete(self):
+        for arguments in ('', 'filter=None', 'filter=custom', 'filter="INVALID"',
+                          'filter=lambda member, path: member', '**settings',
+                          '**{"filter": selected}', 'filter=b"data"'):
+            with self.subTest(arguments=arguments):
+                result = self.inspect('import tarfile\ntarfile.open(path).extractall(' + arguments + ')')
+                self.assertEqual(result.status, 'incomplete')
+                self.assertIn('archive-filter-unresolved', [f.rule for f in result.findings])
+        result = self.inspect('import tarfile\ntarfile.open(path).extractall(filter="data", **settings)')
+        self.assertEqual([f.rule for f in result.findings], ['python-keywords-unresolved'])
+
+    def test_named_restricted_tar_filters_and_unrelated_calls_remain_allowed(self):
+        for setting in ('"data"', '"tar"', 'tarfile.data_filter', 'tarfile.tar_filter'):
+            self.assertEqual(self.inspect('import tarfile\ntarfile.open(path).extractall(filter=' + setting + ')').status, 'pass')
+        for source in (
+                'from tarfile import data_filter as restricted, TarFile as T\nT.extract(archive, member, filter=restricted)',
+                'import tarfile\ntarfile.open(path).extractall(**{"filter": "fully_trusted", "filter": "data"})',
+                'import tarfile\ntarfile.open(path).add(path, filter=callback)',
+                'import tarfile\ntarfile.open(path).extractfile(member)',
+                'from . import tarfile\ntarfile.open(path).extractall()',
+                'import tarfile\ndef local(tarfile):\n tarfile.open(path).extractall()',
+                'custom.extractall(filter="fully_trusted")'):
+            self.assertEqual(self.inspect(source).status, 'pass')
+
+    def test_conflicting_tar_filter_imports_cannot_certify_extraction(self):
+        result = self.inspect('from tarfile import data_filter as policy\n'
+                              'from tarfile import fully_trusted_filter as policy\n'
+                              'import tarfile\ntarfile.open(path).extractall(filter=policy)')
+        self.assertEqual(result.status, 'incomplete')
+        self.assertIn('python-import-ambiguous', [f.rule for f in result.findings])
+
     def test_urllib3_disabled_certificate_requirements(self):
         calls = ('urllib3.PoolManager', 'urllib3.ProxyManager', 'urllib3.proxy_from_url',
                  'urllib3.poolmanager.PoolManager', 'urllib3.HTTPSConnectionPool',

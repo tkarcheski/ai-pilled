@@ -195,6 +195,15 @@ without `shell=True`. Literal executable overrides and argument expansions are i
 Unknown options on a known shell are incomplete; `--` separates script arguments.
 Wrapper programs, runtime program names, and shell script bodies are not inferred.
 See [Bash invocation](https://www.gnu.org/s/bash/manual/html_node/Invoking-Bash.html).
+Tar extraction checks inspect known `TarFile.extract`/`extractall` methods and
+immediate `tarfile.open`, `TarFile`, or `TarFile.open` results. Explicit
+`fully_trusted` strings or callbacks require review; unknown/custom filters and
+implicit/None defaults produce incomplete evidence because runtime and instance policy
+matter. Named `data` and `tar` filters are recognized, without claiming that either
+makes every archive safe. Aliases, literal mappings, conflicting filter imports, and
+staged unsafe calls hidden by unstaged fixes have coverage on Python 3.10 and 3.14.
+Separately stored archive instances are not traced. Python changed the default to
+`data` in 3.14; see [extraction filters](https://docs.python.org/3/library/tarfile.html#extraction-filters).
 Ordinary argument-array subprocess APIs and explicit safe YAML loaders remain allowed. Other referenced conflicting imports
 in one scope are incomplete. Verified defaults and literal custom CA paths remain allowed. Explicit dynamic shell
 flags and TLS verification flags/contexts produce incomplete evidence; the reviewer
