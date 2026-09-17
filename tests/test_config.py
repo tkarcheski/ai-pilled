@@ -55,6 +55,60 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, 'resolved regular file'):
             load_staged(self.repo)
 
+    def test_changed_configuration_after_read_is_not_used_or_defaulted(self):
+        from contextlib import contextmanager
+        policy = self.repo / '.ai-pilled.json'
+        original = os.fdopen
+        for change in ('replace', 'delete', 'mode', 'symlink'):
+            with self.subTest(change=change):
+                if policy.is_symlink():
+                    policy.unlink()
+                self.configure({'timeout': 7})
+                replacement = self.repo / 'replacement'
+                replacement.write_text('{"timeout":31}')
+                @contextmanager
+                def changed(fd, *args, change=change, replacement=replacement, **kwargs):
+                    with original(fd, *args, **kwargs) as stream:
+                        yield stream
+                    if change == 'replace':
+                        replacement.replace(policy)
+                    elif change == 'delete':
+                        policy.unlink()
+                    elif change == 'mode':
+                        policy.chmod(0o700)
+                    else:
+                        policy.unlink()
+                        policy.symlink_to(replacement)
+                with patch('ai_pilled.file_io.os.fdopen', side_effect=changed):
+                    with self.assertRaises(ConfigError):
+                        load(self.repo)
+
+    def test_replaced_policy_cannot_authorize_quality_with_stale_settings(self):
+        from contextlib import contextmanager
+        from ai_pilled.pipeline import quality
+        run(['git', 'init', '-q'], self.repo)
+        (self.repo / '.gitignore').write_text('.ai-pilled/\n')
+        self.configure({'aggressiveness': 'lazy', 'require_tests': False})
+        run(['git', 'add', '.gitignore', '.ai-pilled.json'], self.repo)
+        replacement = self.repo / 'replacement'
+        replacement.write_text('{"aggressiveness":"strict","require_tests":true}')
+        original = os.fdopen
+        swapped = False
+        @contextmanager
+        def changed(fd, *args, **kwargs):
+            nonlocal swapped
+            with original(fd, *args, **kwargs) as stream:
+                yield stream
+            if not swapped:
+                swapped = True
+                replacement.replace(self.repo / '.ai-pilled.json')
+        with patch('ai_pilled.file_io.os.fdopen', side_effect=changed), \
+                patch('ai_pilled.pipeline.command_check') as commands:
+            with self.assertRaises(ConfigError):
+                quality(self.repo)
+        commands.assert_not_called()
+        self.assertTrue(swapped)
+
     def test_defaults_protect_primary_branches_and_require_tests(self):
         config = load(self.repo)
         self.assertEqual(config.protected_branches, ['main', 'master'])

@@ -1,10 +1,11 @@
 """Strict project configuration; commands are argument lists, never shell strings."""
 from dataclasses import dataclass, field
 from .json_data import loads
-import os
 import re
-import stat
 from pathlib import Path
+
+from .file_io import read_snapshot
+from .runtime import CommandError
 
 
 class ConfigError(ValueError):
@@ -27,26 +28,13 @@ class Config:
 
 
 def load(repo):
-    path = Path(repo) / '.ai-pilled.json'
-    if path.is_symlink():
-        raise ConfigError('Configuration must not be a symlink')
+    root = Path(repo)
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-    except FileNotFoundError:
-        return Config()
-    except OSError as exc:
-        raise ConfigError('Cannot open .ai-pilled.json') from exc
-    try:
-        with os.fdopen(fd, 'rb') as stream:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                raise ConfigError('Configuration must be a regular file')
-            content = stream.read(64_001)
-        if len(content) > 64_000:
-            raise ConfigError('Configuration exceeds the 64 KB size limit')
-        return parse_config(content)
+        content, _ = read_snapshot(root / '.ai-pilled.json', 64_000, root=root)
+        return Config() if content is None else parse_config(content)
     except ConfigError:
         raise
-    except (ValueError, OSError) as exc:
+    except (CommandError, ValueError, OSError) as exc:
         raise ConfigError('Cannot read valid JSON from .ai-pilled.json') from exc
 
 
@@ -110,7 +98,7 @@ def parse_config(content):
 
 def load_staged(repo):
     """Load only the resolved regular policy blob selected by Git's index."""
-    from .runtime import CommandError, run
+    from .runtime import run
     try:
         records = list(filter(None, run(['git', 'ls-files', '--stage', '-z', '--', '.ai-pilled.json'],
                                         repo, limit=2048).split(b'\0')))

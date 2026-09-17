@@ -364,6 +364,13 @@ staged code. Source executables come from that copy; reusable local tools must b
 ignored and untracked. Executables deleted from HEAD cannot be borrowed from leftovers
 in the working tree. Changed source, permissions, index, or HEAD invalidate evidence.
 
+Filesystem configuration reads now use the same bounded, no-follow snapshot reader,
+rejecting observed replacement, deletion, mode changes and symlink substitution after
+reading. Only an initially absent policy falls back to defaults. A quality fixture
+previously passed under stale permissive settings after the file was replaced by a
+strict policy; it now rejects that read before invoking configured commands. This is
+read-time consistency, not an atomic lock on future configuration edits.
+
 Commit-hook selection now reads the resolved regular policy blob from the index,
 with a 64 KB bound and the same strict configuration schema. Unstaged opt-outs cannot
 disable staged comprehensive checks, strict patterns or selected model review.
