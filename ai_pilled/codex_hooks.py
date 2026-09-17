@@ -130,7 +130,7 @@ def install(repo):
             rendered = render_object(data)
             manifest = render_object({'groups': desired})
             # Never replace ownership metadata created by a concurrent writer.
-            owned_identity = atomic_text(manifest_path, manifest, exclusive=True)
+            owned_identity = atomic_text(manifest_path, manifest, exclusive=True, root=root)
             _, owned_snapshot = read_snapshot(manifest_path)
             if (owned_snapshot is None or owned_snapshot[:2] != owned_identity
                     or owned_snapshot[-1] != hashlib.sha256(manifest.encode()).hexdigest()):
@@ -144,7 +144,7 @@ def install(repo):
                 publishing = True
 
             try:
-                atomic_text(path, rendered, before_publish=guard)
+                atomic_text(path, rendered, before_publish=guard, root=root)
             except (OSError, CommandError):
                 # Keep recovery metadata if publication may have succeeded.
                 try:
@@ -184,7 +184,7 @@ def uninstall(repo):
             require_unchanged(path, config_snapshot)
             require_unchanged(manifest_path, manifest_snapshot)
 
-        atomic_text(path, render_object(data), before_publish=guard)
+        atomic_text(path, render_object(data), before_publish=guard, root=root)
         require_unchanged(manifest_path, manifest_snapshot)
         manifest_path.unlink()
     return Report('uninstall-codex-hooks')

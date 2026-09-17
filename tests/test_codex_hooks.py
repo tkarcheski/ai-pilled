@@ -27,6 +27,34 @@ class CodexInstallTests(unittest.TestCase):
             {'hooks': [{'type': 'command', 'command': 'echo existing'}]}]}}
         self.path.write_text(json.dumps(self.original))
 
+    def test_publication_rejects_replaced_configuration_parent(self):
+        from ai_pilled.state import atomic_text
+        for removing in (False, True):
+            with self.subTest(removing=removing), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder) / 'repo'
+                outside = Path(folder) / 'outside'
+                root.mkdir()
+                outside.mkdir()
+                subprocess.run(['git', 'init', '-q', str(root)], check=True)
+                (root / '.codex').mkdir()
+                if removing:
+                    install(root)
+                path = root / '.codex' / 'hooks.json'
+                original = path.read_bytes() if path.exists() else None
+
+                def publish(target, text, *args, fixture_root=root, outside=outside, path=path, **kwargs):
+                    if target == path:
+                        (fixture_root / '.codex').rename(fixture_root / 'parked-codex')
+                        (fixture_root / '.codex').symlink_to(outside, target_is_directory=True)
+                    return atomic_text(target, text, *args, **kwargs)
+
+                with patch('ai_pilled.codex_hooks.atomic_text', side_effect=publish):
+                    with self.assertRaises((CommandError, OSError)):
+                        (uninstall if removing else install)(root)
+                self.assertEqual(list(outside.iterdir()), [])
+                parked = root / 'parked-codex' / 'hooks.json'
+                self.assertEqual(parked.read_bytes() if parked.exists() else None, original)
+
     def test_preserves_user_hooks_across_install_and_uninstall(self):
         install(self.repo)
         once = self.path.read_text()
