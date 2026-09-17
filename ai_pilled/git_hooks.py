@@ -14,7 +14,7 @@ import stat
 
 from .runtime import CommandError, CommandFailed, Report, run, git_path
 from .config import load_staged
-from .file_io import read_regular, directory_beneath
+from .file_io import read_regular, read_beneath, directory_beneath
 from .commit_messages import check_subject
 from .security import scan, scan_text
 from .state import directory as state_directory
@@ -184,7 +184,8 @@ def _install(repo):
 
 def read_manifest(manifest, expected):
     try:
-        data = loads(read_regular(manifest, 64_000))
+        root = expected.parent.parent
+        data = loads(read_beneath(root, manifest.relative_to(root), 64_000))
     except (ValueError, OSError) as exc:
         raise CommandError('Cannot read installation manifest') from exc
     if (not isinstance(data, dict) or set(data) != {'previous', 'scope', 'hooks_path', 'hashes'}
@@ -208,6 +209,18 @@ def uninstall(repo):
         return _uninstall(root)
 
 
+def verify_uninstall_hooks(repo, data):
+    for name, checksum in data['hashes'].items():
+        try:
+            content = read_beneath(repo, Path('.ai-pilled') / 'hooks' / name, 64_000)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise CommandError('Cannot verify installed hook; preserve and reconcile manually') from exc
+        if hashlib.sha256(content).hexdigest() != checksum:
+            raise CommandError('Installed hook changed; preserve and reconcile manually')
+
+
 def _uninstall(repo):
     manifest = repo / '.ai-pilled' / 'installation.json'
     if not manifest.exists():
@@ -216,18 +229,17 @@ def _uninstall(repo):
         raise CommandError('Refusing symlink installation paths')
     expected = repo / '.ai-pilled' / 'hooks'
     data = read_manifest(manifest, expected)
-    for name, checksum in data.get('hashes', {}).items():
-        if name not in ('pre-commit', 'commit-msg', 'pre-push'):
-            raise CommandError('Invalid installed hook name')
-        path = expected / name
-        if path.is_symlink() or (path.exists() and hashlib.sha256(read_regular(path, 64_000)).hexdigest() != checksum):
-            raise CommandError('Installed hook changed; preserve and reconcile manually')
+    verify_uninstall_hooks(repo, data)
     if git_value(repo, 'core.hooksPath', data['scope']) != data['hooks_path']:
         raise CommandError('hooksPath changed since installation; preserve it and reconcile manually')
     if data['previous'] is None:
         run(['git', 'config', data['scope'], '--unset', 'core.hooksPath'], repo)
     else:
         run(['git', 'config', data['scope'], 'core.hooksPath', data['previous']], repo)
+    # The configuration operation can overlap a user's file edit. Preserve it.
+    if read_manifest(manifest, expected) != data:
+        raise CommandError('Installation manifest changed; preserve and reconcile manually')
+    verify_uninstall_hooks(repo, data)
     manifest.unlink()
     directory = Path(data['hooks_path'])
     for name in ('pre-commit', 'commit-msg', 'pre-push'):

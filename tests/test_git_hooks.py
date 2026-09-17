@@ -194,6 +194,33 @@ class GitHookTests(unittest.TestCase):
         self.assertIn('user edit', hook.read_text())
         self.assertTrue(manifest.exists())
 
+    def test_uninstall_preserves_edits_during_configuration_restore(self):
+        from ai_pilled import git_hooks
+        for changed_name in ('hooks/pre-commit', 'installation.json'):
+            with self.subTest(changed_name=changed_name), tempfile.TemporaryDirectory() as folder:
+                repo = Path(folder)
+                subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+                install(repo)
+                state = repo / '.ai-pilled'
+                changed = state / changed_name
+                replacement = changed.read_text() + '\nconcurrent user edit\n'
+                original = git_hooks.run
+
+                def restored(argv, *args, changed=changed, replacement=replacement,
+                             original=original, **kwargs):
+                    result = original(argv, *args, **kwargs)
+                    if argv[:4] == ['git', 'config', '--local', '--unset']:
+                        changed.write_text(replacement)
+                    return result
+
+                with patch.object(git_hooks, 'run', side_effect=restored):
+                    with self.assertRaises(CommandError):
+                        uninstall(repo)
+                self.assertEqual(changed.read_text(), replacement)
+                self.assertTrue((state / 'installation.json').exists())
+                for name in ('pre-commit', 'commit-msg', 'pre-push'):
+                    self.assertTrue((state / 'hooks' / name).exists())
+
     def test_git_config_failure_rolls_back_new_install(self):
         from ai_pilled.runtime import run
         def fail_config(argv, *args, **kwargs):
