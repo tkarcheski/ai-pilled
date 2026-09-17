@@ -215,6 +215,15 @@ Ordinary argument-array subprocess APIs and explicit safe YAML loaders remain al
 in one scope are incomplete. Verified defaults and literal custom CA paths remain allowed. Explicit dynamic shell
 flags and TLS verification flags/contexts produce incomplete evidence; the reviewer
 does not infer their runtime values or certify separately constructed SSL contexts.
+Unverified TLS factory review includes the stdlib compatibility alias. Direct and
+annotated assignments, plus literal `setattr` calls, that replace
+`ssl._create_default_https_context` with a known unverified factory are blocked.
+Unknown replacement factories are incomplete; verified restoration and a no-op
+assignment remain allowed. Import aliases and literal argument expansion are covered,
+including staged overrides hidden by unstaged restoration. These are source-only
+checks; they do not mutate TLS policy or trace arbitrary factory assignment chains.
+References: [CPython SSL factories](https://github.com/python/cpython/blob/main/Lib/ssl.py)
+and [PEP 476 opt-out behavior](https://peps.python.org/pep-0476/#opting-out).
 Literal starred lists and tuples are expanded iteratively for inspected arguments,
 including nested expansion. Positional subprocess shell flags receive the same review
 as keyword flags; unresolved positional expansions in subprocess/PyJWT security calls

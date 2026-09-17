@@ -27,6 +27,9 @@ CERT_MODES = {'ssl.CERT_NONE': 0, 'ssl.CERT_OPTIONAL': 1, 'ssl.CERT_REQUIRED': 2
               'ssl.VerifyMode.CERT_REQUIRED': 2}
 
 
+UNVERIFIED_TLS_FACTORIES = {'ssl._create_unverified_context', 'ssl._create_stdlib_context'}
+
+
 IMPLICIT_SHELL_CALLS = {'os.system', 'os.popen', 'subprocess.getoutput',
                         'subprocess.getstatusoutput', 'asyncio.create_subprocess_shell',
                         'asyncio.subprocess.create_subprocess_shell'}
@@ -442,11 +445,27 @@ def inspect_python(report, path, content, *, tree=None):
                     pending.extend(keyword.value for keyword in value.keywords)
         return None
 
+    def https_factory_override(factory, line):
+        selected = qualified(factory)
+        if selected in UNVERIFIED_TLS_FACTORIES:
+            report.add('unverified-tls-context',
+                       'The process-wide HTTPS default uses an unverified factory; restore verified defaults.',
+                       path=path, line=line)
+        elif selected not in ('ssl.create_default_context', 'ssl._create_default_https_context'):
+            report.add('tls-default-unresolved',
+                       'The replacement HTTPS default factory cannot be inspected; verify its certificate and hostname policy.',
+                       path=path, line=line, severity='warning')
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and any(alias.name == '*' for alias in node.names):
             report.add('python-wildcard-import',
                        'Wildcard imports prevent reliable binding inspection; use explicit imports.',
                        path=path, line=node.lineno, severity='warning')
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Attribute) and target.attr == '_create_default_https_context'
+                   and qualified(target) == 'ssl._create_default_https_context' for target in targets):
+                https_factory_override(node.value, node.lineno)
         if not isinstance(node, ast.Call):
             continue
         name = qualified(node.func)
@@ -465,6 +484,10 @@ def inspect_python(report, path, content, *, tree=None):
                 name = 'pickle.load'
         keywords = call_keywords(node)
         arguments = call_arguments(node)
+        if (name in ('setattr', 'builtins.setattr') and len(arguments) == 3 and not node.keywords
+                and qualified(arguments[0]) == 'ssl' and isinstance(arguments[1], ast.Constant)
+                and arguments[1].value == '_create_default_https_context'):
+            https_factory_override(arguments[2], node.lineno)
         unknown_arguments = any(isinstance(argument, ast.Starred) for argument in arguments)
         if name in POSITIONAL_SECURITY_CALLS and unknown_arguments:
             report.add('python-arguments-unresolved',
@@ -578,7 +601,7 @@ def inspect_python(report, path, content, *, tree=None):
                 for k in keywords):
             rule, message = 'tls-verification-disabled', (
                 'TLS certificate verification is disabled; use verified defaults or a trusted CA bundle.')
-        elif name == 'ssl._create_unverified_context':
+        elif name in UNVERIFIED_TLS_FACTORIES:
             rule, message = 'unverified-tls-context', (
                 'Unverified SSL context factory requires review; prefer ssl.create_default_context.')
         elif name in ('yaml.unsafe_load', 'yaml.unsafe_load_all'):

@@ -188,6 +188,45 @@ class PythonPatternTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertEqual(self.inspect(source).status, 'pass')
 
+    def test_stdlib_unverified_factory_alias_requires_review(self):
+        for source in ('import ssl\nssl._create_stdlib_context()',
+                       'from ssl import _create_stdlib_context as context\ncontext()',
+                       '__import__("ssl")._create_stdlib_context()'):
+            result = self.inspect(source)
+            self.assertEqual([f.rule for f in result.findings], ['unverified-tls-context'])
+
+    def test_process_wide_https_factory_overrides_require_review(self):
+        for source in (
+                'import ssl\nssl._create_default_https_context = ssl._create_unverified_context',
+                'import ssl as tls\ntls._create_default_https_context: object = tls._create_stdlib_context',
+                'import ssl\nfrom ssl import _create_unverified_context as insecure\nssl._create_default_https_context = insecure',
+                'import ssl\nsetattr(ssl, "_create_default_https_context", ssl._create_unverified_context)',
+                'import builtins, ssl\nbuiltins.setattr(*[ssl, "_create_default_https_context", ssl._create_stdlib_context])',
+                'import ssl\nssl._create_default_https_context = getattr(ssl, "_create_unverified_context")'):
+            with self.subTest(source=source):
+                result = self.inspect(source)
+                self.assertEqual([(f.rule, f.line) for f in result.findings],
+                                 [('unverified-tls-context', len(source.splitlines()))])
+
+    def test_unknown_https_overrides_cannot_certify_verification(self):
+        for source in ('import ssl\nssl._create_default_https_context = custom_factory',
+                       'import ssl\nsetattr(ssl, "_create_default_https_context", custom_factory)',
+                       'import ssl\nssl._create_default_https_context = None'):
+            result = self.inspect(source)
+            self.assertEqual(result.status, 'incomplete')
+            self.assertEqual([f.rule for f in result.findings], ['tls-default-unresolved'])
+
+    def test_verified_https_restoration_and_unrelated_assignments_remain_allowed(self):
+        for source in ('import ssl\nssl._create_default_https_context = ssl.create_default_context',
+                       'import ssl\nssl._create_default_https_context = ssl._create_default_https_context',
+                       'import ssl\nsetattr(ssl, "_create_default_https_context", ssl.create_default_context)',
+                       'import ssl\nssl._create_default_https_context: object',
+                       'from ssl import _create_default_https_context, _create_unverified_context\n'
+                       '_create_default_https_context = _create_unverified_context',
+                       'import ssl\ncustom._create_default_https_context = ssl._create_unverified_context',
+                       'import ssl\ndef local(ssl):\n ssl._create_default_https_context = custom_factory'):
+            self.assertEqual(self.inspect(source).status, 'pass')
+
     def test_unverified_ssl_context_factory_requires_review(self):
         result = self.inspect('from ssl import _create_unverified_context as context\ncontext()')
         self.assertEqual(result.status, 'fail')
