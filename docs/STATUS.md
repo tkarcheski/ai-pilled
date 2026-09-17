@@ -365,7 +365,11 @@ source line. This is a read-time consistency check, not an atomic filesystem sna
 `review --comprehensive` requires deterministic evidence and model findings to refer
 to the same index.
 Each materialized index also returns a manifest of original file hashes, sizes, and
-permissions. Review and full-audit perspectives verify those supplied files before
+permissions. Citations in both review paths must belong to that original manifest;
+a file introduced by a reviewer cannot be accepted merely because it exists. Relative
+path spelling is normalized, preserving legitimate `./` and repeated-separator citations.
+Fake providers exercise added-file rejection and whole-response invalidation without
+starting a live model. Review and full-audit perspectives verify those supplied files before
 and after model invocation, even when the model returns no findings. Changed bytes,
 permissions, missing files, and symlink substitutions make evidence incomplete.
 Fake-reviewer mutation and pre-invocation corruption fixtures exercise this boundary;

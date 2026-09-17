@@ -47,8 +47,10 @@ def validated_findings(data):
         yield redact(path), line, redact(message)
 
 
-def validate_locations(snapshot, findings):
+def validate_locations(snapshot, findings, supplied_paths):
     for path, line, _ in findings:
+        if Path(path).as_posix() not in supplied_paths:
+            raise CommandError('Reviewer cited a location outside the supplied source')
         try:
             valid = line <= len(read_beneath(snapshot, path, 2_000_000).splitlines())
         except (CommandError, OSError) as exc:
@@ -218,7 +220,7 @@ def review(repo, executable=None, message=None):
             findings = invoke_review(snapshot, prompt, executable, config.timeout)
             unchanged_head()
             validate_snapshot(snapshot, manifest)
-            validate_locations(snapshot, findings)
+            validate_locations(snapshot, findings, manifest)
             if scan(root).snapshot != before.snapshot:
                 raise CommandError('Staged snapshot changed during review; rerun the review')
             for path, line, message in findings:

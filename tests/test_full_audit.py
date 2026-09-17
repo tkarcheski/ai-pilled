@@ -35,6 +35,18 @@ class FullAuditTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.run(['git', *args], cwd=self.repo, check=True, capture_output=True).stdout
 
+    def test_model_created_files_cannot_supply_perspective_citations(self):
+        def model(snapshot, *_):
+            (snapshot / 'invented.py').write_text('value = 1\n')
+            return [('invented.py', 1, 'Invented location')]
+        with patch('ai_pilled.full_audit.invoke_review', side_effect=model):
+            result = full_audit(self.repo, model_reviews=True, workers=1)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual([check['status'] for check in result.checks],
+                         ['pass', 'incomplete', 'incomplete', 'incomplete'])
+        self.assertTrue(all(f.rule.endswith('review-unavailable') for f in result.findings))
+        self.assertFalse((self.repo / 'invented.py').exists())
+
     def test_changed_perspective_source_invalidates_empty_result(self):
         def model(snapshot, *_):
             (snapshot / 'code.py').write_text('value = 9\n')

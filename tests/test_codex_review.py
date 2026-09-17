@@ -38,6 +38,28 @@ class ReviewTests(unittest.TestCase):
             f'output.write_text({content!r})\n' + extra)
         self.fake.chmod(0o755)
 
+    def test_model_created_file_cannot_be_cited_as_supplied_source(self):
+        self.response({'findings': [
+            {'path': 'code.py', 'line': 1, 'message': 'Existing location'},
+            {'path': 'invented.py', 'line': 1, 'message': 'Invented location'}]},
+            extra='Path("invented.py").write_text("value = 1\\n")\n')
+        result = review(self.repo, str(self.fake))
+        self.assertEqual(result.status, 'incomplete')
+        self.assertTrue(all(f.rule == 'review-unavailable' for f in result.findings))
+        self.assertFalse((self.repo / 'invented.py').exists())
+
+    def test_normalized_relative_citations_remain_supported(self):
+        nested = self.repo / 'nested'
+        nested.mkdir()
+        (nested / 'code.py').write_text('value = 2\n')
+        subprocess.run(['git', 'add', 'nested/code.py'], cwd=self.repo, check=True)
+        for name in ('./code.py', 'nested//code.py', './nested/code.py'):
+            with self.subTest(name=name):
+                self.response({'findings': [{'path': name, 'line': 1, 'message': 'Supplied location'}]})
+                result = review(self.repo, str(self.fake))
+                self.assertEqual(result.status, 'fail')
+                self.assertEqual(result.findings[0].rule, 'codex-review')
+
     def test_changed_supplied_source_invalidates_empty_model_result(self):
         mutations = (
             'Path("code.py").write_text("value = 9\\n")',
@@ -281,7 +303,7 @@ class ReviewTests(unittest.TestCase):
         with patch('ai_pilled.codex_review.read_beneath', side_effect=swap):
             with patch('ai_pilled.file_io.os.fdopen', side_effect=AssertionError('Outside file opened')):
                 with self.assertRaisesRegex(CommandError, 'outside the supplied source'):
-                    validate_locations(snapshot, [('nested/code.py', 2, 'fixture')])
+                    validate_locations(snapshot, [('nested/code.py', 2, 'fixture')], {'nested/code.py'})
         self.assertEqual((outside / 'code.py').read_text(), 'outside\nextra\n')
 
     def test_citation_replacement_after_read_is_incomplete(self):
@@ -294,7 +316,7 @@ class ReviewTests(unittest.TestCase):
         parent.mkdir(parents=True)
         source = parent / 'code.py'
         source.write_text('first\nsecond\n')
-        validate_locations(snapshot, [('nested/code.py', 2, 'valid nested citation')])
+        validate_locations(snapshot, [('nested/code.py', 2, 'valid nested citation')], {'nested/code.py'})
 
         @contextmanager
         def replace_after_read(root, path):
@@ -306,7 +328,7 @@ class ReviewTests(unittest.TestCase):
 
         with patch('ai_pilled.file_io.open_beneath', replace_after_read):
             with self.assertRaisesRegex(CommandError, 'outside the supplied source'):
-                validate_locations(snapshot, [('nested/code.py', 2, 'stale citation')])
+                validate_locations(snapshot, [('nested/code.py', 2, 'stale citation')], {'nested/code.py'})
         self.assertEqual(source.read_text(), 'replacement\n')
 
     def test_invalid_location_rejects_entire_model_response(self):

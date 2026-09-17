@@ -31,7 +31,7 @@ def perspective(snapshot, manifest, name, executable, timeout):
         report.metrics['model_invocations'] = 1
         findings = invoke_review(snapshot, prompt, executable, timeout)
         validate_snapshot(snapshot, manifest)
-        validate_locations(snapshot, findings)
+        validate_locations(snapshot, findings, manifest)
         for path, line, message in findings:
             report.add('model-finding', message, path=path, line=line)
     except (CommandError, ValueError, OSError) as exc:
