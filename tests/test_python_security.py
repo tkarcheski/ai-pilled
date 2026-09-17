@@ -320,6 +320,47 @@ class PythonPatternTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertEqual(self.inspect(source).findings[0].rule, 'environment-secret-log')
 
+    def test_environment_mapping_lookup_methods_expose_named_credentials(self):
+        for mapping, key in (('os.environ', '"TOKEN"'), ('os.environb', 'b"TOKEN"')):
+            for method in ('pop', 'setdefault', '__getitem__'):
+                arguments = key + (', "fallback"' if method == 'setdefault' else '')
+                for source in (mapping + '.' + method + '(' + arguments + ')',
+                               mapping + '.copy().' + method + '(' + arguments + ')'):
+                    with self.subTest(source=source):
+                        result = self.inspect('import os\nprint(' + source + ')')
+                        self.assertEqual([(f.rule, f.line) for f in result.findings], [('environment-secret-log', 2)])
+        for source in ('from os import environ as env\nlogger.info(env.pop("API_KEY"))',
+                       'import os\nprint(getattr(os.environ, "pop")("TOKEN"))',
+                       'import os\nprint(os.environ.__getitem__(**{"key": "PASSWORD"}))'):
+            self.assertEqual(self.inspect(source).status, 'fail')
+
+    def test_immediate_environment_copies_keep_mapping_provenance(self):
+        for expression in ('os.environ.copy().values()', 'os.environb.copy().items()',
+                           'os.environ.copy().copy()'):
+            result = self.inspect('import os\nprint(' + expression + ')')
+            self.assertEqual(result.findings[0].rule, 'environment-dump')
+        for expression in ('os.environ.copy().get("TOKEN")', 'os.environ.copy()["API_KEY"]',
+                           'os.environb.copy()[b"PASSWORD"]'):
+            result = self.inspect('import os\nprint(' + expression + ')')
+            self.assertEqual(result.findings[0].rule, 'environment-secret-log')
+
+    def test_mapping_lookup_fallbacks_are_inspected(self):
+        for expression in ('os.environ.pop("HOME", os.getenv("TOKEN"))',
+                           'os.environ.pop(key="HOME", default=os.environb)',
+                           'os.environ.setdefault("HOME", os.getenv("TOKEN"))',
+                           'os.environ.setdefault(key="HOME", value=os.environ)',
+                           'os.environ.copy().setdefault("HOME", os.getenv("TOKEN"))'):
+            self.assertEqual(self.inspect('import os\nprint(' + expression + ')').status, 'fail')
+
+    def test_mapping_metadata_and_ordinary_lookup_results_remain_allowed(self):
+        for expression in ('os.environ.pop("HOME")', 'os.environ.setdefault("HOME", "fallback")',
+                           'os.environ.__getitem__("HOME")', 'os.environ.copy()["HOME"]',
+                           'os.environ.copy().get("PATH")', 'os.environ.copy().keys()',
+                           'len(os.environ.copy())', 'os.environ.__contains__("TOKEN")',
+                           'custom.pop("TOKEN")'):
+            self.assertEqual(self.inspect('import os\nprint(' + expression + ')').status, 'pass')
+        self.assertEqual(self.inspect('import os\nuse(os.environ.pop("TOKEN"))').status, 'pass')
+
     def test_starred_and_byte_environment_dumps(self):
         for expression in ('*os.environ.values()', 'os.environb', 'os.environb.copy()',
                            '*os.environb.items()', 'dict(os.environb)', '[*os.environ.values()]'):

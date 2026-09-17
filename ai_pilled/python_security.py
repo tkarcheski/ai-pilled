@@ -60,6 +60,13 @@ POSITIONAL_SECURITY_CALLS = SHELL_KEYWORD_CALLS | ASYNC_EXEC_CALLS | JWT_DECODE_
 KEYWORD_SECURITY_CALLS = TLS_VERIFY_CALLS | set(CERT_REQUIREMENT_CALLS) | POSITIONAL_SECURITY_CALLS | set(PICKLE_OPTION_CALLS) | TAR_EXTRACT_CALLS | {
     'yaml.load', 'yaml.load_all', 'hashlib.new', 'hashlib.md5', 'hashlib.sha1'}
 
+ENVIRONMENT_MAPPINGS = ('os.environ', 'os.environb')
+ENVIRONMENT_COPIES = {name + '.copy' for name in ENVIRONMENT_MAPPINGS}
+ENVIRONMENT_DUMPS = {name + '.' + method for name in ENVIRONMENT_MAPPINGS
+                     for method in ('copy', 'items', 'values')}
+ENVIRONMENT_LOOKUPS = {name + '.' + method for name in ENVIRONMENT_MAPPINGS
+                       for method in ('get', 'pop', 'setdefault', '__getitem__')} | {'os.getenv', 'os.getenvb'}
+
 SAFE_YAML_LOADERS = {'yaml.SafeLoader', 'yaml.CSafeLoader',
                      'yaml.loader.SafeLoader', 'yaml.cyaml.CSafeLoader'}
 
@@ -360,6 +367,16 @@ def inspect_python(report, path, content, *, tree=None):
             value == suffix or value.endswith('_' + suffix)
             for suffix in ('TOKEN', 'SECRET', 'PASSWORD', 'API_KEY', 'PRIVATE_KEY'))
 
+    def environment_mapping(node):
+        name = qualified(node)
+        if name in ENVIRONMENT_MAPPINGS:
+            return name
+        if isinstance(node, ast.Call):
+            constructor = qualified(node.func)
+            if constructor in ENVIRONMENT_COPIES:
+                return constructor.rsplit('.', 1)[0]
+        return ''
+
     def environment_dump(node):
         pending = [node]
         while pending:
@@ -387,28 +404,32 @@ def inspect_python(report, path, content, *, tree=None):
             elif isinstance(value, ast.Dict):
                 pending.extend(value.keys)
                 pending.extend(value.values)
-            elif qualified(value) in ('os.environ', 'os.environb'):
+            elif environment_mapping(value):
                 return 'environment-dump'
             elif (isinstance(value, ast.Subscript)
-                  and qualified(value.value) in ('os.environ', 'os.environb')
+                  and environment_mapping(value.value)
                   and credential_key(value.slice)):
                 return 'environment-secret-log'
             elif isinstance(value, ast.Call):
                 function = qualified(value.func)
+                if isinstance(value.func, ast.Attribute):
+                    mapping = environment_mapping(value.func.value)
+                    if mapping:
+                        function = mapping + '.' + value.func.attr
                 arguments = call_arguments(value)
                 if function.startswith('builtins.'):
                     function = function[len('builtins.'):]
-                if function in tuple(prefix + '.' + method for prefix in ('os.environ', 'os.environb')
-                                     for method in ('copy', 'items', 'values')):
+                if function in ENVIRONMENT_DUMPS:
                     return 'environment-dump'
-                if function in ('os.getenv', 'os.getenvb', 'os.environ.get', 'os.environb.get'):
+                if function in ENVIRONMENT_LOOKUPS:
                     lookup_keywords = call_keywords(value)
                     key = arguments[0] if arguments else next(
                         (keyword.value for keyword in lookup_keywords if keyword.arg == 'key'), None)
                     if credential_key(key):
                         return 'environment-secret-log'
                     pending.extend(arguments[1:])
-                    pending.extend(keyword.value for keyword in lookup_keywords if keyword.arg == 'default')
+                    fallback = 'value' if function.endswith('.setdefault') else 'default'
+                    pending.extend(keyword.value for keyword in lookup_keywords if keyword.arg == fallback)
                 literal_method = (value.func.attr if isinstance(value.func, ast.Attribute)
                                   and isinstance(value.func.value, ast.Constant)
                                   and isinstance(value.func.value.value, str) else '')

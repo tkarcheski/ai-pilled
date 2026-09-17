@@ -109,6 +109,8 @@ class EndToEndTests(unittest.TestCase):
                  'import yaml\nfrom yaml.loader import SafeLoader\nyaml.load(data, Loader=SafeLoader)\n', b'unsafe-yaml'),
                 ("value = 'ghp_' '" + 'A' * 36 + "'\n",
                  'value = "ordinary"\n', b'github-token'),
+                ('import os\nprint(os.environ.copy().get("TOKEN"))\n',
+                 'import os\nprint(os.environ.copy().get("HOME"))\n', b'environment-secret-log'),
                 ('from os import getenv\nprint(getenv("API_KEY"))\n',
                  'from os import getenv\nprint(getenv("HOME"))\n', b'environment-secret-log')):
             (self.repo / 'example.py').write_text(source)

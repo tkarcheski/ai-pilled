@@ -176,7 +176,14 @@ and environment value/item views, including starred arguments and byte environme
 Logging methods are inspected on factory-returned loggers/adapters and logger parameters
 as well as named logger variables.
 Credential-named literal lookups through `environ`, `environb`, `getenv`, and `getenvb`
-are blocked at logging calls. Names ending in TOKEN, SECRET, PASSWORD, API_KEY, or
+are blocked at logging calls. Mapping `pop`, `setdefault`, and direct `__getitem__`
+lookups are included, along with immediate `.copy()` results used for lookups,
+subscripts, or value/item views. Positional fallbacks and `setdefault(value=...)`
+are inspected. Ordinary metadata, keys-only views, and non-logging uses remain
+allowed; separately stored copies are not traced. Source-only fixtures and staged
+E2E checks cover these paths without reading or modifying the real environment.
+See [Python environment mappings](https://docs.python.org/3/library/os.html#os.environ).
+Names ending in TOKEN, SECRET, PASSWORD, API_KEY, or
 PRIVATE_KEY, plus AWS access/secret key names, are review signals; ordinary HOME/PATH
 and metadata names remain allowed. Lookup fallbacks, conditional result branches,
 boolean results, and assignment expressions are inspected; condition-only credential
