@@ -101,6 +101,14 @@ over the byte-for-byte unchanged baseline: performance remains failed at the ori
 20% budget and is the sole currently generated follow-up. None of this constitutes a
 hosted GitHub/GitLab run or live integration delivery.
 
+Worktree scans now use the shared bounded snapshot reader, including a second
+root-relative open that rejects symlink parents after reading. A matching inode alone
+no longer accepts a parent that became an internal alias or an outside hardlink alias.
+Disposable race fixtures reproduce both prior false passes and verify rejection before
+content inspection; existing replacement, mutation, deletion and permission checks
+remain covered. This strengthens observed read-time confinement, without claiming an
+atomic repository snapshot or protection against changes after the final check.
+
 ## What the statuses mean
 
 - **Implemented / tested:** code exists and named tests exercise it. Provider fixtures

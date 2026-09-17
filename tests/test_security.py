@@ -414,6 +414,44 @@ class SecurityTests(unittest.TestCase):
         self.write('ordinary.txt', '\n'.join(values))
         self.assertEqual(scan(self.repo).status, 'pass')
 
+    def test_post_read_parent_alias_cannot_certify_same_file(self):
+        from contextlib import contextmanager
+        from ai_pilled.security import scan_bytes
+        nested = self.repo / 'nested'
+        nested.mkdir()
+        self.write('nested/config.txt', 'ordinary')
+        saved = self.repo / 'saved'
+        original = os.fdopen
+        for external in (False, True):
+            with self.subTest(external=external), tempfile.TemporaryDirectory() as directory:
+                outside = Path(directory)
+                if external:
+                    os.link(nested / 'config.txt', outside / 'config.txt')
+                swapped = False
+                @contextmanager
+                def changed(fd, *args, outside=outside, external=external, **kwargs):
+                    nonlocal swapped
+                    with original(fd, *args, **kwargs) as stream:
+                        yield stream
+                    if not swapped:
+                        swapped = True
+                        nested.rename(saved)
+                        nested.symlink_to(outside if external else saved, target_is_directory=True)
+                try:
+                    with patch('ai_pilled.file_io.os.fdopen', side_effect=changed), \
+                            patch('ai_pilled.security.scan_bytes', wraps=scan_bytes) as inspected:
+                        result = scan(self.repo, 'worktree')
+                    self.assertTrue(swapped)
+                    self.assertEqual(result.status, 'incomplete')
+                    inspected.assert_not_called()
+                    self.assertEqual((saved / 'config.txt').read_text(), 'ordinary')
+                    if external:
+                        self.assertEqual((outside / 'config.txt').read_text(), 'ordinary')
+                finally:
+                    if swapped:
+                        nested.unlink()
+                        saved.rename(nested)
+
     def test_worktree_changes_after_read_cannot_certify_stale_content(self):
         from contextlib import contextmanager
         path = self.repo / 'config.txt'
@@ -441,7 +479,7 @@ class SecurityTests(unittest.TestCase):
                     else:
                         path.unlink()
                         path.symlink_to('/dev/null')
-                with patch('ai_pilled.security.os.fdopen', side_effect=changed):
+                with patch('ai_pilled.file_io.os.fdopen', side_effect=changed):
                     result = scan(self.repo, 'worktree')
                 self.assertEqual(result.status, 'incomplete', result.to_dict())
                 self.assertEqual(result.findings[0].rule, 'scan-incomplete')
@@ -465,10 +503,10 @@ class SecurityTests(unittest.TestCase):
         def changed(fd, *args, **kwargs):
             with original(fd, *args, **kwargs) as stream:
                 yield MutatingReader(stream)
-        with patch('ai_pilled.security.os.fdopen', side_effect=changed):
+        with patch('ai_pilled.file_io.os.fdopen', side_effect=changed):
             result = scan(self.repo, 'worktree')
         self.assertEqual(result.status, 'incomplete')
-        self.assertIn('during reading', result.findings[0].message)
+        self.assertIn('changed while reading', result.findings[0].message)
         self.assertEqual(path.read_text(), 'changed!')
 
     def test_python_aws_secret_fields_span_lines_and_annotations(self):
@@ -600,23 +638,21 @@ class SecurityTests(unittest.TestCase):
         from ai_pilled.security import scan_bytes
         nested = self.repo / 'nested'
         nested.mkdir()
-        target = nested / 'config.txt'
         self.write('nested/config.txt', 'ordinary')
-        original = Path.resolve
+        original = os.open
         with tempfile.TemporaryDirectory() as directory:
             outside = Path(directory)
             marker = 'ghp_' + 'A' * 36
             (outside / 'config.txt').write_text(marker)
             swapped = False
-            def resolve(path, *args, **kwargs):
+            def opening(path, *args, **kwargs):
                 nonlocal swapped
-                resolved = original(path, *args, **kwargs)
-                if path == target and not swapped:
+                if path == 'nested' and kwargs.get('dir_fd') is not None and not swapped:
                     swapped = True
                     nested.rename(self.repo / 'saved')
                     nested.symlink_to(outside, target_is_directory=True)
-                return resolved
-            with patch.object(Path, 'resolve', resolve), patch('ai_pilled.security.scan_bytes', wraps=scan_bytes) as inspected:
+                return original(path, *args, **kwargs)
+            with patch('ai_pilled.file_io.os.open', side_effect=opening), patch('ai_pilled.security.scan_bytes', wraps=scan_bytes) as inspected:
                 result = scan(self.repo, 'worktree')
             self.assertTrue(swapped)
             self.assertEqual(result.status, 'incomplete')

@@ -1,10 +1,9 @@
 """Deterministic secret checks; semantic vulnerability review is a separate check."""
 import ast
 import hashlib
-import os
 import stat
 
-from .file_io import file_identity, open_beneath
+from .file_io import read_snapshot
 from .git_blobs import read_blobs
 from .runtime import CommandError, Report, run, git_path
 from .python_security import inspect_python, is_python_source, parse_python
@@ -173,23 +172,11 @@ def scan(repo, scope='staged', patterns=False):
     for path, _ in sources:
         scan_path(report, path)
         try:
-            file = root / path
-            if file.is_symlink() or not file.resolve().is_relative_to(root.resolve()):
-                raise CommandError('Symlink content requires a separate scan')
-            if not file.exists():
+            content, identity = read_snapshot(root / path, MAX_FILE_BYTES, root=root)
+            if content is None or identity is None:
                 digest.update(path.encode(errors='surrogateescape') + b'\0deleted\0')
                 continue
-            with open_beneath(root, path) as stream:
-                metadata = os.fstat(stream.fileno())
-                identity = file_identity(metadata)
-                mode = metadata.st_mode
-                content = stream.read(MAX_FILE_BYTES + 1)
-                if file_identity(os.fstat(stream.fileno())) != identity:
-                    raise CommandError('File changed during reading; finish edits and rerun the scan')
-            if file_identity(file.lstat()) != identity:
-                raise CommandError('File was changed or replaced during the scan; rerun after reviewing edits')
-            if len(content) > MAX_FILE_BYTES:
-                raise CommandError('File exceeds scan size limit')
+            mode = identity[-1]
             digest.update(path.encode(errors='surrogateescape') + b'\0')
             digest.update(str(stat.S_IMODE(mode)).encode() + b'\0')
             digest.update(hashlib.sha256(content).digest())
