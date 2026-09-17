@@ -13,13 +13,13 @@ GitHub workflow publication is blocked by the current login's missing `workflow`
 scope. GitLab pipelines are **planned and deferred at the user's request**.
 
 Python-literal credential inspection adds mandatory parsing to secret scans. Dogfooding
-at `1ad8ac4` caught a performance-budget failure: 0.273 seconds median versus the unchanged
-0.166-second baseline (65.1% increase; 20% budget). Profiling attributes the extra
+at `1ad8ac4` caught a performance-budget failure: 0.272 seconds median versus the unchanged
+0.166-second baseline (64.1% increase; 20% budget). Profiling attributes the extra
 work to parsing/traversing Python source. Security coverage is retained; performance
 acceptance remains open, and the saved baseline has not been raised. Loading only the
 selected CLI command and skipping literal-free AST identifier leaves reduced the
 follow-up median to 0.211 seconds (27.5% over baseline). An earlier cold-start rerun
-measured 0.216 seconds (30.3% over baseline). The latest rerun at `2e32729`
+measured 0.216 seconds (30.3% over baseline). A subsequent rerun at `2e32729`
 measured 0.244 seconds (47.4% over baseline). At `d337655`, the cold-start median
 was 0.255 seconds (54.0% over baseline). The latest idle rerun at `b80ffda`
 measured 0.273 seconds (65.1% over baseline), with the saved baseline verified
@@ -276,6 +276,12 @@ The commit-msg hook checks conventional subjects, length, and credentials. Optio
 model review checks message alignment and concrete correctness/security defects. It
 uses the existing Codex subscription login, a bounded staged snapshot, read-only mode,
 disabled hooks, a restricted environment, and validated structured source locations.
+Review preparation rejects more than 2,000 staged files before reading blobs, retains
+the 2 MB per-file and 20 MB total limits, and uses the shared bounded Git batch reader.
+Missing or oversized blobs cannot produce a partial successful snapshot. Binary bytes
+and executable modes are preserved. A five-pair prototype measurement on the 93-file
+`8d0c4bd` snapshot reduced preparation medians from 385 to 234 ms with identical
+manifests; this is preparation timing, not the cold-start scan budget.
 Model output uses bounded regular-file reads without following final symlinks.
 Cited source opens each relative directory beneath the supplied snapshot without
 following symlinks and compares file identities during and after the bounded read.

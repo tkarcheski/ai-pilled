@@ -199,6 +199,48 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(result.status, 'incomplete')
         invoke.assert_not_called()
 
+    def test_materialization_batches_binary_files_and_preserves_modes(self):
+        from ai_pilled.codex_review import materialize_index, validate_snapshot
+        from ai_pilled.runtime import run
+        payload = b'\xff\x00fixture\n'
+        for name in ('binary-one', 'binary-two'):
+            (self.repo / name).write_bytes(payload)
+        (self.repo / 'binary-two').chmod(0o755)
+        subprocess.run(['git', 'add', 'binary-one', 'binary-two'], cwd=self.repo, check=True)
+        destination = self.repo / 'snapshot'
+        with patch('ai_pilled.git_blobs.run', wraps=run) as git:
+            manifest = materialize_index(self.repo, destination)
+        self.assertEqual([call.args[0][2] for call in git.call_args_list], ['--batch-check', '--batch'])
+        self.assertEqual(len(manifest), 3)
+        for name, mode in (('binary-one', 0o644), ('binary-two', 0o755)):
+            self.assertEqual((destination / name).read_bytes(), payload)
+            self.assertEqual((destination / name).stat().st_mode & 0o777, mode)
+        validate_snapshot(destination, manifest)
+
+    def test_materialization_file_limit_blocks_before_blob_reads(self):
+        from ai_pilled.codex_review import materialize_index
+        from ai_pilled.runtime import CommandError
+        (self.repo / 'second').write_text('fixture')
+        subprocess.run(['git', 'add', 'second'], cwd=self.repo, check=True)
+        with patch('ai_pilled.codex_review.MAX_SNAPSHOT_FILES', 1), patch(
+                'ai_pilled.codex_review.read_blobs') as blobs:
+            with self.assertRaisesRegex(CommandError, 'file limit'):
+                materialize_index(self.repo, self.repo / 'snapshot')
+        blobs.assert_not_called()
+        self.assertFalse((self.repo / 'snapshot').exists())
+
+    def test_materialization_rejects_missing_oversized_or_over_budget_content(self):
+        from ai_pilled.codex_review import materialize_index
+        from ai_pilled.runtime import CommandError
+        for constant in ('MAX_FILE_BYTES', 'MAX_SNAPSHOT_BYTES'):
+            with self.subTest(constant=constant), patch('ai_pilled.codex_review.' + constant, 1):
+                with self.assertRaises(CommandError):
+                    materialize_index(self.repo, self.repo / 'snapshot')
+        with patch('ai_pilled.codex_review.read_blobs', return_value=[('code.py', None, 'missing')]):
+            with self.assertRaisesRegex(CommandError, 'complete review snapshot'):
+                materialize_index(self.repo, self.repo / 'snapshot')
+        self.assertFalse((self.repo / 'snapshot').exists())
+
     def test_materialization_rechecks_captured_blob_credentials(self):
         from ai_pilled.codex_review import materialize_index
         from ai_pilled.runtime import CommandError

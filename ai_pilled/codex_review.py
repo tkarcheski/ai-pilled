@@ -15,6 +15,8 @@ from .security import MAX_FILE_BYTES, scan, scan_text, scan_bytes, scan_path
 from .credentials import redact
 from .state import record
 
+MAX_SNAPSHOT_FILES = 2000
+MAX_SNAPSHOT_BYTES = 20_000_000
 MAX_HISTORY_FILES = 2000
 MAX_HISTORY_BYTES = 20_000_000
 
@@ -63,31 +65,40 @@ def review_environment():
 
 
 def materialize_index(repo, destination):
-    records = run(['git', 'ls-files', '--stage', '-z'], repo).split(b'\0')
-    total = 0
-    manifest = {}
-    for raw in filter(None, records):
+    records = list(filter(None, run(['git', 'ls-files', '--stage', '-z'], repo).split(b'\0')))
+    if len(records) > MAX_SNAPSHOT_FILES:
+        raise CommandError('Review snapshot exceeds the 2000-file limit')
+    sources = []
+    modes = {}
+    for raw in records:
         metadata, raw_path = raw.split(b'\t', 1)
         mode, oid, stage = metadata.split()
-        path = destination / raw_path.decode('utf-8', errors='surrogateescape')
+        name = raw_path.decode('utf-8', errors='surrogateescape')
+        path = destination / name
         if stage != b'0' or mode not in (b'100644', b'100755'):
             raise CommandError('Review snapshot requires resolved regular files; audit links separately')
         if not path.resolve().is_relative_to(destination.resolve()):
             raise CommandError('Staged path escapes review snapshot')
-        path.parent.mkdir(parents=True, exist_ok=True)
-        content = run(['git', 'cat-file', 'blob', oid.decode()], repo)
+        sources.append((name, oid.decode()))
+        modes[name] = 0o755 if mode == b'100755' else 0o644
+    total = 0
+    manifest = {}
+    for name, content, error in read_blobs(repo, sources, MAX_FILE_BYTES):
+        if error is not None or content is None:
+            raise CommandError('Cannot prepare complete review snapshot: staged blob unavailable or oversized')
         total += len(content)
-        if total > 20_000_000:
+        if total > MAX_SNAPSHOT_BYTES:
             raise CommandError('Review snapshot exceeds 20 MB limit')
         checked = Report('snapshot-security')
-        scan_path(checked, str(path.relative_to(destination)))
-        scan_bytes(checked, str(path.relative_to(destination)), content)
+        scan_path(checked, name)
+        scan_bytes(checked, name, content)
         if checked.status != 'pass':
             raise CommandError('Prepared review snapshot contains credentials; rerun after resolving them')
+        path = destination / name
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
-        path.chmod(0o755 if mode == b'100755' else 0o644)
-        manifest[str(path.relative_to(destination))] = (hashlib.sha256(content).digest(),
-                                                       len(content), 0o755 if mode == b'100755' else 0o644)
+        path.chmod(modes[name])
+        manifest[name] = (hashlib.sha256(content).digest(), len(content), modes[name])
     return manifest
 
 
