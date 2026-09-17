@@ -48,6 +48,27 @@ class FullAuditTests(unittest.TestCase):
                             for finding in result.findings))
         self.assertEqual((self.repo / 'code.py').read_text(), 'value = 1\n')
 
+    def test_preflight_failure_does_not_count_model_invocations(self):
+        from ai_pilled.codex_review import materialize_index
+        def corrupt(repo, destination):
+            manifest = materialize_index(repo, destination)
+            (destination / 'code.py').write_text('changed before invocation\n')
+            return manifest
+        with patch('ai_pilled.full_audit.materialize_index', side_effect=corrupt), patch(
+                'ai_pilled.full_audit.invoke_review') as model:
+            result = full_audit(self.repo, model_reviews=True, workers=1)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.metrics['model_reviews_run'], 0)
+        model.assert_not_called()
+        self.assertEqual([check['metrics']['model_invocations'] for check in result.checks[1:]], [0, 0, 0])
+
+    def test_failed_model_invocation_still_counts_attempt(self):
+        with patch('ai_pilled.full_audit.invoke_review', side_effect=CommandError('fixture failure')) as model:
+            result = full_audit(self.repo, model_reviews=True, workers=1)
+        self.assertEqual(result.status, 'incomplete')
+        self.assertEqual(result.metrics['model_reviews_run'], 3)
+        self.assertEqual(model.call_count, 3)
+
     def test_default_runs_quality_without_model(self):
         with patch('ai_pilled.full_audit.invoke_review') as model:
             result = full_audit(self.repo)
