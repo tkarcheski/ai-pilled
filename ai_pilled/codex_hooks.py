@@ -48,6 +48,13 @@ def require_unchanged(path, snapshot, root):
         raise CommandError('Codex configuration changed concurrently; retry after reconciling edits')
 
 
+def remove_manifest(path, snapshot, root):
+    # Bind cleanup to the verified parent even if its pathname changes afterward.
+    with directory_beneath(root, path.parent.relative_to(root)) as parent:
+        require_unchanged(path, snapshot, root)
+        os.unlink(path.name, dir_fd=parent)
+
+
 def render_object(data):
     chunks = []
     size = 1  # Final newline.
@@ -137,8 +144,7 @@ def install(repo):
                 # Keep recovery metadata if publication may have succeeded.
                 try:
                     if not publishing or read_snapshot(path, root)[1] == config_snapshot:
-                        require_unchanged(manifest_path, owned_snapshot, root)
-                        manifest_path.unlink()
+                        remove_manifest(manifest_path, owned_snapshot, root)
                 except (OSError, CommandError):
                     pass
                 raise
@@ -173,6 +179,5 @@ def uninstall(repo):
             require_unchanged(manifest_path, manifest_snapshot, root)
 
         atomic_text(path, render_object(data), before_publish=guard, root=root)
-        require_unchanged(manifest_path, manifest_snapshot, root)
-        manifest_path.unlink()
+        remove_manifest(manifest_path, manifest_snapshot, root)
     return Report('uninstall-codex-hooks')

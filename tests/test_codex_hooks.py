@@ -94,6 +94,50 @@ class CodexInstallTests(unittest.TestCase):
             read_snapshot(self.path, self.repo)
         self.assertEqual(json.loads((parked / 'hooks.json').read_text()), self.original)
 
+    def test_manifest_cleanup_cannot_follow_replaced_parent(self):
+        from ai_pilled import codex_hooks
+        for removing in (False, True):
+            with self.subTest(removing=removing), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder) / 'repo'
+                outside = Path(folder) / 'outside'
+                root.mkdir()
+                outside.mkdir()
+                subprocess.run(['git', 'init', '-q', str(root)], check=True)
+                if removing:
+                    install(root)
+                manifest = root / '.ai-pilled' / 'codex-installation.json'
+                target = outside / manifest.name
+                target.write_text('outside sentinel')
+                original_check = codex_hooks.require_unchanged
+                original_write = codex_hooks.atomic_text
+                checks = []
+
+                def checked(path, *args, root=root, outside=outside, manifest=manifest,
+                            removing=removing, checks=checks, original_check=original_check):
+                    result = original_check(path, *args)
+                    if path == manifest:
+                        checks.append(True)
+                        if len(checks) == (2 if removing else 1):
+                            manifest.parent.rename(root / 'parked-state')
+                            manifest.parent.symlink_to(outside, target_is_directory=True)
+                    return result
+
+                def written(path, *args, removing=removing, original_write=original_write, **kwargs):
+                    if not removing and path.name == 'hooks.json':
+                        raise OSError('configuration publication failed')
+                    return original_write(path, *args, **kwargs)
+
+                with patch.object(codex_hooks, 'require_unchanged', side_effect=checked), \
+                        patch.object(codex_hooks, 'atomic_text', side_effect=written):
+                    if removing:
+                        uninstall(root)
+                    else:
+                        with self.assertRaises(OSError):
+                            install(root)
+                self.assertTrue(target.exists())
+                self.assertEqual(target.read_text(), 'outside sentinel')
+                self.assertFalse((root / 'parked-state' / manifest.name).exists())
+
     def test_preserves_user_hooks_across_install_and_uninstall(self):
         install(self.repo)
         once = self.path.read_text()
