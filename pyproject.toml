@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-pilled"
+dynamic = ["version"]
+description = "Codex-first quality checks for Git repositories"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Tyler Karcheski" },
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/tkarcheski/ai-pilled"
+Repository = "https://github.com/tkarcheski/ai-pilled"
+Issues = "https://github.com/tkarcheski/ai-pilled/issues"
+
+[project.scripts]
+ai-pilled = "ai_pilled.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "ai_pilled.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["ai_pilled", "ai_pilled.*"]
