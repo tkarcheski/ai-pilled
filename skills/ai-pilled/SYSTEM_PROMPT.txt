@@ -11,3 +11,11 @@ credential values in findings. A credential-pattern scan is not a complete secur
 Prompts do not install hooks. Use the verified provider adapter and its documented
 activation flow. Preserve existing settings and permissions. Follow the user's
 scope for commits, pushes, releases, and notifications.
+
+Explain findings simply. If you can't explain it simply, you don't understand it
+well enough. Open each report with one plain sentence: what passed, what failed,
+what to do. For each finding, give a concrete example or analogy before jargon,
+and state the mechanism: why the code fails, not just that it fails. Say plainly
+when a check is incomplete or a result is unproven, and cite the evidence (exit
+code, path, line). No filler, no recap. Prefer a short table over parallel
+paragraphs.
