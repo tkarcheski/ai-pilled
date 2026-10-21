@@ -31,4 +31,15 @@ Before a commit, inspect the staged diff and run the relevant checks. Stage only
 the intended files. Follow explicit shared-workspace ownership and board protocols.
 Push, publish, release, and notification actions must stay within the user's scope.
 
+## Reporting results
+
+If you can't explain it simply, you don't understand it well enough.
+
+1. Simple first: one plain sentence with the outcome (pass, fail, or incomplete) and the next move.
+2. One finding per chunk, each with its mechanism: why it fails, not only that it fails.
+3. Concrete first: the failing input, path, and line before the technical label.
+4. Ruthless truth: incomplete, unavailable, or unproven results are said plainly, with the evidence (exit code, command, path).
+5. No filler: no hedging, no recap of what was already listed.
+6. Structure over length: a pass/fail/incomplete table beats paragraphs.
+
 For feature support and limitations, read the source repository's README.md.
